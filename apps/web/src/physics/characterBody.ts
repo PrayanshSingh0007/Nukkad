@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import type { Collider, KinematicCharacterController, RigidBody } from '@dimforge/rapier3d';
 import type { PhysicsWorld } from './physicsWorld.ts';
 
 /** The player's body is a capsule: a pill 1.7 m tall and 0.6 m wide. */
@@ -24,10 +24,10 @@ export class CharacterBody {
   y: number;
   z: number;
   grounded = false;
-  readonly collider: RAPIER.Collider;
+  readonly collider: Collider;
   private readonly physics: PhysicsWorld;
-  private readonly body: RAPIER.RigidBody;
-  private readonly controller: RAPIER.KinematicCharacterController;
+  private readonly body: RigidBody;
+  private readonly controller: KinematicCharacterController;
   private fallSpeed = 0;
 
   constructor(physics: PhysicsWorld, x: number, y: number, z: number) {
@@ -36,6 +36,7 @@ export class CharacterBody {
     this.y = y;
     this.z = z;
     const world = physics.world;
+    const RAPIER = physics.rapier;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + CENTRE_HEIGHT, z));
     this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(BODY_HALF_HEIGHT, BODY_RADIUS), this.body);
     this.controller = world.createCharacterController(0.03);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clipLineToSquare, clipRingToSquare } from './clip.ts';
-import { cleanRing, densifyRing, distToSegment, orientRing, pointInPolygon, ringCentroid, signedArea } from './polygon.ts';
+import { cleanRing, densifyRing, simplifyRing, distToSegment, orientRing, pointInPolygon, ringCentroid, signedArea } from './polygon.ts';
 
 const square = [0, 0, 10, 0, 10, 10, 0, 10];
 
@@ -32,6 +32,14 @@ describe('polygon helpers', () => {
     const dense = densifyRing(square, 4);
     expect(dense.length).toBe(24);
     expect(signedArea(dense)).toBeCloseTo(100);
+  });
+});
+
+describe('simplifying outlines', () => {
+  it('drops points that barely change the shape and keeps corners', () => {
+    const wobbly = [0, 0, 5, 0.2, 10, 0, 10, 5, 10.3, 10, 0, 10, 0.1, 5];
+    expect(simplifyRing(wobbly, 0.5)).toEqual([0, 0, 10, 0, 10.3, 10, 0, 10]);
+    expect(simplifyRing(square, 0.5)).toBe(square);
   });
 });
 

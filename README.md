@@ -5,8 +5,8 @@
 Nukkad turns open map data (OpenStreetMap + open elevation data) into a small 3D world that
 friends can walk and ride around in together, from a phone browser, by invite link.
 
-> **Status: Phases 1 and 2 of 7 are done** — the map → 3D pipeline, and walking around in third
-> person with your own avatar. Multiplayer, voice, photos and the scooter come next. See `PLAN.md`
+> **Status: Phases 1–3 of 7 are done** — the map → 3D pipeline, walking around in third person
+> with your own avatar, and streaming with three quality levels. Multiplayer, voice, photos and the scooter come next. See `PLAN.md`
 > for the whole plan and `NOTES.md` for where things stand right now.
 
 ## Run it
@@ -50,7 +50,11 @@ Both pages take the place from the address bar:
 - `?lat=12.9207&lng=77.6953` — the place (or type it into the **Place** panel)
 - `&r=300` — a smaller area (150–600 m, default 600)
 - `&trees=300` — how many trees to draw (default 1000)
-- `&windows=0` — plain walls · `&aa=0` — no anti-aliasing · `&pr=1` — lower resolution
+- `&q=low`, `&q=medium`, `&q=high` — force a quality level (game page)
+- `&windows=0` — plain walls · `&aa=0` — no anti-aliasing · `&pr=1` — lower resolution (debug page)
+
+**Debug overlay** (game page): tap the Nukkad logo 5 times quickly, or press ` on a laptop.
+It shows fps, draw calls, memory and chunks, lets you switch quality, and has **Copy report**.
 
 Controls — laptop: `W A S D` + drag to look, `E`/`Q` up/down, `Shift` fast, mouse wheel = speed.
 Phone: left thumb moves, right thumb looks.

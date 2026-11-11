@@ -1,16 +1,23 @@
+import * as THREE from 'three';
 import { CHUNK_SIZE } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
-import type { ChunkData } from '@nukkad/worldgen';
+import { DebugOverlay } from '../debug/overlay.ts';
+import { buildReport } from '../debug/report.ts';
 import { StatsMeter, formatStats } from '../debug/statsHud.ts';
 import { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { CameraRig } from '../player/cameraRig.ts';
 import { PlayerInput } from '../player/input.ts';
 import type { ReadyMessage } from '../workers/protocol.ts';
 import { areaUrl } from '../world/areaUrl.ts';
+import { Streamer } from '../world/streamer.ts';
+import { chunkAt } from '../world/streamPlan.ts';
+import type { StreamSettings } from '../world/streamPlan.ts';
 import { WorldClient } from '../world/worldClient.ts';
 import { WorldView } from '../world/worldView.ts';
 import { LocalPlayer } from './localPlayer.ts';
+import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
+import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
 import type { GameScene } from './scene.ts';
 
@@ -22,55 +29,60 @@ export interface GameStatus {
 export interface GameOptions {
   canvas: HTMLCanvasElement;
   stick: HTMLElement;
-  statsBox: HTMLElement;
+  overlay: HTMLElement;
+  logo: HTMLElement;
   look: AvatarLook;
-  maxTrees: number;
-  windows: boolean;
-  antialias: boolean;
-  maxPixelRatio: number;
+  quality: QualityLevel;
+  qualitySource: QualitySource;
 }
 
-const MAX_CHUNKS_IN_FLIGHT = 2;
 const COLLIDER_RADIUS = 1; // colliders for the 3 × 3 chunks around the player
-/** The playable square ends this far inside the area (the rest is the foggy margin). */
-const EDGE_MARGIN_M = 100;
+const EDGE_MARGIN_M = 100; // the playable square ends this far inside the area
+const HYSTERESIS_M = 30;
 
-/** The game itself: loads a place, puts the player in it, and runs the frame loop. */
+/** The game itself: loads a place, streams it around the player, and runs the frame loop. */
 export class Game {
   private readonly view3d: GameScene;
   private readonly input: PlayerInput;
   private readonly rig: CameraRig;
   private readonly meter: StatsMeter;
-  private readonly options: GameOptions;
+  private readonly overlay: DebugOverlay;
+  private readonly governor = new FrameGovernor();
   private readonly listeners = new Set<(status: GameStatus) => void>();
   private status: GameStatus = { phase: 'loading', message: 'Starting…' };
   private look: AvatarLook;
+  private level: QualityLevel;
+  private benchmarking: boolean;
   private physics: PhysicsWorld | null = null;
   private world: WorldView | null = null;
   private ready: ReadyMessage | null = null;
+  private streamer: Streamer | null = null;
   private player: LocalPlayer | null = null;
-  private readonly chunks = new Map<string, ChunkData>();
   private collidersComplete = false;
   private colliderChunk = '';
   private last = performance.now();
+  private loadStarted = performance.now();
+  private timeToPlayMs = 0;
+  private appliedPixelRatio = 0;
 
   constructor(options: GameOptions) {
-    this.options = options;
     this.look = options.look;
-    this.view3d = createGameScene(options.canvas, options);
+    this.level = options.quality;
+    this.benchmarking = options.qualitySource === 'guess';
+    this.view3d = createGameScene(options.canvas, { antialias: QUALITY[this.level].antialias });
     this.input = new PlayerInput(options.canvas, options.stick);
     this.rig = new CameraRig(this.view3d.camera);
+    this.overlay = new DebugOverlay(options.overlay, options.logo, (level) => {
+      this.benchmarking = false;
+      saveQuality(level);
+      this.setQuality(level);
+    });
     this.meter = new StatsMeter(this.view3d.renderer, (stats) => {
-      const player = this.player;
-      const extra = player
-        ? [
-            `chunks ${this.chunks.size} · colliders ${this.physics?.colliderChunkCount ?? 0} · ${player.speed.toFixed(1)} m/s`,
-            `x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)}${player.body.grounded ? '' : ' (air)'}`,
-          ]
-        : [];
-      options.statsBox.textContent = formatStats(stats, extra);
+      const lines = formatStats(stats, this.debugLines());
+      this.overlay.update(lines, buildReport(this.view3d.renderer, lines), this.level);
     });
     window.addEventListener('resize', () => this.view3d.resize());
+    this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
   }
 
@@ -86,12 +98,18 @@ export class Game {
     this.player?.avatar.setLook(look);
   }
 
+  setQuality(level: QualityLevel): void {
+    this.level = level;
+    this.applyQuality();
+  }
+
   /** Loads the place around (lat, lng) and drops the player at its nearest street corner. */
   async start(lat: number, lng: number, halfSize = 0): Promise<void> {
+    this.loadStarted = performance.now();
     this.setStatus('loading', 'Getting the map… a brand-new place can take up to a minute.');
     try {
       const client = new WorldClient();
-      // The physics engine (a big WASM file) loads while the map downloads.
+      // The physics engine (a big WASM file) downloads while the map downloads.
       const [physics, ready] = await Promise.all([
         PhysicsWorld.create(),
         client.load(areaUrl(lat, lng, halfSize), (stage) => {
@@ -100,18 +118,48 @@ export class Game {
       ]);
       this.physics = physics;
       this.ready = ready;
+      const settings = QUALITY[this.level];
       this.world = new WorldView(ready, {
-        maxTrees: this.options.maxTrees,
-        windows: this.options.windows,
+        maxTrees: settings.maxTrees,
+        windows: true,
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
       physics.setTerrain(ready.terrain.positions, ready.terrain.indices);
+      this.streamer = new Streamer(client, this.world, this.streamSettings());
+      this.streamer.onChunk = () => {
+        this.collidersComplete = false;
+      };
       this.setStatus('loading', 'Almost there…');
-      await this.loadChunks(ready, client);
     } catch (error) {
       this.setStatus('error', error instanceof Error ? error.message : String(error));
     }
+  }
+
+  private streamSettings(): StreamSettings {
+    const info = (this.ready as ReadyMessage).info;
+    const quality = QUALITY[this.level];
+    return {
+      half: info.halfSize,
+      chunksPerSide: info.chunksPerSide,
+      chunkSize: CHUNK_SIZE,
+      nearRing: quality.nearRing,
+      viewDistance: quality.viewDistance,
+      hysteresis: HYSTERESIS_M,
+    };
+  }
+
+  /** Applies view distance, fog, sharpness and tree count of the current level. */
+  private applyQuality(): void {
+    const quality = QUALITY[this.level];
+    const fog = this.view3d.scene.fog as THREE.Fog;
+    fog.far = quality.viewDistance;
+    fog.near = quality.viewDistance * 0.45;
+    this.view3d.camera.far = quality.viewDistance + 80;
+    this.view3d.camera.updateProjectionMatrix();
+    this.world?.setTreeLimit(quality.maxTrees);
+    if (this.streamer) this.streamer.settings = this.streamSettings();
+    this.appliedPixelRatio = 0; // re-applied on the next frame
   }
 
   private setStatus(phase: GameStatus['phase'], message: string): void {
@@ -119,32 +167,7 @@ export class Game {
     for (const listener of this.listeners) listener(this.status);
   }
 
-  private chunkOf(x: number, z: number): [number, number] {
-    const info = (this.ready as ReadyMessage).info;
-    const clamp = (value: number): number => Math.min(info.chunksPerSide - 1, Math.max(0, Math.floor((value + info.halfSize) / CHUNK_SIZE)));
-    return [clamp(x), clamp(z)];
-  }
-
-  /** Asks for all chunks, the ones nearest to the spawn point first. */
-  private async loadChunks(ready: ReadyMessage, client: WorldClient): Promise<void> {
-    const n = ready.info.chunksPerSide;
-    const [sx, sz] = this.chunkOf(ready.info.spawn[0], ready.info.spawn[1]);
-    const queue: [number, number][] = [];
-    for (let cz = 0; cz < n; cz++) for (let cx = 0; cx < n; cx++) queue.push([cx, cz]);
-    queue.sort((a, b) => Math.hypot(a[0] - sx, a[1] - sz) - Math.hypot(b[0] - sx, b[1] - sz));
-    const worker = async (): Promise<void> => {
-      for (let next = queue.shift(); next; next = queue.shift()) {
-        const message = await client.requestChunk(next[0], next[1]);
-        this.chunks.set(`${message.chunk.cx},${message.chunk.cz}`, message.chunk);
-        this.world?.addChunk(message.chunk);
-        this.collidersComplete = false;
-        if (!this.player) this.trySpawn();
-      }
-    };
-    await Promise.all(Array.from({ length: MAX_CHUNKS_IN_FLIGHT }, worker));
-  }
-
-  /** The player appears once the ground and the 3 × 3 chunks around the spawn point are solid. */
+  /** The player appears once the 3 × 3 chunks around the spawn point are solid. */
   private trySpawn(): void {
     const { ready, physics, world } = this;
     if (!ready || !physics || !world) return;
@@ -153,15 +176,16 @@ export class Game {
     const limit = ready.info.halfSize - EDGE_MARGIN_M;
     this.player = new LocalPlayer(physics, this.look, x, heightAt(world.terrain, x, z) + 0.3, z, limit);
     this.view3d.scene.add(this.player.avatar.object);
+    this.timeToPlayMs = performance.now() - this.loadStarted;
     this.setStatus('playing', '');
   }
 
   private syncColliders(x: number, z: number): boolean {
-    const { ready, physics } = this;
-    if (!ready || !physics) return false;
-    const [cx, cz] = this.chunkOf(x, z);
+    const { physics, streamer } = this;
+    if (!physics || !streamer) return false;
+    const [cx, cz] = chunkAt(x, z, streamer.settings);
     this.colliderChunk = `${cx},${cz}`;
-    this.collidersComplete = physics.syncChunks(cx, cz, COLLIDER_RADIUS, ready.info.chunksPerSide, (key) => this.chunks.get(key));
+    this.collidersComplete = physics.syncChunks(cx, cz, COLLIDER_RADIUS, streamer.settings.chunksPerSide, (key) => streamer.nearData.get(key));
     return this.collidersComplete;
   }
 
@@ -169,28 +193,62 @@ export class Game {
     const dtMs = Math.min(100, Math.max(0, now - this.last));
     this.last = now;
     const dt = dtMs / 1000;
-    const { player, physics, world } = this;
-    if (player && physics && world) {
+    const { player, physics, world, streamer, ready } = this;
+    const forwardX = -Math.sin(this.rig.yaw);
+    const forwardZ = -Math.cos(this.rig.yaw);
+
+    if (streamer && ready && !player) {
+      streamer.update(ready.info.spawn[0], ready.info.spawn[1], forwardX, forwardZ);
+      this.trySpawn();
+    }
+    if (player && physics && world && streamer) {
       const terrain = world.terrain;
       const groundAt = (x: number, z: number): number => heightAt(terrain, x, z);
       this.input.update();
       const drag = this.input.consumeLook();
       this.rig.look(drag.dx, drag.dy);
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
+      streamer.update(player.x, player.z, forwardX, forwardZ);
 
-      // Colliders follow the player: refresh when a chunk border is crossed or chunks are still arriving.
-      const [cx, cz] = this.chunkOf(player.x, player.z);
+      // Colliders follow the player: refresh when a chunk border is crossed or new chunks arrived.
+      const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
       if (!this.collidersComplete || this.colliderChunk !== `${cx},${cz}`) this.syncColliders(player.x, player.z);
 
       const body = player.body.collider;
       this.rig.update(player.x, player.y, player.z, dt, (ox, oy, oz, dx, dy, dz, max) => physics.castRay(ox, oy, oz, dx, dy, dz, max, body), groundAt);
+
+      if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
+        const index = QUALITY_LEVELS.indexOf(this.level);
+        if (index > 0) this.setQuality(QUALITY_LEVELS[index - 1]);
+        else this.benchmarking = false;
+      }
+    }
+
+    const pixelRatio = Math.min(window.devicePixelRatio, QUALITY[this.level].maxPixelRatio) * this.governor.renderScale;
+    if (Math.abs(pixelRatio - this.appliedPixelRatio) > 0.01) {
+      this.view3d.renderer.setPixelRatio(pixelRatio);
+      this.view3d.resize();
+      this.appliedPixelRatio = pixelRatio;
     }
     this.view3d.renderer.render(this.view3d.scene, this.view3d.camera);
     this.meter.frame(dtMs);
   }
 
+  private debugLines(): string[] {
+    const { player, streamer, ready, physics } = this;
+    if (!player || !streamer || !ready) return [`loading… (${this.status.message})`];
+    const counts = streamer.counts;
+    const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
+    return [
+      `quality ${this.level}${this.benchmarking ? ' (testing)' : ''} · render scale ${this.governor.renderScale.toFixed(2)} · pixel ratio ${this.appliedPixelRatio.toFixed(2)}`,
+      `chunks near ${counts.near} · far ${counts.far} · building ${counts.building} · colliders ${physics?.colliderChunkCount ?? 0}`,
+      `chunk ${cx},${cz} · x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)} · ${player.speed.toFixed(1)} m/s`,
+      `${ready.info.id} · pack ${Math.round((ready.info.downloadBytes || ready.info.packBytes) / 1024)} KB · ready in ${(this.timeToPlayMs / 1000).toFixed(1)} s`,
+    ];
+  }
+
   /** For the browser console while developing. */
   get debug(): Record<string, unknown> {
-    return { player: this.player, rig: this.rig, physics: this.physics, input: this.input, scene: this.view3d.scene };
+    return { player: this.player, rig: this.rig, physics: this.physics, input: this.input, streamer: this.streamer, governor: this.governor, scene: this.view3d.scene };
   }
 }

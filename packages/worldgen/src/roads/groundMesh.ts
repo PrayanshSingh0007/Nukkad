@@ -28,12 +28,15 @@ function addGroundVertex(mesh: MeshBuilder, terrain: TerrainGrid, x: number, z: 
   return mesh.addVertex(x, heightAt(terrain, x, z) + style.lift, z, nx, ny, nz, style.color);
 }
 
-/** Lays one stretch of road on the ground: two triangles between each pair of cross-sections. */
-export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: TerrainGrid): void {
+/**
+ * Lays one stretch of road on the ground: two triangles between each pair of cross-sections.
+ * `stride` > 1 skips cross-sections (far away the road need not follow every bump).
+ */
+export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: TerrainGrid, stride = 1): void {
   const { ribbon, from, to } = run;
   let prevLeft = -1;
   let prevRight = -1;
-  for (let i = from; i <= to; i++) {
+  for (let i = from; i <= to; i = i === to ? to + 1 : Math.min(to, i + stride)) {
     const left = addGroundVertex(mesh, terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1], ribbon.kind);
     const right = addGroundVertex(mesh, terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1], ribbon.kind);
     if (i > from) {

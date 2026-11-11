@@ -2,12 +2,32 @@
 
 Read order for a fresh session: PLAN.md → this file → BUGS.md.
 
-## Current status (2026-11-11, evening)
+## Current status (2026-11-11, night)
 
-- **Phase 1 (map → 3D) done and approved at STOP 1. Phase 2 (movement) is built and tested on the laptop. Phase 3 (streaming + speed) is next.**
-- `npm test`: 84 tests green. `npm run typecheck`: clean. `npm run build`: works.
-- Schedule: about half a day behind the plan (Phase 2 was meant to end on Day 2 with Phase 3 the same day).
-- **Git: there is no repo yet, on purpose.** The owner said (Nov 11) they will create it themselves and give the remote origin. Do not run `git init`. Nothing is committed; Phases 1 and 2 wait for the first commit.
+- **Phases 1–3 are built. Waiting at STOP 2 (after Phase 3) for the owner's phone numbers.**
+- `npm test`: 89 green · typecheck clean · build works.
+- Git: repo made by the owner — github.com/PrayanshSingh0007/Nukkad (main). **Commit and push at the end of every phase.**
+- Schedule: about half a day behind (Phase 3 was planned for Day 2; Phase 4 has not started).
+
+## Phase 3 — what was built
+
+- **Streaming** (`apps/web/src/world/streamer.ts`, `streamPlan.ts`): full-detail chunks in the 3 × 3 (High: 5 × 5) around the player, simplified far chunks out to the view distance, nothing beyond. 30 m hysteresis, nearest-first with a bonus for chunks in front, at most 2 chunks building in the worker and 1 put on screen per frame. A far chunk stays visible until its near version replaces it (no holes). Removed chunks free their GPU memory.
+- **Far chunks (LOD1)** (`buildChunk(…, 1)`): no buildings under 100 m², outlines simplified to 1.5 m, no courtyards, no window data, only roads ≥ 5 m wide in 18 m pieces, no road-end discs. Cap 10,000 triangles.
+- **Quality levels** (`apps/web/src/game/quality.ts`): Low 200 m / pixel ratio 1 / 300 trees · Medium 350 m / 1.5 / 1,000 · High 600 m / 2 / 2,500 + anti-aliasing. First level guessed from the device, then a 6-second benchmark steps a *guessed* level down while frames average over 40 ms. A level picked by hand (overlay buttons) or `?q=low|medium|high` is never changed. Saved in the browser.
+- **Adaptive resolution**: render scale drops 10 % after 2 s of frames over 36 ms (not below 0.6), climbs back under 22 ms.
+- **Hidden debug overlay**: 5 quick taps on the "Nukkad" logo (laptop: the ` key): fps, frame time, draw calls, triangles, geometries, textures, JS memory, quality, render scale, chunks near/far/building, colliders, current chunk, position, pack size, load time, quality buttons, **Copy report** (on plain http it opens a box to copy by hand).
+- **Download fixed (B-004)**: Rapier now comes as a separate `.wasm` file (package `@dimforge/rapier3d` + `vite-plugin-wasm`), loaded in parallel with the map. Zipped: app 76 KB + Three.js/world 142 KB + physics JS 52 KB + physics WASM 1,169 KB ≈ **1.44 MB** (was 1.75 MB; budget 1.2 MB — still over, because the physics engine alone is 1.17 MB).
+- Not done from PLAN §7–8: sun shadow maps (everyone has the blob shadow on every level), texture atlas (there are no facade textures — windows are drawn by the shader, so there is nothing to atlas), memory guard that shrinks rings, per-chunk tree refill (trees are one capped global list; fog hides far ones).
+
+### Phase 3 measurements (laptop M1 Max, browser pane, simulated 60 Hz frames)
+
+| Level | Chunks on screen | Draw calls | Triangles |
+|---|---|---|---|
+| Low | 16 (9 near + 7 far) | 22 | 53,000 |
+| Medium | 32 (9 + 23) | 32 | 70,000 |
+| High | 59 (25 + 34) | 48 | 105,000 |
+
+All under the PLAN §8.1 budgets (60 / 100 / 200 draw calls; 80k / 150k / 400k triangles). Far chunks are ≈ 40 % lighter than near ones here. A 143 m walk across a chunk border never dropped below 9 near chunks / 9 colliders; GPU geometry count stayed flat (no leak). Map ready 0.6 s after load for a cached place. **Phone fps: unknown until the owner measures it.**
 
 ## Phase 2 — what was built
 
@@ -101,7 +121,6 @@ See BUGS.md: B-001 (special roofs as blocks), B-002 (lake patches), B-003 (soft 
 
 ## Next steps
 
-1. Owner: walk around at `/` on the phone; report fps + draw calls + phone model; create the git repo and give the remote.
-2. First commit of everything so far (once the repo exists).
-3. Phase 3 — streaming + speed: chunk load/unload around the player with hysteresis, LOD1 for far chunks, view distance per quality level, quality auto-pick from a quick benchmark, adaptive resolution, hidden debug overlay with "Copy report", profile and fix the worst bottleneck.
-4. In Phase 3, fix B-004: load Rapier's WASM as a separate file (non-compat package + a WASM plugin) and load physics in its own chunk.
+1. Owner (STOP 2): open `/` on the phone, walk 2 minutes, open the overlay (5 taps on the logo), tap Copy report and send it. Tell me the phone model.
+2. Phase 4 — multiplayer: shared protocol + validators, ws server with rooms (max 8, invite link, rate limits, expiry), 15 Hz state / snapshots, interpolation, reconnect, name tags, emote field, landing page (name → join), Invite button, 8-bot stress test with lag + loss.
+3. Question 5 decision is in (24 h links, host lock/remove) — remove goes just above weather.

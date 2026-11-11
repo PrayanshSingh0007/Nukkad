@@ -47,7 +47,7 @@ Template:
 
 ### B-004 The game download is bigger than the budget (physics engine)
 - Type: performance
-- Status: open — fix planned in Phase 3
+- Status: partly fixed in Phase 3 (1.75 MB → 1.44 MB zipped by loading the WASM as its own file). Still 0.24 MB over: the physics WASM alone is 1.17 MB. Options later: Brotli on the host (≈ 1.0 MB for the WASM), or a lighter physics setup.
 - Found: 2026-11-11, production build
 - Steps to reproduce:
   1. `npm run build` and read the size of `main-*.js`.

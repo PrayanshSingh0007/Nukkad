@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TEST_AREA, isValidLatLng } from '@nukkad/shared';
 import { Game } from './game/game.ts';
+import { startingQuality } from './game/quality.ts';
 import { loadLook } from './player/avatar/lookStore.ts';
 import { App } from './ui/App.tsx';
 import './ui/ui.css';
@@ -9,7 +10,7 @@ import './ui/ui.css';
 /**
  * The game page. Until the place picker exists (Phase 7) the place comes from the
  * address bar: ?lat=..&lng=..  (default: the built-in test area).
- * Other options: &r=300 smaller area · &trees=300 · &windows=0 · &pr=1 · &aa=0
+ * Other options: &r=300 smaller area · &q=low|medium|high quality
  */
 const params = new URLSearchParams(location.search);
 const numberParam = (name: string, fallback: number): number => {
@@ -19,15 +20,15 @@ const numberParam = (name: string, fallback: number): number => {
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const look = loadLook();
+const quality = startingQuality(params.get('q'));
 const game = new Game({
   canvas: element<HTMLCanvasElement>('view'),
   stick: element('stick'),
-  statsBox: element('stats'),
+  overlay: element('overlay'),
+  logo: element('logo'),
   look,
-  maxTrees: numberParam('trees', 1000),
-  windows: params.get('windows') !== '0',
-  antialias: params.get('aa') !== '0',
-  maxPixelRatio: numberParam('pr', 1.5),
+  quality: quality.level,
+  qualitySource: quality.source,
 });
 
 createRoot(element('ui')).render(

@@ -34,6 +34,8 @@ export class WorldView {
   private readonly materials: WorldMaterials;
   private readonly groundMap: THREE.DataTexture;
   private readonly chunks = new Map<string, THREE.Group>();
+  private readonly treeMeshes: (THREE.InstancedMesh | null)[] = [];
+  private treeVariants = new Uint8Array(0);
   private readonly borders: THREE.LineSegments;
   private readonly halfSize: number;
 
@@ -60,7 +62,8 @@ export class WorldView {
     this.group.add(new THREE.Mesh(terrainGeometry, this.materials.terrain));
 
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
-    this.addProps(ready.props, options.maxTrees);
+    this.addProps(ready.props);
+    this.setTreeLimit(options.maxTrees);
 
     this.borders = this.buildChunkBorders(ready.info.chunksPerSide);
     this.borders.visible = false;
@@ -71,15 +74,38 @@ export class WorldView {
     return this.chunks.size;
   }
 
-  /** Shows one chunk: at most two meshes (buildings, ground overlay). */
+  /**
+   * Shows one chunk: at most two meshes (buildings, ground overlay). A chunk already on
+   * screen is replaced in the same frame (far → near detail), so there is never a hole.
+   */
   addChunk(chunk: ChunkData): void {
     const key = `${chunk.cx},${chunk.cz}`;
-    if (this.chunks.has(key)) return;
     const group = new THREE.Group();
     if (chunk.buildings) group.add(new THREE.Mesh(meshToGeometry(chunk.buildings), this.materials.buildings));
     if (chunk.ground) group.add(new THREE.Mesh(meshToGeometry(chunk.ground), this.materials.ground));
+    this.removeChunk(key);
     this.chunks.set(key, group);
     this.group.add(group);
+  }
+
+  /** Takes a chunk off the screen and frees its GPU memory. */
+  removeChunk(key: string): void {
+    const group = this.chunks.get(key);
+    if (!group) return;
+    for (const child of group.children) (child as THREE.Mesh).geometry.dispose();
+    group.removeFromParent();
+    this.chunks.delete(key);
+  }
+
+  /** Draws only the first `limit` trees (the list is shuffled, so they stay evenly spread). */
+  setTreeLimit(limit: number): void {
+    const counts = [0, 0, 0];
+    const shown = Math.min(limit, this.treeVariants.length);
+    for (let t = 0; t < shown; t++) counts[this.treeVariants[t]]++;
+    this.treeMeshes.forEach((mesh, variant) => {
+      if (mesh) mesh.count = counts[variant];
+    });
+    this.counts.trees = shown;
   }
 
   setWireframe(on: boolean): void {
@@ -103,7 +129,7 @@ export class WorldView {
   }
 
   /** One instanced mesh per model: hundreds of copies, one draw call each. */
-  private addProps(props: PropSet, maxTrees: number): void {
+  private addProps(props: PropSet): void {
     const models = createPropModels();
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
@@ -124,10 +150,15 @@ export class WorldView {
       this.group.add(mesh);
     };
 
-    const treeCount = Math.min(maxTrees, props.trees.length / TREE_STRIDE);
+    const treeCount = props.trees.length / TREE_STRIDE;
+    this.treeVariants = new Uint8Array(treeCount);
     const perVariant = [0, 0, 0];
-    for (let t = 0; t < treeCount; t++) perVariant[props.trees[t * TREE_STRIDE + 5]]++;
+    for (let t = 0; t < treeCount; t++) {
+      this.treeVariants[t] = props.trees[t * TREE_STRIDE + 5];
+      perVariant[this.treeVariants[t]]++;
+    }
     models.trees.forEach((geometry, variant) => {
+      this.treeMeshes[variant] = null;
       if (perVariant[variant] === 0) return;
       const mesh = new THREE.InstancedMesh(geometry, this.materials.props, perVariant[variant]);
       let index = 0;
@@ -141,8 +172,8 @@ export class WorldView {
         index++;
       }
       finish(mesh);
+      this.treeMeshes[variant] = mesh;
     });
-    this.counts.trees = treeCount;
 
     const addSimple = (geometry: THREE.BufferGeometry, data: Float32Array, stride: number): number => {
       const count = data.length / stride;

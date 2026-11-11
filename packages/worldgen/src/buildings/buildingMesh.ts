@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import { UNITS_PER_METRE } from '@nukkad/shared';
 import type { PackBuilding } from '@nukkad/shared';
+import { simplifyRing } from '../geom/polygon.ts';
 import type { MeshBuilder, Rgb } from '../mesh/meshBuilder.ts';
 import { buildingColors } from '../style/palette.ts';
 import { heightAt } from '../terrain/grid.ts';
@@ -63,10 +64,17 @@ function addWalls(
   }
 }
 
-/** Adds one building (walls + flat roof) to a chunk's building mesh. */
-export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrain: TerrainGrid): void {
-  const ring = toMetres(building.ring);
-  const holes = (building.holes ?? []).map(toMetres);
+/** Outline tolerance for far (LOD1) buildings, metres. */
+const FAR_SIMPLIFY_M = 1.5;
+
+/**
+ * Adds one building (walls + flat roof) to a chunk's building mesh.
+ * `far` = the simplified version for far away: rougher outline, no courtyards.
+ */
+export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrain: TerrainGrid, far = false): void {
+  const exact = toMetres(building.ring);
+  const ring = far ? simplifyRing(exact, FAR_SIMPLIFY_M) : exact;
+  const holes = far ? [] : (building.holes ?? []).map(toMetres);
 
   // Ground level = the lowest ground under the outline; uphill sides are simply buried a little.
   let ground = Infinity;

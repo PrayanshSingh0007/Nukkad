@@ -1,7 +1,7 @@
 import { PACK_VERSION, decodePack } from '@nukkad/shared';
 import type { WirePack } from '@nukkad/shared';
 import { GROUND_MAP_SIZE, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
-import type { PreparedWorld } from '@nukkad/worldgen';
+import type { ChunkLod, PreparedWorld } from '@nukkad/worldgen';
 import type { FromWorker, ToWorker } from './protocol.ts';
 
 /**
@@ -92,10 +92,10 @@ async function load(url: string): Promise<void> {
   );
 }
 
-function chunk(cx: number, cz: number): void {
+function chunk(cx: number, cz: number, lod: ChunkLod): void {
   if (!world) throw new Error('The world is not loaded yet.');
   const start = performance.now();
-  const data = buildChunk(world, cx, cz);
+  const data = buildChunk(world, cx, cz, lod);
   scope.postMessage({ type: 'chunk', chunk: data, buildMs: performance.now() - start }, [
     ...meshBuffers(data.buildings),
     ...meshBuffers(data.ground),
@@ -109,7 +109,7 @@ scope.onmessage = (event) => {
   };
   try {
     if (message.type === 'load') load(message.url).catch(fail);
-    else chunk(message.cx, message.cz);
+    else chunk(message.cx, message.cz, message.lod);
   } catch (error) {
     fail(error);
   }

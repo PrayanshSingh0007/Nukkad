@@ -1,5 +1,5 @@
 import type { PackStats } from '@nukkad/shared';
-import type { ChunkData, MeshData, PropSet, TerrainMesh } from '@nukkad/worldgen';
+import type { ChunkData, ChunkLod, MeshData, PropSet, TerrainMesh } from '@nukkad/worldgen';
 
 /** The typed messages between the page (main thread) and the world worker. */
 
@@ -33,7 +33,7 @@ export interface TerrainHeights {
   heights: Float32Array;
 }
 
-export type ToWorker = { type: 'load'; url: string } | { type: 'chunk'; cx: number; cz: number };
+export type ToWorker = { type: 'load'; url: string } | { type: 'chunk'; cx: number; cz: number; lod: ChunkLod };
 
 export interface ReadyMessage {
   type: 'ready';

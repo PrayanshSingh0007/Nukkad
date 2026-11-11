@@ -1,3 +1,4 @@
+import type { ChunkLod } from '@nukkad/worldgen';
 import type { ChunkMessage, FromWorker, ReadyMessage, ToWorker } from '../workers/protocol.ts';
 
 type Progress = (stage: 'download' | 'build') => void;
@@ -30,10 +31,10 @@ export class WorldClient {
   }
 
   /** Builds the meshes of one chunk in the worker. */
-  requestChunk(cx: number, cz: number): Promise<ChunkMessage> {
+  requestChunk(cx: number, cz: number, lod: ChunkLod = 0): Promise<ChunkMessage> {
     return new Promise((resolve, reject) => {
-      this.chunkWaiters.set(`${cx},${cz}`, { resolve, reject });
-      this.send({ type: 'chunk', cx, cz });
+      this.chunkWaiters.set(`${cx},${cz},${lod}`, { resolve, reject });
+      this.send({ type: 'chunk', cx, cz, lod });
     });
   }
 
@@ -53,7 +54,7 @@ export class WorldClient {
       this.loadWaiter?.resolve(message);
       this.loadWaiter = null;
     } else if (message.type === 'chunk') {
-      const key = `${message.chunk.cx},${message.chunk.cz}`;
+      const key = `${message.chunk.cx},${message.chunk.cz},${message.chunk.lod}`;
       this.chunkWaiters.get(key)?.resolve(message);
       this.chunkWaiters.delete(key);
     } else {

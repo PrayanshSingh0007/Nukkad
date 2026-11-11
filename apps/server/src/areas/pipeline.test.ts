@@ -2,7 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_AREA, UNITS_PER_METRE, areaRefFor, decodePack } from '@nukkad/shared';
 import type { AreaPack, WirePack } from '@nukkad/shared';
-import { MAX_CHUNK_TRIANGLES, TREE_STRIDE, buildChunk, buildTerrainMesh, buildWaterMesh, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, TREE_STRIDE, buildChunk, buildTerrainMesh, buildWaterMesh, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkData, MeshData, PreparedWorld } from '@nukkad/worldgen';
 import { loadConfig } from '../config.ts';
 import { MemoryAreaStore } from '../store/areaStore.ts';
@@ -129,6 +129,21 @@ describe('test area: pack → meshes', () => {
     }
     expect(total).toBeGreaterThan(20_000);
     expect(total).toBeLessThan(150_000); // the whole area at full detail fits the Medium budget
+  });
+
+  it('builds lighter far versions of every chunk', () => {
+    let near = 0;
+    let far = 0;
+    for (const chunk of chunks) {
+      const simple = buildChunk(world, chunk.cx, chunk.cz, 1);
+      expect(simple.lod).toBe(1);
+      expect(simple.triangles).toBeLessThanOrEqual(MAX_FAR_CHUNK_TRIANGLES);
+      expect(simple.triangles).toBeLessThanOrEqual(chunk.triangles);
+      expect(simple.buildings?.extra).toBeUndefined(); // no window data far away
+      near += chunk.triangles;
+      far += simple.triangles;
+    }
+    expect(far).toBeLessThan(near * 0.7);
   });
 
   it('builds terrain, water and the ground colour map', () => {

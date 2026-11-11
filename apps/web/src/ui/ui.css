@@ -26,18 +26,57 @@ body {
   touch-action: none;
 }
 
-#stats {
+#logo {
   position: fixed;
   top: calc(8px + env(safe-area-inset-top));
+  left: calc(10px + env(safe-area-inset-left));
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(28, 35, 48, 0.75);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.3px;
+}
+
+#overlay {
+  position: fixed;
+  top: calc(46px + env(safe-area-inset-top));
   left: calc(8px + env(safe-area-inset-left));
-  margin: 0;
-  padding: 5px 7px;
-  border-radius: 8px;
-  background: rgba(20, 24, 32, 0.6);
+  max-width: calc(100vw - 16px);
+  padding: 6px 8px 8px;
+  border-radius: 10px;
+  background: rgba(20, 24, 32, 0.78);
   color: #e9f1ff;
+}
+
+#overlay[hidden] {
+  display: none;
+}
+
+#overlay pre {
+  margin: 0 0 6px;
   font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  pointer-events: none;
   white-space: pre-wrap;
+}
+
+.overlayButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.overlayButtons button {
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #3d4654;
+  color: #fff;
+  font-size: 12px;
+}
+
+.overlayButtons button.picked {
+  background: var(--sun);
+  color: var(--ink);
 }
 
 #stick {

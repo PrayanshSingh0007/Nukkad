@@ -2,6 +2,7 @@ import path from 'node:path';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import wasm from 'vite-plugin-wasm';
 
 const here = import.meta.dirname;
 const repoRoot = path.resolve(here, '../..');
@@ -15,7 +16,9 @@ const serverPort = Number(process.env.NUKKAD_SERVER_PORT) || 8787;
 
 export default defineConfig({
   envDir: repoRoot,
-  plugins: useHttps ? [react(), basicSsl()] : [react()],
+  plugins: useHttps ? [react(), wasm(), basicSsl()] : [react(), wasm()],
+  // The physics engine ships a .wasm file; pre-bundling would break its import.
+  optimizeDeps: { exclude: ['@dimforge/rapier3d'] },
   server: {
     host: true, // reachable from a phone on the same Wi-Fi
     port: 5173,

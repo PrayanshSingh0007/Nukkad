@@ -11,9 +11,8 @@ export interface GameScene {
 }
 
 /** Renderer, sky colour, fog and the two lights. (The real sky and day-night arrive in Phase 5.) */
-export function createGameScene(canvas: HTMLCanvasElement, options: { antialias: boolean; maxPixelRatio: number }): GameScene {
+export function createGameScene(canvas: HTMLCanvasElement, options: { antialias: boolean }): GameScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: options.antialias, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, options.maxPixelRatio));
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);

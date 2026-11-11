@@ -147,3 +147,49 @@ export function densifyRing(ring: Ring, maxStep: number): Ring {
   }
   return out;
 }
+
+/**
+ * Simplifies a closed ring (Douglas–Peucker): drops points that are less than
+ * `tolerance` metres away from the simplified outline. Keeps at least 3 points.
+ */
+export function simplifyRing(ring: Ring, tolerance: number): Ring {
+  const n = ring.length / 2;
+  if (n <= 4) return ring;
+  // Split at the point farthest from point 0, then simplify both halves as open lines.
+  let far = 0;
+  let farDistance = -1;
+  for (let i = 1; i < n; i++) {
+    const d = Math.hypot(ring[i * 2] - ring[0], ring[i * 2 + 1] - ring[1]);
+    if (d > farDistance) {
+      farDistance = d;
+      far = i;
+    }
+  }
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[far] = 1;
+  const stack: [number, number][] = [
+    [0, far],
+    [far, n],
+  ];
+  while (stack.length > 0) {
+    const [a, b] = stack.pop() as [number, number];
+    const bi = b % n;
+    let worst = -1;
+    let worstDistance = tolerance;
+    for (let i = a + 1; i < b; i++) {
+      const d = distToSegment(ring[i * 2], ring[i * 2 + 1], ring[a * 2], ring[a * 2 + 1], ring[bi * 2], ring[bi * 2 + 1]);
+      if (d > worstDistance) {
+        worstDistance = d;
+        worst = i;
+      }
+    }
+    if (worst >= 0) {
+      keep[worst] = 1;
+      stack.push([a, worst], [worst, b]);
+    }
+  }
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(ring[i * 2], ring[i * 2 + 1]);
+  return out.length >= 6 ? out : ring;
+}
