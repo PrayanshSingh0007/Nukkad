@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": [
+    "apps/server/src",
+    "packages/shared/src",
+    "packages/worldgen/src",
+    "tools",
+    "vitest.config.ts",
+    "apps/web/vite.config.ts"
+  ]
+}

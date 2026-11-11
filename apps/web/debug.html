@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#bcd9f5" />
+    <title>Nukkad — debug world</title>
+    <link rel="stylesheet" href="/src/debug/debug.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <pre id="stats">starting…</pre>
+
+    <div id="panel">
+      <button id="togglePanel" type="button" aria-label="Show or hide the place panel">Place</button>
+      <form id="place">
+        <label>Lat <input id="lat" inputmode="decimal" autocomplete="off" /></label>
+        <label>Lng <input id="lng" inputmode="decimal" autocomplete="off" /></label>
+        <div class="row">
+          <button type="submit">Load</button>
+          <button id="testArea" type="button">Test area</button>
+        </div>
+        <label class="check"><input id="wireframe" type="checkbox" /> Wireframe</label>
+        <label class="check"><input id="borders" type="checkbox" /> Chunk borders</label>
+        <p class="hint">Laptop: WASD + drag, E/Q up/down, Shift fast.<br />Phone: left thumb moves, right thumb looks.</p>
+      </form>
+    </div>
+
+    <div id="status" hidden></div>
+    <div id="stick"><div></div></div>
+
+    <div id="credits">
+      <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a><span></span>
+    </div>
+
+    <script type="module" src="/src/debug/main.ts"></script>
+  </body>
+</html>

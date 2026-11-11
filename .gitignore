@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.cache/
+coverage/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+.claude/

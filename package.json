@@ -1,0 +1,28 @@
+{
+  "name": "nukkad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nukkad — a multiplayer 3D copy of any real neighbourhood, built from open map data.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "node tools/dev.mjs",
+    "dev:http": "node tools/dev.mjs --http",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
+    "build": "npm run build -w @nukkad/web",
+    "start": "npm run start -w @nukkad/server",
+    "fixture": "node tools/fixtures/record.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
