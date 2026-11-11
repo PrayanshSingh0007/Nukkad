@@ -9,6 +9,14 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Git: commit **and push** at the end of every phase (owner's rule).
 - Owner's STOP 2 report from the phone is still missing (fps, phone model).
 
+## Scooter (pulled forward from Phase 7, 2026-11-12)
+
+- **Ride / Walk** button (bottom right) or the R key. Everyone has their own scooter (built in code, ≈ 500 triangles, accent = your outfit colour).
+- Arcade handling in `apps/web/src/game/localPlayer.ts`: 0→5 m/s in 1.5 s, top 9 m/s (≈ 32 km/h), brake 9 m/s², slow reverse 2 m/s, steering weaker at speed, a little slide (grip 9/s), slows down hard when it bumps into a wall. Same collision body as walking, so kerbs and walls still work.
+- Lean into turns (up to 0.38 rad), camera swings in behind you while riding (not for 1.5 s after you drag the view), and the FOV kick: 62° → 76° at top speed, camera pulls back 1.3 m.
+- Network: the riding flag is sent; others see the scooter and the ride pose, and their lean is worked out from how fast the rider turns.
+- Not done: wheels do not spin, no engine sound, the hands only roughly reach the handlebar.
+
 ## Phase 4 — what was built
 
 - **Protocol** (`packages/shared/src/protocol`): 13-byte binary state, 6 + 11-bytes-per-player snapshots (94 bytes for 8), validated JSON for join / look / ping / leave and welcome / joined / left / look / pong / error. Name cleaning (1–16 characters, no control/invisible characters).
@@ -141,6 +149,5 @@ See BUGS.md: B-001 (special roofs as blocks), B-002 (lake patches), B-003 (soft 
 
 ## Next steps
 
-1. Scooter (Ride toggle, grip, lean, FOV kick, others see you riding) — commit + push.
-2. Phase 5 — atmosphere: real local time sun/moon, sky, fog, street lights + window glow at night → STOP 3.
-3. Owner: phone report (5 taps on the logo → Copy report) + phone model.
+1. Phase 5 — atmosphere: real local time sun/moon, sky, fog, street lights + window glow at night → STOP 3.
+2. Owner: phone report (5 taps on the logo → Copy report) + phone model.

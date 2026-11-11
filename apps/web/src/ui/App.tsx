@@ -31,6 +31,7 @@ async function invite(roomId: string): Promise<string> {
 /** Everything drawn on top of the 3D view: loading / error messages and the look panel. */
 export function App({ game, initialLook, roomId }: Props) {
   const [players, setPlayers] = useState(1);
+  const [riding, setRiding] = useState(false);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
   const [look, setLook] = useState(initialLook);
@@ -40,6 +41,7 @@ export function App({ game, initialLook, roomId }: Props) {
   useEffect(() => game.onStatus(setStatus), [game]);
   useEffect(() => {
     game.onPlayerCount = setPlayers;
+    game.onRiding = setRiding;
   }, [game]);
   useEffect(() => {
     if (!toast) return;
@@ -82,6 +84,11 @@ export function App({ game, initialLook, roomId }: Props) {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
+      {status.phase === 'playing' && !panelOpen && (
+        <button type="button" className={riding ? 'rideButton on' : 'rideButton'} onClick={() => game.toggleRide()}>
+          {riding ? 'Walk' : 'Ride'}
+        </button>
+      )}
       {panelOpen && <AvatarPanel look={look} onChange={changeLook} onClose={() => setPanelOpen(false)} />}
     </>
   );

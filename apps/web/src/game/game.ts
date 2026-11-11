@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CHUNK_SIZE, FLAG_GROUNDED, TICK_HZ } from '@nukkad/shared';
+import { CHUNK_SIZE, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
 import { DebugOverlay } from '../debug/overlay.ts';
@@ -18,7 +18,7 @@ import { chunkAt } from '../world/streamPlan.ts';
 import type { StreamSettings } from '../world/streamPlan.ts';
 import { WorldClient } from '../world/worldClient.ts';
 import { WorldView } from '../world/worldView.ts';
-import { LocalPlayer } from './localPlayer.ts';
+import { LocalPlayer, RIDE_MAX } from './localPlayer.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
 import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
@@ -73,6 +73,10 @@ export class Game {
   private sendClock = 0;
   /** Called with the number of people in the room (you included). */
   onPlayerCount: ((count: number) => void) | null = null;
+  /** Called when you get on or off the scooter. */
+  onRiding: ((riding: boolean) => void) | null = null;
+  private lastDragAt = 0;
+  private static readonly BASE_FOV = 62;
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -92,6 +96,10 @@ export class Game {
       this.overlay.update(lines, buildReport(this.view3d.renderer, lines), this.level);
     });
     window.addEventListener('resize', () => this.view3d.resize());
+    window.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (event.code === 'KeyR' && target?.tagName !== 'INPUT') this.toggleRide();
+    });
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
   }
@@ -107,6 +115,14 @@ export class Game {
     this.look = look;
     this.player?.avatar.setLook(look);
     this.net?.setLook(look);
+  }
+
+  /** Gets on or off your scooter (everyone has their own). */
+  toggleRide(): void {
+    const player = this.player;
+    if (!player) return;
+    player.setRiding(!player.riding);
+    this.onRiding?.(player.riding);
   }
 
   /** Connects to a room. Other players appear as their snapshots arrive. */
@@ -246,6 +262,7 @@ export class Game {
       this.input.update();
       const drag = this.input.consumeLook();
       this.rig.look(drag.dx, drag.dy);
+      if (drag.dx !== 0 || drag.dy !== 0) this.lastDragAt = now;
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       streamer.update(player.x, player.z, forwardX, forwardZ);
       this.sendClock += dt;
@@ -257,7 +274,7 @@ export class Game {
           z: player.z,
           yaw: player.avatar.facing,
           speed: player.speed,
-          flags: player.body.grounded ? FLAG_GROUNDED : 0,
+          flags: (player.body.grounded ? FLAG_GROUNDED : 0) | (player.riding ? FLAG_RIDING : 0),
         });
       }
       this.remotes.update(dt, now);
@@ -265,6 +282,21 @@ export class Game {
       // Colliders follow the player: refresh when a chunk border is crossed or new chunks arrived.
       const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
       if (!this.collidersComplete || this.colliderChunk !== `${cx},${cz}`) this.syncColliders(player.x, player.z);
+
+      // On the scooter the camera swings in behind you (unless you just dragged the view),
+      // and widens a little with speed — the "FOV kick" that makes speed feel fast.
+      const camera = this.view3d.camera;
+      const speedShare = player.riding ? Math.min(1, Math.abs(player.rideSpeed) / RIDE_MAX) : 0;
+      if (player.riding && Math.abs(player.rideSpeed) > 1 && now - this.lastDragAt > 1500) {
+        const behind = player.rideSpeed >= 0 ? player.heading : player.heading + Math.PI;
+        this.rig.yaw += Math.atan2(Math.sin(behind - this.rig.yaw), Math.cos(behind - this.rig.yaw)) * Math.min(1, dt * 2.5);
+      }
+      this.rig.distance = 5.2 + speedShare * 1.3;
+      const fov = Game.BASE_FOV + speedShare * 14;
+      if (Math.abs(camera.fov - fov) > 0.05) {
+        camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+        camera.updateProjectionMatrix();
+      }
 
       const body = player.body.collider;
       this.rig.update(player.x, player.y, player.z, dt, (ox, oy, oz, dx, dy, dz, max) => physics.castRay(ox, oy, oz, dx, dy, dz, max, body), groundAt);

@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { FLAG_AWAY, FLAG_GROUNDED } from '@nukkad/shared';
+import { FLAG_AWAY, FLAG_GROUNDED, FLAG_RIDING } from '@nukkad/shared';
 import type { AvatarLook, PlayerInfo, Snapshot } from '@nukkad/shared';
 import { Avatar } from '../player/avatar/avatar.ts';
 import { NameTag } from '../player/nameTag.ts';
@@ -15,6 +15,8 @@ interface Remote {
   tag: NameTag;
   buffer: SnapshotBuffer;
   shown: { x: number; y: number; z: number } | null;
+  lastYaw: number;
+  lean: number;
 }
 
 /** Everyone else in the room: their avatars, name tags and smoothed movement. */
@@ -51,7 +53,7 @@ export class RemotePlayers {
     avatar.object.visible = false; // until its first position arrives
     tag.sprite.visible = false;
     this.scene.add(avatar.object, tag.sprite);
-    this.players.set(info.slot, { info, avatar, tag, buffer: new SnapshotBuffer(), shown: null });
+    this.players.set(info.slot, { info, avatar, tag, buffer: new SnapshotBuffer(), shown: null, lastYaw: 0, lean: 0 });
   }
 
   remove(slot: number): void {
@@ -94,7 +96,19 @@ export class RemotePlayers {
       remote.avatar.object.visible = true;
       remote.tag.sprite.visible = true;
       remote.avatar.setOpacity(away ? 0.4 : 1);
-      remote.avatar.update(dt, shown.x, shown.y, shown.z, away ? 0 : state.speed, state.yaw, (state.flags & FLAG_GROUNDED) !== 0);
+      const riding = (state.flags & FLAG_RIDING) !== 0;
+      // Lean is not sent: it is worked out from how fast the rider is turning.
+      const yawRate = dt > 0 ? Math.atan2(Math.sin(state.yaw - remote.lastYaw), Math.cos(state.yaw - remote.lastYaw)) / dt : 0;
+      remote.lastYaw = state.yaw;
+      const leanTarget = riding ? Math.max(-0.38, Math.min(0.38, yawRate * state.speed * 0.05)) : 0;
+      remote.lean += (leanTarget - remote.lean) * Math.min(1, dt * 6);
+      remote.avatar.update(dt, shown.x, shown.y, shown.z, {
+        speed: away ? 0 : state.speed,
+        heading: state.yaw,
+        grounded: (state.flags & FLAG_GROUNDED) !== 0,
+        riding,
+        lean: remote.lean,
+      });
       remote.tag.sprite.position.set(shown.x, shown.y + TAG_HEIGHT, shown.z);
       remote.tag.set(remote.info.name, away);
     }

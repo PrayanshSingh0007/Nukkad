@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { OUTFIT_COLORS } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
+import { ScooterModel } from '../scooter.ts';
 import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.ts';
 
 const STRIDE_M = 1.6; // metres walked per full leg cycle
@@ -54,6 +56,7 @@ export class Avatar {
   private swing = 0;
   private idleTime = Math.random() * 10;
   private facingAngle = 0;
+  private readonly scooter: ScooterModel;
 
   constructor(look: AvatarLook) {
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -65,6 +68,8 @@ export class Avatar {
     this.mesh.frustumCulled = false; // bones move the mesh outside its resting box
     this.body.add(this.mesh);
     this.object.add(this.body);
+    this.scooter = new ScooterModel(new THREE.Color(OUTFIT_COLORS[look.color]).getHex());
+    this.object.add(this.scooter.mesh);
 
     this.shadowMaterial = new THREE.MeshBasicMaterial({
       map: shadowTexture(),
@@ -88,6 +93,7 @@ export class Avatar {
   setLook(look: AvatarLook): void {
     this.mesh.geometry.dispose();
     this.mesh.geometry = buildAvatarGeometry(look);
+    this.scooter.setAccent(new THREE.Color(OUTFIT_COLORS[look.color]).getHex());
   }
 
   /** Faded = this player's connection is shaky ("reconnecting…"). */
@@ -110,6 +116,8 @@ export class Avatar {
     this.object.rotation.y = this.facingAngle;
     this.body.rotation.z = motion.lean ?? 0;
     this.body.position.y = motion.riding ? 0.16 : 0; // standing on the scooter deck
+    this.scooter.mesh.visible = motion.riding === true;
+    this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);
   }
@@ -170,6 +178,7 @@ export class Avatar {
     this.mesh.geometry.dispose();
     this.material.dispose();
     this.shadowMaterial.dispose();
+    this.scooter.dispose();
     this.object.removeFromParent();
   }
 }
