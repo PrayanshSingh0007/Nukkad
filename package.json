@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.web.json && tsc -p tsconfig.node.json",
     "build": "npm run build -w @nukkad/web",
     "start": "npm run start -w @nukkad/server",
-    "fixture": "node tools/fixtures/record.ts"
+    "fixture": "node tools/fixtures/record.ts",
+    "stress": "node tools/stress/run.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

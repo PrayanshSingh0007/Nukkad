@@ -14,10 +14,12 @@
     "express-rate-limit": "8.7.4",
     "fast-png": "8.0.0",
     "mongoose": "9.12.1",
-    "tz-lookup": "6.1.25"
+    "tz-lookup": "6.1.25",
+    "ws": "8.22.2"
   },
   "devDependencies": {
     "@types/express": "5.0.6",
-    "@types/tz-lookup": "6.1.2"
+    "@types/tz-lookup": "6.1.2",
+    "@types/ws": "8.18.2"
   }
 }

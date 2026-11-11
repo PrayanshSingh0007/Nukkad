@@ -6,6 +6,7 @@ import { AreaService } from '../areas/areaService.ts';
 import type { AreaSource } from '../areas/areaService.ts';
 import { TokenBuckets } from '../security/tokenBuckets.ts';
 import { MemoryAreaStore } from '../store/areaStore.ts';
+import { RoomManager } from '../realtime/rooms.ts';
 import { createApp } from './app.ts';
 import type { AppOptions } from './app.ts';
 
@@ -26,7 +27,7 @@ async function start(overrides: Partial<AppOptions> = {}, failOsm = false): Prom
     },
   };
   const areas = new AreaService({ store: new MemoryAreaStore(), source });
-  const app = createApp({ areas, allowedOrigins: ['https://nukkad.example'], trustProxy: false, ...overrides });
+  const app = createApp({ areas, rooms: new RoomManager(), allowedOrigins: ['https://nukkad.example'], trustProxy: false, ...overrides });
   await new Promise<void>((resolve) => {
     server = app.listen(0, '127.0.0.1', () => resolve());
   });

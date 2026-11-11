@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { AvatarLook } from '@nukkad/shared';
 import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.ts';
 
-const STRIDE_M = 1.7; // metres walked per full leg cycle
+const STRIDE_M = 1.6; // metres walked per full leg cycle
 const FULL_SPEED = 4.5; // speed at which the swing is at its widest
 const TURN_SPEED = 12; // how quickly the avatar turns to face where it walks
 
@@ -24,21 +24,36 @@ function shadowTexture(): THREE.Texture {
   return sharedShadow;
 }
 
+/** What the body is doing, for the pose. */
+export interface Motion {
+  /** Metres per second along the ground. */
+  speed: number;
+  /** Direction the body should face (radians), or null to keep the current one. */
+  heading: number | null;
+  grounded: boolean;
+  /** Standing on a scooter. */
+  riding?: boolean;
+  /** Sideways lean on the scooter, radians. */
+  lean?: number;
+}
+
 /**
- * One player on screen: the merged avatar mesh, its bones, a blob shadow, and the
- * walk animation (made with maths, not with animation files).
+ * One player on screen: the merged avatar mesh, its 11 bones, a blob shadow, and the
+ * walk / idle / ride animation (made with maths, not animation files).
  */
 export class Avatar {
   /** Put this in the scene. Its position is the player's feet. */
   readonly object = new THREE.Group();
+  /** Lean and riding offset are applied to this inner group. */
+  readonly body = new THREE.Group();
   private readonly mesh: THREE.SkinnedMesh;
   private readonly material: THREE.MeshLambertMaterial;
   private readonly bones: THREE.Bone[];
   private readonly shadowMaterial: THREE.MeshBasicMaterial;
   private phase = 0;
   private swing = 0;
-  private idleTime = 0;
-  private facing = 0;
+  private idleTime = Math.random() * 10;
+  private facingAngle = 0;
 
   constructor(look: AvatarLook) {
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -48,7 +63,8 @@ export class Avatar {
     this.mesh.add(this.bones[BONE.hips]);
     this.mesh.bind(skeleton);
     this.mesh.frustumCulled = false; // bones move the mesh outside its resting box
-    this.object.add(this.mesh);
+    this.body.add(this.mesh);
+    this.object.add(this.body);
 
     this.shadowMaterial = new THREE.MeshBasicMaterial({
       map: shadowTexture(),
@@ -64,46 +80,90 @@ export class Avatar {
     this.object.add(shadow);
   }
 
-  /** Changes colours, outfit or hair by rebuilding the (tiny) mesh. */
+  /** The direction the avatar faces, radians (0 = towards -z). */
+  get facing(): number {
+    return this.facingAngle;
+  }
+
   setLook(look: AvatarLook): void {
     this.mesh.geometry.dispose();
     this.mesh.geometry = buildAvatarGeometry(look);
   }
 
-  /**
-   * Moves the avatar and plays the right animation.
-   * @param speed   metres per second along the ground
-   * @param heading direction of travel as an angle (same convention as the camera yaw), or null when standing
-   */
-  update(dt: number, x: number, y: number, z: number, speed: number, heading: number | null, grounded: boolean): void {
-    this.object.position.set(x, y, z);
-    if (heading !== null) {
-      // Turn the short way round towards the heading.
-      const difference = Math.atan2(Math.sin(heading - this.facing), Math.cos(heading - this.facing));
-      this.facing += difference * Math.min(1, dt * TURN_SPEED);
+  /** Faded = this player's connection is shaky ("reconnecting…"). */
+  setOpacity(opacity: number): void {
+    const transparent = opacity < 1;
+    if (this.material.transparent !== transparent) {
+      this.material.transparent = transparent;
+      this.material.needsUpdate = true;
     }
-    this.object.rotation.y = this.facing;
+    this.material.opacity = opacity;
+  }
 
+  update(dt: number, x: number, y: number, z: number, speedOrMotion: number | Motion, heading: number | null = null, grounded = true): void {
+    const motion: Motion = typeof speedOrMotion === 'number' ? { speed: speedOrMotion, heading, grounded } : speedOrMotion;
+    this.object.position.set(x, y, z);
+    if (motion.heading !== null) {
+      const difference = Math.atan2(Math.sin(motion.heading - this.facingAngle), Math.cos(motion.heading - this.facingAngle));
+      this.facingAngle += difference * Math.min(1, dt * TURN_SPEED);
+    }
+    this.object.rotation.y = this.facingAngle;
+    this.body.rotation.z = motion.lean ?? 0;
+    this.body.position.y = motion.riding ? 0.16 : 0; // standing on the scooter deck
+    if (motion.riding) this.ridePose(dt);
+    else this.walkPose(dt, motion.speed, motion.grounded);
+  }
+
+  private walkPose(dt: number, speed: number, grounded: boolean): void {
     const target = Math.min(1, speed / FULL_SPEED);
     this.swing += (target - this.swing) * Math.min(1, dt * 10);
     this.phase += (speed * dt * Math.PI * 2) / STRIDE_M;
     this.idleTime += dt;
 
+    const s = this.swing;
     const step = Math.sin(this.phase);
-    const breathe = Math.sin(this.idleTime * 1.8) * (1 - this.swing);
-    const [, hipY] = JOINTS[BONE.hips];
-    const bones = this.bones;
-    bones[BONE.legL].rotation.x = step * 0.8 * this.swing;
-    bones[BONE.legR].rotation.x = -step * 0.8 * this.swing;
-    bones[BONE.armL].rotation.x = -step * 0.65 * this.swing;
-    bones[BONE.armR].rotation.x = step * 0.65 * this.swing;
-    bones[BONE.armL].rotation.z = -0.06 - breathe * 0.02 - (grounded ? 0 : 0.5);
-    bones[BONE.armR].rotation.z = 0.06 + breathe * 0.02 + (grounded ? 0 : 0.5);
-    bones[BONE.hips].position.y = hipY + Math.abs(Math.cos(this.phase)) * 0.04 * this.swing;
-    bones[BONE.chest].rotation.x = -0.07 * this.swing;
-    bones[BONE.chest].rotation.y = step * 0.08 * this.swing;
-    bones[BONE.chest].scale.y = 1 + breathe * 0.012;
-    bones[BONE.head].rotation.x = 0.04 * this.swing + breathe * 0.015;
+    const lift = Math.cos(this.phase);
+    const breathe = Math.sin(this.idleTime * 1.8) * (1 - s);
+    const b = this.bones;
+    b[BONE.thighL].rotation.x = step * 0.7 * s;
+    b[BONE.thighR].rotation.x = -step * 0.7 * s;
+    // Knees bend while a leg swings forward.
+    b[BONE.shinL].rotation.x = -Math.max(0, lift) * 1.1 * s;
+    b[BONE.shinR].rotation.x = -Math.max(0, -lift) * 1.1 * s;
+    b[BONE.upperArmL].rotation.x = -step * 0.55 * s;
+    b[BONE.upperArmR].rotation.x = step * 0.55 * s;
+    b[BONE.foreArmL].rotation.x = 0.15 + 0.35 * s + Math.max(0, -step) * 0.3 * s;
+    b[BONE.foreArmR].rotation.x = 0.15 + 0.35 * s + Math.max(0, step) * 0.3 * s;
+    const out = grounded ? 0 : 0.6;
+    b[BONE.upperArmL].rotation.z = -0.07 - breathe * 0.02 - out;
+    b[BONE.upperArmR].rotation.z = 0.07 + breathe * 0.02 + out;
+    b[BONE.hips].position.y = JOINTS[BONE.hips][1] + Math.abs(lift) * 0.035 * s;
+    b[BONE.hips].rotation.y = -step * 0.08 * s;
+    b[BONE.chest].rotation.x = -0.06 * s;
+    b[BONE.chest].rotation.y = step * 0.14 * s;
+    b[BONE.chest].scale.y = 1 + breathe * 0.012;
+    b[BONE.head].rotation.x = 0.03 * s + breathe * 0.015;
+    b[BONE.head].rotation.y = -step * 0.06 * s;
+  }
+
+  /** Standing on a scooter: knees soft, both hands forward on the handlebar. */
+  private ridePose(dt: number): void {
+    this.idleTime += dt;
+    this.swing = 0;
+    const b = this.bones;
+    const bob = Math.sin(this.idleTime * 3) * 0.02;
+    b[BONE.hips].position.y = JOINTS[BONE.hips][1] - 0.05 + bob;
+    b[BONE.hips].rotation.y = 0;
+    b[BONE.thighL].rotation.x = 0.25;
+    b[BONE.thighR].rotation.x = -0.15;
+    b[BONE.shinL].rotation.x = -0.35;
+    b[BONE.shinR].rotation.x = -0.1;
+    b[BONE.chest].rotation.set(-0.12, 0, 0);
+    b[BONE.upperArmL].rotation.set(0.95, 0, -0.12);
+    b[BONE.upperArmR].rotation.set(0.95, 0, 0.12);
+    b[BONE.foreArmL].rotation.x = 0.35;
+    b[BONE.foreArmR].rotation.x = 0.35;
+    b[BONE.head].rotation.set(0.1, 0, 0);
   }
 
   dispose(): void {

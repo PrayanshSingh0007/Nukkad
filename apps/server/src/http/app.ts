@@ -2,13 +2,18 @@ import { gunzipSync } from 'node:zlib';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { DEFAULT_HALF_SIZE, PACK_VERSION, areaRefFor, isValidLatLng } from '@nukkad/shared';
+import { DEFAULT_HALF_SIZE, PACK_VERSION, ROOM_ID_PATTERN, areaRefFor, isValidLatLng } from '@nukkad/shared';
 import { AreaError } from '../areas/areaService.ts';
 import type { AreaService } from '../areas/areaService.ts';
+import type { RoomManager } from '../realtime/rooms.ts';
 import { TokenBuckets } from '../security/tokenBuckets.ts';
 
 export interface AppOptions {
   areas: AreaService;
+  rooms: RoomManager;
+  /** New rooms per IP: a burst, then this many per minute. */
+  roomBurst?: number;
+  roomsPerMinute?: number;
   allowedOrigins: string[];
   trustProxy: boolean;
   /** Requests to /api/areas per minute per IP (cached packs are cheap). */
@@ -98,6 +103,36 @@ export function createApp(options: AppOptions): express.Express {
       if (error instanceof AreaError) sendError(res, error.status, error.code, error.message);
       else sendError(res, 500, 'server_error', 'Something went wrong on our side.');
     }
+  });
+
+  const newRooms = new TokenBuckets(options.roomBurst ?? 5, options.roomsPerMinute ?? 2);
+
+  /** POST /api/rooms {lat, lng} → a new invite-only room. There is no way to list rooms. */
+  app.post('/api/rooms', express.json({ limit: '1kb' }), (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { lat?: unknown; lng?: unknown };
+    if (!isValidLatLng(body.lat, body.lng)) {
+      sendError(res, 400, 'bad_request', 'Give lat and lng as numbers.');
+      return;
+    }
+    if (!newRooms.consume(req.ip ?? 'unknown')) {
+      sendError(res, 429, 'slow_down', 'You are making rooms very fast. Wait a minute and try again.');
+      return;
+    }
+    const info = options.rooms.create(body.lat as number, body.lng as number);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(201).json(info);
+  });
+
+  /** GET /api/rooms/:id → the place of a room (needed before joining to load its map). */
+  app.get('/api/rooms/:id', areaLimiter, (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    const room = ROOM_ID_PATTERN.test(id) ? options.rooms.get(id) : undefined;
+    res.setHeader('Cache-Control', 'no-store');
+    if (!room) {
+      sendError(res, 404, 'room_not_found', 'This invite link has expired or is wrong.');
+      return;
+    }
+    res.json({ ...room.info, players: room.members.filter(Boolean).length });
   });
 
   app.use((_req, res) => sendError(res, 404, 'not_found', 'No such page.'));

@@ -2,12 +2,32 @@
 
 Read order for a fresh session: PLAN.md → this file → BUGS.md.
 
-## Current status (2026-11-11, night)
+## Current status (2026-11-12)
 
-- **Phases 1–3 are built. Waiting at STOP 2 (after Phase 3) for the owner's phone numbers.**
-- `npm test`: 89 green · typecheck clean · build works.
-- Git: repo made by the owner — github.com/PrayanshSingh0007/Nukkad (main). **Commit and push at the end of every phase.**
-- Schedule: about half a day behind (Phase 3 was planned for Day 2; Phase 4 has not started).
+- **Phases 1–4 built.** Phase 4 = multiplayer + much more detailed avatars. Next: the scooter (pulled forward from Phase 7 at the owner's request, 2026-11-12), then Phase 5 (atmosphere) → STOP 3.
+- `npm test`: 106 green · `npm run stress`: PASS · typecheck clean · build works.
+- Git: commit **and push** at the end of every phase (owner's rule).
+- Owner's STOP 2 report from the phone is still missing (fps, phone model).
+
+## Phase 4 — what was built
+
+- **Protocol** (`packages/shared/src/protocol`): 13-byte binary state, 6 + 11-bytes-per-player snapshots (94 bytes for 8), validated JSON for join / look / ping / leave and welcome / joined / left / look / pong / error. Name cleaning (1–16 characters, no control/invisible characters).
+- **Rooms** (`apps/server/src/realtime/rooms.ts`): 12-character random ids (≈ 62 bits), max 8, reconnect token (24 chars, kept in the tab's sessionStorage) gets your slot back for 60 s, "away" after 10 s of silence (set only by the server), slot freed after 60 s, empty room kept 24 h. Movement checks: inside ±640 m and ≤ 25 m/s since the last accepted update (+3 m slack).
+- **Hub** (`apps/server/src/realtime/hub.ts`): WebSocket on `/ws`, origin check, 2 KB message cap, per-connection token buckets (states 20/s with a 60 burst for catch-up after stalls; JSON 10/s), connection closed after 300 dropped messages, joins limited per IP (20 burst, 10/min), 15 Hz snapshots, skips snapshots for a slow phone (> 64 KB buffered).
+- **REST**: `POST /api/rooms {lat,lng}` (5 burst, 2/min per IP) · `GET /api/rooms/:id`. No room list exists.
+- **Client** (`apps/web/src/net`): reconnect 0.5→8 s; clock sync from the fastest snapshot; others drawn ≈ 133 ms in the past, up to 400 ms when jittery; 250 ms extrapolation then stop; glide, teleport only if > 8 m off; faded avatar + "reconnecting…" tag when away. Leaving the page sends `leave` (slot freed at once).
+- **Screens** (`apps/web/src/ui/Root.tsx`): home (name → Start a Nukkad; spot = `?lat=&lng=` or the test area), invite page `/r/<id>` (name → Join), friendly "expired/wrong link" and "full" screens. In-game: players count, **Invite friends** (share sheet or copy), Your look.
+- **Avatars, detailed** (`apps/web/src/player/avatar`): 11 bones (knees, elbows), rounded body, sneakers, face (eyes, pupils, eyebrows, nose, ears, mouth), hair shapes (short, long, bun, curly, cap, none), outfit details (tee print, hoodie hood + pocket + strings, long kurta, open jacket with collar). ≈ 3,000 triangles, still one draw call per player. Ride pose ready for the scooter.
+- **Stress test** (`npm run stress`): 8 bots with lag 50–400 ms and loss 0–10 % (as TCP resend stalls), result 14.4–15.2 snapshots/s each, worst gap 346–664 ms, all saw 8 players, 9th turned away, 0 false rejections, CPU 5–7 %, 128 MB (server + bots in one process).
+- **Two-tab check**: Sam saw Ria walk at a steady 5 m/s with no jumps (largest step 0.14 m per frame), drawn 135 ms behind.
+
+### Phase 4 — not done / honest limits
+
+- **Rooms live in server memory only.** A server restart loses the rooms (links stop working). PLAN wanted MongoDB for rooms — TODO before deploy.
+- **Emotes**: only the protocol bits exist (flags 4–7). No UI — they are an "Extra" at the end of Day 4.
+- **Host lock / remove** (Question 5): not built yet (priority just above weather).
+- **Production routing**: `/r/<id>` links need a "rewrite everything to index.html" rule on Vercel — add with the deploy.
+- Real devices on different networks: not tested by me.
 
 ## Phase 3 — what was built
 
@@ -121,6 +141,6 @@ See BUGS.md: B-001 (special roofs as blocks), B-002 (lake patches), B-003 (soft 
 
 ## Next steps
 
-1. Owner (STOP 2): open `/` on the phone, walk 2 minutes, open the overlay (5 taps on the logo), tap Copy report and send it. Tell me the phone model.
-2. Phase 4 — multiplayer: shared protocol + validators, ws server with rooms (max 8, invite link, rate limits, expiry), 15 Hz state / snapshots, interpolation, reconnect, name tags, emote field, landing page (name → join), Invite button, 8-bot stress test with lag + loss.
-3. Question 5 decision is in (24 h links, host lock/remove) — remove goes just above weather.
+1. Scooter (Ride toggle, grip, lean, FOV kick, others see you riding) — commit + push.
+2. Phase 5 — atmosphere: real local time sun/moon, sky, fog, street lights + window glow at night → STOP 3.
+3. Owner: phone report (5 taps on the logo → Copy report) + phone model.

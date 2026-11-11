@@ -5,3 +5,5 @@ export * from './util/random.ts';
 export type * from './pack/types.ts';
 export * from './pack/codec.ts';
 export * from './avatar.ts';
+export * from './protocol/binary.ts';
+export * from './protocol/messages.ts';

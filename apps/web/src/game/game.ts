@@ -1,10 +1,13 @@
 import * as THREE from 'three';
-import { CHUNK_SIZE } from '@nukkad/shared';
+import { CHUNK_SIZE, FLAG_GROUNDED, TICK_HZ } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
 import { StatsMeter, formatStats } from '../debug/statsHud.ts';
+import { NetClient } from '../net/netClient.ts';
+import type { NetStatus } from '../net/netClient.ts';
+import { RemotePlayers } from '../net/remotePlayers.ts';
 import { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { CameraRig } from '../player/cameraRig.ts';
 import { PlayerInput } from '../player/input.ts';
@@ -64,6 +67,12 @@ export class Game {
   private loadStarted = performance.now();
   private timeToPlayMs = 0;
   private appliedPixelRatio = 0;
+  private readonly remotes: RemotePlayers;
+  private net: NetClient | null = null;
+  private netStatus: NetStatus = 'closed';
+  private sendClock = 0;
+  /** Called with the number of people in the room (you included). */
+  onPlayerCount: ((count: number) => void) | null = null;
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -72,6 +81,7 @@ export class Game {
     this.view3d = createGameScene(options.canvas, { antialias: QUALITY[this.level].antialias });
     this.input = new PlayerInput(options.canvas, options.stick);
     this.rig = new CameraRig(this.view3d.camera);
+    this.remotes = new RemotePlayers(this.view3d.scene);
     this.overlay = new DebugOverlay(options.overlay, options.logo, (level) => {
       this.benchmarking = false;
       saveQuality(level);
@@ -96,6 +106,35 @@ export class Game {
   setLook(look: AvatarLook): void {
     this.look = look;
     this.player?.avatar.setLook(look);
+    this.net?.setLook(look);
+  }
+
+  /** Connects to a room. Other players appear as their snapshots arrive. */
+  join(roomId: string, name: string): void {
+    const remotes = this.remotes;
+    const count = (): void => this.onPlayerCount?.(remotes.count + 1);
+    this.net = new NetClient({
+      onWelcome: (slot, _room, players) => {
+        remotes.reset(slot, players);
+        count();
+      },
+      onJoined: (player) => {
+        remotes.add(player);
+        count();
+      },
+      onLeft: (slot) => {
+        remotes.remove(slot);
+        count();
+      },
+      onLook: (slot, look) => remotes.setLook(slot, look),
+      onSnapshot: (snapshot, local) => remotes.onSnapshot(snapshot, local),
+      onStatus: (status) => (this.netStatus = status),
+      onError: (code, message) => {
+        if (code === 'room_full' || code === 'room_not_found' || code === 'bad_name') this.setStatus('error', message);
+      },
+    });
+    this.net.connect(roomId, name, this.look);
+    window.addEventListener('pagehide', () => this.net?.leave());
   }
 
   setQuality(level: QualityLevel): void {
@@ -209,6 +248,19 @@ export class Game {
       this.rig.look(drag.dx, drag.dy);
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       streamer.update(player.x, player.z, forwardX, forwardZ);
+      this.sendClock += dt;
+      if (this.net && this.sendClock >= 1 / TICK_HZ) {
+        this.sendClock %= 1 / TICK_HZ;
+        this.net.sendState({
+          x: player.x,
+          y: player.y,
+          z: player.z,
+          yaw: player.avatar.facing,
+          speed: player.speed,
+          flags: player.body.grounded ? FLAG_GROUNDED : 0,
+        });
+      }
+      this.remotes.update(dt, now);
 
       // Colliders follow the player: refresh when a chunk border is crossed or new chunks arrived.
       const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
@@ -243,6 +295,7 @@ export class Game {
       `quality ${this.level}${this.benchmarking ? ' (testing)' : ''} · render scale ${this.governor.renderScale.toFixed(2)} · pixel ratio ${this.appliedPixelRatio.toFixed(2)}`,
       `chunks near ${counts.near} · far ${counts.far} · building ${counts.building} · colliders ${physics?.colliderChunkCount ?? 0}`,
       `chunk ${cx},${cz} · x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)} · ${player.speed.toFixed(1)} m/s`,
+      `net ${this.netStatus} · ping ${Math.round(this.net?.rtt ?? 0)} ms · others ${this.remotes.count} · draw delay ${Math.round(this.remotes.clock.delay)} ms`,
       `${ready.info.id} · pack ${Math.round((ready.info.downloadBytes || ready.info.packBytes) / 1024)} KB · ready in ${(this.timeToPlayMs / 1000).toFixed(1)} s`,
     ];
   }
