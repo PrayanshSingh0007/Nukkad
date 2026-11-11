@@ -609,6 +609,29 @@ unreliable on mobile data" — that is a setup issue, not a code issue.
 
 ---
 
+## 15. Roadmap v2 — "a real human world" (agreed 2026-11-12)
+
+The owner changed direction on 2026-11-12: **no Day-4 deadline any more**, stay on the web
+(no Unreal / native-Rust restart; a downloadable app can wrap the web game later), no Capacitor,
+no Electron, and aim for the best-looking, most alive Bengaluru we can build. Sections 1–13 stay
+valid except the deadline and the cut order. Honest limits: this will not be "AAA" (those games
+take hundreds of people and years); it must still hit ~30 fps on a mid-range Android phone; shop
+and brand names are always made up (legal rule); and where OpenStreetMap is silent we invent
+plausible places and say so.
+
+| Step | What | Done when |
+|---|---|---|
+| L1 | **Places**: fetch shops / food / schools / offices / banks / clinics from the map, add them to the Area Pack, invent missing ones (at least one mall, one vehicle showroom, one supermarket per area), show glowing signboards with made-up names | you can read signs while walking; a test proves no real name is ever shown |
+| L2 | **Graphics**: sun shadows on Medium/High, textured ground + facade detail by building kind (school, mall, office glass…), better trees, water shimmer | a clear before/after on the phone at ≥ 30 fps |
+| L3 | **Blender asset kit** (our own models, listed in CREDITS.md): auto-rickshaw, city bus, cars, bikes, street stalls, bus stops; parked along streets | they appear in the world, one draw call per model type |
+| L4 | **Enterable interiors**: your own home (pick a flat, it is yours while you play), supermarket, school, office, showroom, mall — one interior template per kind | you walk through a door and friends see you inside |
+| L5 | **Life**: moving traffic and walking people (simple, client-side, seeded) | streets are not empty |
+| L6 | Original Phase 6–7 leftovers: voice, photo mode, place search, loading bar, settings, rooms in MongoDB, deploy | the Day-4 checklist of §11.1 |
+
+Order is my recommendation; the owner can reorder. Each step ends with tests, NOTES/BUGS, commit and push.
+
+---
+
 ## 14. Glossary
 
 | Word | Meaning |

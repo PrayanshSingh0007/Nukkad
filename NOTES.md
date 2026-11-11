@@ -4,11 +4,11 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 
 ## Current status (2026-11-12)
 
-- **Phases 1–5 built + the scooter. Waiting at STOP 3 (after Phase 5) for the owner's feedback.**
-- `npm test`: 109 green · `npm run stress`: PASS · typecheck clean · build works.
-- Git: commit **and push** at the end of every phase (owner's rule).
-- Left for Day 4: Phase 6 (voice + photo mode), the rest of Phase 7 (loading progress, place picker with search, settings, error screens polish, README deploy steps), rooms in MongoDB, then Extras (weather → emotes → facade variety).
-- Owner's phone report (fps, phone model) is still missing.
+- **Direction changed by the owner (2026-11-12): no Day-4 deadline; stay on the web; build "a real human world" of Bengaluru.** The new plan is PLAN.md §15 (steps L1–L6). Fable access lasts until 2026-11-16 — plan work around that and stay token-lean.
+- Phases 1–5 + the scooter are built and pushed. Working on **L1 (places)**.
+- Rejected on purpose: Unreal Engine (C++, big app download, no browser link, restart), native Rust/Bevy (restart, months). Already true: no Capacitor, no Electron; the physics engine (Rapier) is Rust compiled to WebAssembly.
+- What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
+- `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
 
 ## Phase 5 — what was built
 
