@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CHUNK_SIZE, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
+import { Atmosphere } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
 import { StatsMeter, formatStats } from '../debug/statsHud.ts';
@@ -68,6 +69,7 @@ export class Game {
   private timeToPlayMs = 0;
   private appliedPixelRatio = 0;
   private readonly remotes: RemotePlayers;
+  private readonly atmosphere: Atmosphere;
   private net: NetClient | null = null;
   private netStatus: NetStatus = 'closed';
   private sendClock = 0;
@@ -86,11 +88,17 @@ export class Game {
     this.input = new PlayerInput(options.canvas, options.stick);
     this.rig = new CameraRig(this.view3d.camera);
     this.remotes = new RemotePlayers(this.view3d.scene);
-    this.overlay = new DebugOverlay(options.overlay, options.logo, (level) => {
-      this.benchmarking = false;
-      saveQuality(level);
-      this.setQuality(level);
-    });
+    this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
+    this.overlay = new DebugOverlay(
+      options.overlay,
+      options.logo,
+      (level) => {
+        this.benchmarking = false;
+        saveQuality(level);
+        this.setQuality(level);
+      },
+      (hour) => (this.atmosphere.override = hour),
+    );
     this.meter = new StatsMeter(this.view3d.renderer, (stats) => {
       const lines = formatStats(stats, this.debugLines());
       this.overlay.update(lines, buildReport(this.view3d.renderer, lines), this.level);
@@ -180,6 +188,7 @@ export class Game {
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
+      this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
       physics.setTerrain(ready.terrain.positions, ready.terrain.indices);
       this.streamer = new Streamer(client, this.world, this.streamSettings());
       this.streamer.onChunk = () => {
@@ -308,6 +317,9 @@ export class Game {
       }
     }
 
+    this.atmosphere.update(dt, this.view3d.camera);
+    world?.setNight(this.atmosphere.night);
+
     const pixelRatio = Math.min(window.devicePixelRatio, QUALITY[this.level].maxPixelRatio) * this.governor.renderScale;
     if (Math.abs(pixelRatio - this.appliedPixelRatio) > 0.01) {
       this.view3d.renderer.setPixelRatio(pixelRatio);
@@ -327,6 +339,7 @@ export class Game {
       `quality ${this.level}${this.benchmarking ? ' (testing)' : ''} · render scale ${this.governor.renderScale.toFixed(2)} · pixel ratio ${this.appliedPixelRatio.toFixed(2)}`,
       `chunks near ${counts.near} · far ${counts.far} · building ${counts.building} · colliders ${physics?.colliderChunkCount ?? 0}`,
       `chunk ${cx},${cz} · x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)} · ${player.speed.toFixed(1)} m/s`,
+      `local time ${this.atmosphere.clock}${this.atmosphere.override === null ? '' : ' (slider)'} · night ${this.atmosphere.night.toFixed(2)}`,
       `net ${this.netStatus} · ping ${Math.round(this.net?.rtt ?? 0)} ms · others ${this.remotes.count} · draw delay ${Math.round(this.remotes.clock.delay)} ms`,
       `${ready.info.id} · pack ${Math.round((ready.info.downloadBytes || ready.info.packBytes) / 1024)} KB · ready in ${(this.timeToPlayMs / 1000).toFixed(1)} s`,
     ];

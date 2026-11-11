@@ -7,3 +7,4 @@ export * from './pack/codec.ts';
 export * from './avatar.ts';
 export * from './protocol/binary.ts';
 export * from './protocol/messages.ts';
+export * from './geo/sun.ts';

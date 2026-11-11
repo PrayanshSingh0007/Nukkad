@@ -54,7 +54,26 @@ Template:
 - Expected / actual: ≤ 1,200 KB zipped for all code / 1,745 KB, of which ≈ 1,650 KB is the Rapier physics engine.
 - Notes: my plan estimated Rapier at ≈ 700 KB; the real WASM is 3.1 MB (1,170 KB zipped) and the "compat" package embeds it as text, which adds another ≈ 480 KB. Fix: load the WASM as its own file and in its own chunk. Even then the total will be ≈ 1.4 MB — still above the budget, to be re-judged with real loading times on the phone.
 
+### B-005 Rooms disappear when the server restarts
+- Type: wrong behaviour
+- Status: open — fix before deploy (store rooms in MongoDB, PLAN §6.5)
+- Found: 2026-11-12, dev server restarted by a code change
+- Steps to reproduce:
+  1. Start a Nukkad, copy the link. 2. Restart the server. 3. Open the link.
+- Expected / actual: you join the room / "This invite link has expired or is wrong."
+- Notes: live positions are fine to lose; the room id + place must survive restarts.
+
 ## Fixed
+
+### B-F03 After "Start a Nukkad" the invite screen covered the running game
+- Type: wrong behaviour
+- Status: fixed 2026-11-12 (Phase 5)
+- Notes: the page re-read the new /r/<id> address and re-opened the invite screen; clicking Join there would have started a second game. Now the address is read once.
+
+### B-F04 Stress bots reported false "too fast" rejections
+- Type: wrong behaviour (test tool + server)
+- Status: fixed 2026-11-12 (Phase 4)
+- Notes: Node timers reordered the bots' messages (real TCP never does); also the server measured speed from the last *rejected* update. Bots now send in order, the server measures from the last accepted update, and the state burst allowance is 60 (catch-up after stalls).
 
 ### B-F01 A browser could reuse a cached pack of an old format after an update
 - Type: wrong behaviour

@@ -5,7 +5,7 @@ import type { ChunkData, MeshData, PropSet, TerrainGrid } from '@nukkad/worldgen
 import type { ReadyMessage } from '../workers/protocol.ts';
 import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
-import { createPropModels } from './propModels.ts';
+import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 
 export interface WorldViewOptions {
   /** How many trees to draw (the list is shuffled, so any prefix is evenly spread). */
@@ -36,6 +36,9 @@ export class WorldView {
   private readonly chunks = new Map<string, THREE.Group>();
   private readonly treeMeshes: (THREE.InstancedMesh | null)[] = [];
   private treeVariants = new Uint8Array(0);
+  private lampHeads: THREE.MeshBasicMaterial | null = null;
+  private glow: THREE.InstancedMesh | null = null;
+  private glowMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly borders: THREE.LineSegments;
   private readonly halfSize: number;
 
@@ -123,6 +126,9 @@ export class WorldView {
       geometry?.dispose();
     });
     for (const material of this.materials.all) material.dispose();
+    this.lampHeads?.dispose();
+    this.glowMaterial?.map?.dispose();
+    this.glowMaterial?.dispose();
     (this.borders.material as THREE.Material).dispose();
     this.groundMap.dispose();
     this.group.removeFromParent();
@@ -184,7 +190,76 @@ export class WorldView {
       return count;
     };
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
+    this.addLampLights(models.lampHead, props.lamps);
     this.counts.benches = addSimple(models.bench, props.benches, BENCH_STRIDE);
+  }
+
+  /**
+   * Street lights: glowing heads (one draw call) and soft pools of light on the ground
+   * (one more draw call, shown only at night). No real lights: those are far too slow on phones.
+   */
+  private addLampLights(headGeometry: THREE.BufferGeometry, lamps: Float32Array): void {
+    const count = lamps.length / LAMP_STRIDE;
+    if (count === 0) return;
+    this.lampHeads = new THREE.MeshBasicMaterial({ vertexColors: true, color: 0xd8d2c0 });
+    const heads = new THREE.InstancedMesh(headGeometry, this.lampHeads, count);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const c = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const gradient = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.45, 'rgba(255,255,255,0.45)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gradient;
+    c.fillRect(0, 0, 64, 64);
+    this.glowMaterial = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      color: 0xffc37a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -6,
+      polygonOffsetUnits: -6,
+      fog: true,
+    });
+    const pool = new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2);
+    this.glow = new THREE.InstancedMesh(pool, this.glowMaterial, count);
+    this.glow.visible = false;
+
+    const matrix = new THREE.Matrix4();
+    const rotation = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const one = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < count; i++) {
+      const o = i * LAMP_STRIDE;
+      const [x, y, z, angle] = [lamps[o], lamps[o + 1], lamps[o + 2], lamps[o + 3]];
+      rotation.setFromAxisAngle(up, angle);
+      heads.setMatrixAt(i, matrix.compose(new THREE.Vector3(x, y, z), rotation, one));
+      // The pool sits under the lamp head (the arm points along the lamp's +x).
+      const px = x + Math.cos(angle) * LAMP_HEAD_OFFSET;
+      const pz = z - Math.sin(angle) * LAMP_HEAD_OFFSET;
+      const py = heightAt(this.terrain, px, pz) + 0.14;
+      this.glow.setMatrixAt(i, matrix.compose(new THREE.Vector3(px, py, pz), rotation, one));
+    }
+    for (const mesh of [heads, this.glow]) {
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      this.group.add(mesh);
+    }
+  }
+
+  /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
+  setNight(night: number): void {
+    this.materials.night.value = night;
+    this.lampHeads?.color.setRGB(0.85 + night * 0.15, 0.82 + night * 0.06, 0.75 - night * 0.2);
+    if (this.glow && this.glowMaterial) {
+      this.glow.visible = night > 0.05;
+      this.glowMaterial.opacity = night * 0.55;
+    }
   }
 
   /** Debug lines along the chunk grid, laid on the ground. */

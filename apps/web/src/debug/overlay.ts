@@ -12,9 +12,14 @@ export class DebugOverlay {
   private taps: number[] = [];
   private report = '';
 
-  constructor(root: HTMLElement, logo: HTMLElement, onQuality: (level: QualityLevel) => void) {
+  constructor(root: HTMLElement, logo: HTMLElement, onQuality: (level: QualityLevel) => void, onTime: (hour: number | null) => void) {
     this.root = root;
-    root.innerHTML = '<pre></pre><div class="overlayButtons"></div>';
+    root.innerHTML =
+      '<pre></pre><div class="overlayButtons"></div>' +
+      '<label class="overlayTime">Time <input type="range" min="0" max="24" step="0.25" value="12" /> <button type="button">real</button></label>';
+    const slider = root.querySelector('.overlayTime input') as HTMLInputElement;
+    slider.addEventListener('input', () => onTime(Number(slider.value)));
+    (root.querySelector('.overlayTime button') as HTMLButtonElement).addEventListener('click', () => onTime(null));
     this.text = root.querySelector('pre') as HTMLElement;
     const row = root.querySelector('.overlayButtons') as HTMLElement;
     for (const level of QUALITY_LEVELS) {

@@ -6,6 +6,8 @@ export interface GameScene {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
+  sun: THREE.DirectionalLight;
+  ambient: THREE.HemisphereLight;
   /** Call when the window changes size (also on phone rotation). */
   resize(): void;
 }
@@ -17,7 +19,8 @@ export function createGameScene(canvas: HTMLCanvasElement, options: { antialias:
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.Fog(SKY, 180, 900);
-  scene.add(new THREE.HemisphereLight(0xe4f0ff, 0x8f8672, 2.2));
+  const ambient = new THREE.HemisphereLight(0xe4f0ff, 0x8f8672, 2.2);
+  scene.add(ambient);
   const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
   sun.position.set(-0.55, 1, 0.35);
   scene.add(sun);
@@ -29,5 +32,5 @@ export function createGameScene(canvas: HTMLCanvasElement, options: { antialias:
     camera.updateProjectionMatrix();
   };
   resize();
-  return { renderer, scene, camera, resize };
+  return { renderer, scene, camera, sun, ambient, resize };
 }

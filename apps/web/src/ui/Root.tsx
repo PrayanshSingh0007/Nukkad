@@ -48,7 +48,8 @@ function startGame(id: string, lat: number, lng: number, name: string, look: Ava
 
 /** Home → invite → playing. No signup: a name is all you need. */
 export function Root() {
-  const roomId = roomFromPath();
+  // Read the address once: after "Start a Nukkad" it changes to /r/<id>, which must not reopen the invite.
+  const [roomId] = useState(roomFromPath);
   const [screen, setScreen] = useState<Screen>(roomId ? { kind: 'loadingRoom' } : { kind: 'home', busy: false, error: '' });
   const [name, setName] = useState(loadName());
   const [look] = useState(loadLook);

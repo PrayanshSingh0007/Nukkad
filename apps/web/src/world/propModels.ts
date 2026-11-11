@@ -44,12 +44,18 @@ function bush(): THREE.BufferGeometry {
   return part(new THREE.IcosahedronGeometry(0.95, 0).scale(1, 0.7, 1), 0x6f9a52, 0, 0.5, 0);
 }
 
-/** Street lamp: 20 triangles. The arm points along +x. */
+/** Street lamp pole with its arm: 20 triangles. The arm points along +x. */
 function lamp(): THREE.BufferGeometry {
   return mergeGeometries([
     part(new THREE.CylinderGeometry(0.06, 0.09, 5.2, 4, 1, true), 0x55595e, 0, 2.6, 0),
-    part(new THREE.BoxGeometry(1.0, 0.1, 0.24), 0xf2e8c9, 0.45, 5.2, 0),
+    part(new THREE.BoxGeometry(1.0, 0.08, 0.1), 0x55595e, 0.45, 5.2, 0),
   ]);
+}
+
+/** The lamp's light: a flat box under the end of the arm. Drawn unlit, so it can glow. */
+export const LAMP_HEAD_OFFSET = 0.85;
+function lampHead(): THREE.BufferGeometry {
+  return part(new THREE.BoxGeometry(0.42, 0.06, 0.22), 0xffffff, LAMP_HEAD_OFFSET, 5.13, 0);
 }
 
 /** Bench: 36 triangles. */
@@ -65,9 +71,10 @@ export interface PropModels {
   /** Index = tree variant in the prop list: 0 round, 1 tall, 2 bush. */
   trees: THREE.BufferGeometry[];
   lamp: THREE.BufferGeometry;
+  lampHead: THREE.BufferGeometry;
   bench: THREE.BufferGeometry;
 }
 
 export function createPropModels(): PropModels {
-  return { trees: [roundTree(), tallTree(), bush()], lamp: lamp(), bench: bench() };
+  return { trees: [roundTree(), tallTree(), bush()], lamp: lamp(), lampHead: lampHead(), bench: bench() };
 }

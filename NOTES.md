@@ -4,10 +4,20 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 
 ## Current status (2026-11-12)
 
-- **Phases 1–4 built.** Phase 4 = multiplayer + much more detailed avatars. Next: the scooter (pulled forward from Phase 7 at the owner's request, 2026-11-12), then Phase 5 (atmosphere) → STOP 3.
-- `npm test`: 106 green · `npm run stress`: PASS · typecheck clean · build works.
+- **Phases 1–5 built + the scooter. Waiting at STOP 3 (after Phase 5) for the owner's feedback.**
+- `npm test`: 109 green · `npm run stress`: PASS · typecheck clean · build works.
 - Git: commit **and push** at the end of every phase (owner's rule).
-- Owner's STOP 2 report from the phone is still missing (fps, phone model).
+- Left for Day 4: Phase 6 (voice + photo mode), the rest of Phase 7 (loading progress, place picker with search, settings, error screens polish, README deploy steps), rooms in MongoDB, then Extras (weather → emotes → facade variety).
+- Owner's phone report (fps, phone model) is still missing.
+
+## Phase 5 — what was built
+
+- **Sun** (`packages/shared/src/geo/sun.ts`): position from lat/lng + UTC (almanac formulas, ≈ 1°). Tested: peaks ≈ 60° over Bengaluru at ≈ 12:05 IST on 10 Nov; below the horizon at midnight; rises in the east.
+- **Sky** (`apps/web/src/atmosphere/sky.ts`): shader dome following the camera — horizon-to-top gradient, sun disc + glow, moon disc, stars when properly dark. One draw call, no textures.
+- **Atmosphere** (`apps/web/src/atmosphere/atmosphere.ts`): six looks from deep night to full day blended by sun elevation (sky colours, fog colour = horizon, sun/moon light colour + strength, ambient). Moon light comes from roughly opposite the sun. Uses the place's **real local time** (time zone from the Area Pack), recalculated twice a second. `night` 0→1 between +2° and −6° sun elevation.
+- **Night lights**: ≈ 40 % of windows glow warm (chosen per window, same for everyone), street lamp heads glow, soft pools of light on the ground under every lamp (one extra draw call, only at night). No real light sources (too slow on phones).
+- **Debug**: overlay shows the local clock + night value; a **Time slider** (0–24 h) previews any hour, "real" goes back to now.
+- Not done: weather (an Extra), facade variety (an Extra), sun shadow maps (blob shadows only), photo-mode time slider (Phase 6).
 
 ## Scooter (pulled forward from Phase 7, 2026-11-12)
 

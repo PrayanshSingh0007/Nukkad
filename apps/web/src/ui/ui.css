@@ -335,3 +335,24 @@ button {
 .rideButton.on {
   background: #ffffff;
 }
+
+.overlayTime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.overlayTime input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.overlayTime button {
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: #3d4654;
+  color: #fff;
+  font-size: 12px;
+}

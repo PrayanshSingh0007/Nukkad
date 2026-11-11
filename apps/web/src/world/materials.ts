@@ -5,6 +5,8 @@ import * as THREE from 'three';
  * Everything uses the cheapest lit material (Lambert); colours come from the meshes.
  */
 export interface WorldMaterials {
+  /** 0 = day … 1 = night: lights up some windows. Shared by reference with the shader. */
+  night: { value: number };
   terrain: THREE.MeshLambertMaterial;
   buildings: THREE.MeshLambertMaterial;
   ground: THREE.MeshLambertMaterial;
@@ -20,6 +22,7 @@ export interface WorldMaterials {
  * instead of shimmering.
  */
 const WINDOW_GLSL = /* glsl */ `
+  float nkGlow = 0.0;
   if (vWin.y > 0.0) {
     vec2 fw = fwidth(vWin);
     vec2 cell = fract(vWin);
@@ -31,17 +34,22 @@ const WINDOW_GLSL = /* glsl */ `
     float tone = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
     vec3 glass = mix(vec3(0.045, 0.07, 0.10), vec3(0.11, 0.16, 0.21), tone);
     diffuseColor.rgb = mix(diffuseColor.rgb, glass, pane * 0.9);
+    // At night about four in ten windows have the lights on, chosen per window.
+    float lit = step(0.6, fract(tone * 7.13 + id.x * 0.37));
+    nkGlow = pane * lit * uNight;
   }
 `;
 
-function addWindows(material: THREE.MeshLambertMaterial): void {
+function addWindows(material: THREE.MeshLambertMaterial, night: { value: number }): void {
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.uNight = night;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aWin;\nvarying vec2 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vWin;')
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${WINDOW_GLSL}`);
+      .replace('#include <common>', '#include <common>\nvarying vec2 vWin;\nuniform float uNight;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${WINDOW_GLSL}`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.78, 0.45) * nkGlow * 1.4;');
   };
   material.customProgramCacheKey = () => 'nukkad-windows';
 }
@@ -49,7 +57,8 @@ function addWindows(material: THREE.MeshLambertMaterial): void {
 export function createMaterials(groundMap: THREE.Texture, windows: boolean): WorldMaterials {
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) addWindows(buildings);
+  const night = { value: 0 };
+  if (windows) addWindows(buildings, night);
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({
     vertexColors: true,
@@ -64,5 +73,5 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean): Wor
     polygonOffsetUnits: -1,
   });
   const props = new THREE.MeshLambertMaterial({ vertexColors: true });
-  return { terrain, buildings, ground, water, props, all: [terrain, buildings, ground, water, props] };
+  return { night, terrain, buildings, ground, water, props, all: [terrain, buildings, ground, water, props] };
 }
