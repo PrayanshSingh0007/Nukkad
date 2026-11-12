@@ -4,9 +4,10 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { CHUNK_SIZE, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
+import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
+import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
-import { heightAt } from '@nukkad/worldgen';
+import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
 import { Atmosphere } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
@@ -155,6 +156,8 @@ export class Game {
       if (target?.tagName === 'INPUT') return;
       if (event.code === 'KeyR') this.toggleRide();
       if (event.code === 'KeyE' || event.code === 'KeyF') this.toggleDrive();
+      const emote = ({ Digit1: 'wave', Digit2: 'dance', Digit3: 'sit', Digit4: 'talk' } as Record<string, Emote>)[event.code];
+      if (emote) this.doEmote(emote);
     });
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
@@ -182,6 +185,8 @@ export class Game {
   toggleRide(): void {
     const player = this.player;
     if (!player || this.driving) return;
+    player.seat = null;
+    player.emote = 0;
     player.setRiding(!player.riding);
     this.onRiding?.(player.riding);
   }
@@ -209,6 +214,8 @@ export class Game {
     const player = this.player;
     const physics = this.physics;
     if (!player || !physics) return;
+    player.seat = null;
+    player.emote = 0;
     const inside = buildInterior(door);
     this.interior = inside;
     this.view3d.scene.add(inside.group);
@@ -254,13 +261,64 @@ export class Game {
     });
   }
 
+  private emoteTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Wave, dance, talk (anywhere on foot) or sit (on a bench, chair or sofa). Friends see it too. */
+  doEmote(emote: Emote): void {
+    const player = this.player;
+    if (!player || player.vehicle || this.driving) return;
+    if (this.emoteTimer) clearTimeout(this.emoteTimer);
+    if (emote === 'sit') {
+      const seat = this.findSeat(player.x, player.z);
+      if (!seat) {
+        this.onToast?.('Walk up to a bench, chair or sofa to sit');
+        return;
+      }
+      player.seat = seat;
+      player.emote = EMOTES.indexOf('sit');
+      return;
+    }
+    player.seat = null;
+    player.emote = EMOTES.indexOf(emote);
+    if (emote === 'wave') this.emoteTimer = setTimeout(() => {
+      if (player.emote === EMOTES.indexOf('wave')) player.emote = 0;
+    }, 2600);
+  }
+
+  /** The nearest free seat within reach: indoors the room's seats, outdoors the street benches. */
+  private findSeat(x: number, z: number): { x: number; y: number; z: number; facing: number } | null {
+    let best: { x: number; y: number; z: number; facing: number } | null = null;
+    let bestD = 1.8;
+    const consider = (seat: { x: number; y: number; z: number; facing: number }): void => {
+      const d = Math.hypot(seat.x - x, seat.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = seat;
+      }
+    };
+    if (this.interior) for (const seat of this.interior.seats) consider(seat);
+    else if (this.ready) {
+      const benches = this.ready.props.benches;
+      for (let i = 0; i + BENCH_STRIDE - 1 < benches.length; i += BENCH_STRIDE) {
+        if (Math.abs(benches[i] - x) > 3 || Math.abs(benches[i + 2] - z) > 3) continue;
+        const rotation = benches[i + 3];
+        // The bench's front is its local +z; you sit a little forward of its middle.
+        consider({ x: benches[i] + Math.sin(rotation) * 0.05, y: benches[i + 1], z: benches[i + 2] + Math.cos(rotation) * 0.05, facing: rotation + Math.PI });
+      }
+    }
+    return best;
+  }
+
   /** The action button / E key: get in or out of a vehicle, go into or out of a building. */
   toggleDrive(): void {
     const player = this.player;
     const streetLife = this.streetLife;
     if (!player || !streetLife) return;
     if (this.interior) {
-      if (this.interior.nearExit(player.x, player.z)) this.goOutside();
+      if (this.interior.nearExit(player.x, player.z)) {
+        player.seat = null;
+        this.goOutside();
+      }
       return;
     }
     if (!this.driving && !player.riding && this.doorNear) {
@@ -283,6 +341,8 @@ export class Game {
       return;
     }
     if (player.riding) return; // on your own scooter: use Ride/Walk
+    player.seat = null;
+    player.emote = 0;
     const parked = streetLife.nearestVehicle(player.x, player.z, 3.5);
     const spec = parked ? VEHICLES[parked.kind.name] : undefined;
     const model = parked ? streetLife.modelOf(parked) : null;
@@ -592,7 +652,7 @@ export class Game {
           z: player.z,
           yaw: player.avatar.facing,
           speed: player.speed,
-          flags: (player.body.grounded ? FLAG_GROUNDED : 0) | (player.vehicle ? FLAG_RIDING | (player.vehicle.code << 4) : 0),
+          flags: (player.body.grounded || player.seat ? FLAG_GROUNDED : 0) | (player.vehicle ? FLAG_RIDING | (player.vehicle.code << 4) : (player.emote & 15) << 4),
         });
       }
       this.remotes.update(dt, now);

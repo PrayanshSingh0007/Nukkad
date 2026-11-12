@@ -15,7 +15,13 @@ export const STATE_BYTES = 13;
 export const SNAPSHOT_HEADER_BYTES = 6;
 export const SNAPSHOT_PLAYER_BYTES = 11;
 
-/** Flags bits. Bit 3 (away) is set only by the server. Bits 4–7 = emote id (0 = none). */
+/**
+ * Flags bits. Bit 3 (away) is set only by the server. Bits 4–7: the vehicle code while riding
+ * (FLAG_RIDING set), otherwise the emote (EMOTES index, 0 = none).
+ */
+/** What a player can do to hang out; the index travels in flags bits 4–7 when not riding. */
+export const EMOTES = ['none', 'wave', 'dance', 'sit', 'talk'] as const;
+export type Emote = (typeof EMOTES)[number];
 export const FLAG_GROUNDED = 1;
 export const FLAG_RIDING = 2;
 export const FLAG_TALKING = 4;

@@ -40,6 +40,8 @@ export interface Motion {
   lean?: number;
   /** Show your own scooter under you (false when riding someone else's two-wheeler or an auto). */
   scooter?: boolean;
+  /** EMOTES index (wave, dance, sit, talk), 0 = none. */
+  emote?: number;
 }
 
 /**
@@ -163,7 +165,7 @@ export class Avatar {
     this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);
-    this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null);
+    this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null, motion.emote ?? 0);
     // Blink every few seconds (a quick 0.12 s), sometimes twice.
     this.nextBlink -= dt;
     const closed = this.nextBlink < 0.12 && this.nextBlink > 0;

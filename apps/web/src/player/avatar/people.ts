@@ -210,7 +210,7 @@ const hairShader = (material: THREE.MeshStandardMaterial, color: { value: THREE.
   material.customProgramCacheKey = () => 'nukkad-hair-1';
 };
 
-const ACTIONS = { idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', sprint: 'Sprint_Loop', air: 'Jump_Loop', drive: 'Driving_Loop', sit: 'Sitting_Idle_Loop', dance: 'Dance_Loop' } as const;
+const ACTIONS = { idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', sprint: 'Sprint_Loop', air: 'Jump_Loop', drive: 'Driving_Loop', sit: 'Sitting_Idle_Loop', dance: 'Dance_Loop', wave: 'Interact', talk: 'Idle_Talking_Loop' } as const;
 type ActionName = keyof typeof ACTIONS;
 /** How fast each clip walks at speed 1 (metres per second), to match feet to the ground. */
 const CLIP_SPEED: Partial<Record<ActionName, number>> = { walk: 1.45, jog: 3.4, sprint: 6 };
@@ -322,9 +322,11 @@ export class Person {
   }
 
   /** speed in m/s; riding: 'stand' (own scooter), 'seat' (two-wheeler / auto), or null. */
-  update(dt: number, speed: number, grounded: boolean, riding: 'stand' | 'seat' | null): void {
+  update(dt: number, speed: number, grounded: boolean, riding: 'stand' | 'seat' | null, emote = 0): void {
     let name: ActionName = 'idle';
+    const emoteName = (['idle', 'wave', 'dance', 'sit', 'talk'] as const)[emote] ?? 'idle';
     if (riding === 'seat') name = 'drive';
+    else if (!riding && emote > 0 && speed < 0.4) name = emoteName;
     else if (riding === 'stand') name = 'idle';
     else if (!grounded) name = 'air';
     else if (speed > 4.6) name = 'sprint';

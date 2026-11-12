@@ -105,7 +105,31 @@ export class LocalPlayer {
     this.accumulator = 0;
   }
 
+  /** EMOTES index you are doing (0 = none). Any movement ends it. */
+  emote = 0;
+  /** Sitting on a seat: where, and which way you face. */
+  seat: { x: number; y: number; z: number; facing: number } | null = null;
+
   update(dt: number, moveX: number, moveY: number, yaw: number, groundAt: (x: number, z: number) => number): void {
+    const moving = Math.hypot(moveX, moveY) > 0.08;
+    if (this.seat) {
+      if (!moving) {
+        // Sitting: no physics, the body stays put.
+        this.x = this.seat.x;
+        this.y = this.seat.y;
+        this.z = this.seat.z;
+        this.speed = 0;
+        this.avatar.update(dt, this.x, this.y, this.z, { speed: 0, heading: this.seat.facing, grounded: true, emote: 3 });
+        return;
+      }
+      // Standing up: step forward off the seat.
+      const f = this.seat.facing;
+      this.body.teleport(this.seat.x - Math.sin(f) * 0.7, this.seat.y + 0.9, this.seat.z - Math.cos(f) * 0.7);
+      this.resetMotion();
+      this.seat = null;
+      this.emote = 0;
+    }
+    if (moving) this.emote = 0;
     if (this.vehicle) {
       this.updateRide(dt, this.vehicle, moveX, moveY, groundAt);
       return;
@@ -136,9 +160,8 @@ export class LocalPlayer {
     if (Math.abs(y - this.smoothY) > 1.5) this.smoothY = y;
     this.y = this.smoothY;
 
-    const moving = Math.hypot(moveX, moveY) > 0.08;
     const heading = moving ? Math.atan2(-wantX, -wantZ) : null;
-    this.avatar.update(dt, this.x, this.y, this.z, this.speed, heading, body.grounded);
+    this.avatar.update(dt, this.x, this.y, this.z, { speed: this.speed, heading, grounded: body.grounded, emote: this.emote });
   }
 
   /** Stick up/down = throttle and brake, left/right = steer. */

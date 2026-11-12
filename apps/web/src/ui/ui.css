@@ -525,3 +525,41 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+.emotes {
+  position: fixed;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(128px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.emoteButton {
+  width: 76px;
+  height: 40px;
+  border-radius: 20px;
+  border: none;
+  background: rgba(20, 24, 31, 0.78);
+  color: #fff;
+  font-weight: 700;
+}
+
+.emoteMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emoteMenu button {
+  min-width: 96px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 20px;
+  border: none;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}

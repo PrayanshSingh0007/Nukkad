@@ -37,6 +37,7 @@ export function App({ game, initialLook, roomId }: Props) {
   const [riding, setRiding] = useState(false);
   const [driveLabel, setDriveLabel] = useState<string | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
+  const [emoteOpen, setEmoteOpen] = useState(false);
   const [speed, setSpeed] = useState<{ v: number; max: number; label: string } | null>(null);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
@@ -113,6 +114,36 @@ export function App({ game, initialLook, roomId }: Props) {
         <button type="button" className={riding ? 'rideButton on' : 'rideButton'} onClick={() => game.toggleRide()}>
           {riding ? 'Walk' : 'Ride'}
         </button>
+      )}
+      {status.phase === 'playing' && !panelOpen && !riding && driveLabel !== 'Get out' && (
+        <div className="emotes">
+          {emoteOpen && (
+            <div className="emoteMenu">
+              {(
+                [
+                  ['wave', 'Wave'],
+                  ['dance', 'Dance'],
+                  ['sit', 'Sit'],
+                  ['talk', 'Talk'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    game.doEmote(id);
+                    setEmoteOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className="emoteButton" onClick={() => setEmoteOpen(!emoteOpen)}>
+            {emoteOpen ? 'Close' : 'Emote'}
+          </button>
+        </div>
       )}
       {status.phase === 'playing' && !panelOpen && riding && (
         <button

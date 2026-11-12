@@ -9,6 +9,12 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Emotes (2026-11-13)
+
+- **Emote** button (or keys 1–4): Wave (2.6 s), Dance, Sit, Talk — friends see it (flags bits 4–7 carry the emote when not riding; no protocol change). Sit works only near a seat: street benches outside; sofas, chairs, school/mall benches, hotel sofas inside. Moving ends any emote; moving while seated stands you up.
+- Verified with two players in one flat: one sitting on the sofa, the other dancing, both seen on the first player's screen.
+- Limits: sitting outdoors snaps to the bench middle (no "seat taken" check — two friends can sit in the same spot).
+
 ## Rooms survive restarts (2026-11-13, B-005 fixed)
 
 - `apps/server/src/store/roomStore.ts`: FileRoomStore (dev, `.cache/rooms/rooms.json`, atomic writes, ≤ 2 writes/s) and MongoRoomStore (prod, untested). Stored: room id, lat, lng, createdAt, emptySince — never names, looks or positions. Players re-join as new members after a restart (their reconnect tokens were in memory); live positions are simply lost, as before.

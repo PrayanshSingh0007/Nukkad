@@ -30,6 +30,8 @@ export interface Interior {
   /** Floor height (world), and the room's world transform. */
   floorY: number;
   solids: Solid[];
+  /** Chairs, sofas and benches (world position; facing = the avatar's facing angle). */
+  seats: { x: number; y: number; z: number; facing: number }[];
   /** Where you appear inside, and which way you face. */
   spawn: { x: number; z: number; heading: number };
   /** Inside if (x, z) is within the room (used to show friends who are in here too). */
@@ -49,6 +51,8 @@ const hex = (value: string): Rgb => {
 class Room {
   readonly parts: THREE.BufferGeometry[] = [];
   readonly solids: { x: number; y: number; z: number; hx: number; hy: number; hz: number }[] = [];
+  /** Places to sit: room-frame position and which way a sitter faces along z (+1 / -1). */
+  readonly seats: { x: number; z: number; dz: 1 | -1 }[] = [];
 
   readonly w: number;
   readonly d: number;
@@ -157,6 +161,7 @@ function plant(r: Room, x: number, z: number, big = false): void {
 }
 
 function chair(r: Room, x: number, z: number, facing: 1 | -1, color: string): void {
+  r.seats.push({ x, z, dz: facing === 1 ? -1 : 1 });
   r.box(x - 0.22, 0, z - 0.22, x + 0.22, 0.45, z + 0.22, color, true);
   r.box(x - 0.22, 0.45, z + facing * 0.18, x + 0.22, 0.95, z + facing * 0.22, color);
 }
@@ -206,6 +211,7 @@ function home(r: Room): void {
   const cx = -(w / 4 + 0.2); // the living room sits to the left, the way in stays free
   r.panel(cx + -1.4, 0.001, lz - 1.4, cx + 1.4, 0.012, lz + 0.6, r.pick(['#a8463a', '#3e5f8a', '#7a5c2e']));
   r.box(cx + -1.3, 0, lz + 0.6, cx + 1.3, 0.45, lz + 1.4, '#6d7c8c', true); // sofa seat
+  for (const sx of [-0.8, 0, 0.8]) r.seats.push({ x: cx + sx, z: lz + 0.85, dz: -1 });
   r.box(cx + -1.3, 0.45, lz + 1.15, cx + 1.3, 0.95, lz + 1.4, '#64727f'); // back
   r.box(cx + -1.45, 0, lz + 0.6, cx + -1.3, 0.65, lz + 1.4, '#64727f', true);
   r.box(cx + 1.3, 0, lz + 0.6, cx + 1.45, 0.65, lz + 1.4, '#64727f', true);
@@ -284,6 +290,7 @@ function mall(r: Room): void {
   r.box(-0.3, 0.45, cz - 0.3, 0.3, 1.6, cz + 0.3, '#d9d2c4', true);
   for (const s of [-1, 1]) {
     r.box(s * 4 - 1, 0, cz - 0.3, s * 4 + 1, 0.45, cz + 0.3, '#8a6a4c', true);
+    r.seats.push({ x: s * 4 - 0.5, z: cz, dz: -1 }, { x: s * 4 + 0.5, z: cz, dz: 1 });
     plant(r, s * 4, cz + 2.5, true);
     plant(r, s * 4, cz - 2.5, true);
   }
@@ -324,6 +331,7 @@ function school(r: Room): void {
       r.box(x + 0.05, 0, z + 0.4, x + 0.1, 0.7, z + 0.8, '#3b3632');
       r.box(x + 1.1, 0, z + 0.4, x + 1.15, 0.7, z + 0.8, '#3b3632');
       r.box(x, 0, z, x + 1.2, 0.42, z + 0.25, '#7a5c40', true); // bench
+      r.seats.push({ x: x + 0.3, z: z + 0.1, dz: 1 }, { x: x + 0.9, z: z + 0.1, dz: 1 });
     }
   }
   // Ceiling fans.
@@ -397,6 +405,7 @@ function hotel(r: Room): void {
   counter(r, 0, d - 1.6, 3.5, '#5a3d2b');
   for (const s of [-1, 1]) {
     r.box(s * (w / 4) - 1, 0, 3, s * (w / 4) + 1, 0.45, 3.8, '#7a2e2e', true);
+    r.seats.push({ x: s * (w / 4) - 0.5, z: 3.25, dz: -1 }, { x: s * (w / 4) + 0.5, z: 3.25, dz: -1 });
     r.box(s * (w / 4) - 1, 0.45, 3.6, s * (w / 4) + 1, 0.9, 3.8, '#6a2828');
     plant(r, s * (w / 2 - 0.8), 1.2, true);
   }
@@ -506,11 +515,16 @@ export function buildInterior(door: Door): Interior {
   const inverse = group.matrixWorld.clone().invert();
   const local = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(inverse);
   const spawnAt = toWorld(0, 0, 2.6);
+  const seats = room.seats.map((s) => {
+    const p = toWorld(s.x, 0, s.z);
+    return { x: p.x, y: floorY, z: p.z, facing: s.dz === -1 ? group.rotation.y : group.rotation.y + Math.PI };
+  });
   return {
     door,
     group,
     floorY,
     solids,
+    seats,
     spawn: { x: spawnAt.x, z: spawnAt.z, heading: door.face + Math.PI },
     contains(x, y, z) {
       const p = local(x, y, z);
