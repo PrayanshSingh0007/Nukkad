@@ -17,6 +17,8 @@ export interface QualitySettings {
   shadowRange: number;
   /** Parked vehicles, stalls and bus stops are drawn this far around you. */
   streetLifeRadius: number;
+  /** How many nearby street walkers are full 3D people. */
+  nearPeople: number;
   /** Photo-scanned surface detail on roads, walls, roofs and ground. */
   photo: boolean;
   /** Soft glow around bright things (lit windows, lamps, the sun). */
@@ -24,9 +26,9 @@ export interface QualitySettings {
 }
 
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
-  low: { level: 'low', maxPixelRatio: 1, viewDistance: 200, nearRing: 1, maxTrees: 300, antialias: false, shadowSize: 0, shadowRange: 0, streetLifeRadius: 50, photo: false, bloom: false },
-  medium: { level: 'medium', maxPixelRatio: 1.5, viewDistance: 350, nearRing: 1, maxTrees: 1000, antialias: false, shadowSize: 1024, shadowRange: 35, streetLifeRadius: 80, photo: true, bloom: false },
-  high: { level: 'high', maxPixelRatio: 2, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70, streetLifeRadius: 140, photo: true, bloom: true },
+  low: { level: 'low', maxPixelRatio: 1, viewDistance: 200, nearRing: 1, maxTrees: 300, antialias: false, shadowSize: 0, shadowRange: 0, streetLifeRadius: 50, nearPeople: 0, photo: false, bloom: false },
+  medium: { level: 'medium', maxPixelRatio: 1.5, viewDistance: 350, nearRing: 1, maxTrees: 1000, antialias: false, shadowSize: 1024, shadowRange: 35, streetLifeRadius: 80, nearPeople: 4, photo: true, bloom: false },
+  high: { level: 'high', maxPixelRatio: 2, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70, streetLifeRadius: 140, nearPeople: 8, photo: true, bloom: true },
 };
 
 const KEY = 'nukkad.quality';

@@ -405,6 +405,7 @@ export class Game {
       this.view3d.scene.add(this.traffic.group);
       this.walkers = new PedestrianView(ready.walkers, this.world.terrain);
       this.walkers.setRadius(settings.streetLifeRadius * 0.8);
+      this.walkers.setNearLimit(settings.nearPeople);
       this.view3d.scene.add(this.walkers.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
@@ -444,6 +445,7 @@ export class Game {
     this.world?.setTreeLimit(quality.maxTrees);
     this.traffic?.setRadius(quality.streetLifeRadius * 1.5);
     this.walkers?.setRadius(quality.streetLifeRadius * 0.8);
+    this.walkers?.setNearLimit(quality.nearPeople);
     this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     this.applyBloom(quality.bloom);
