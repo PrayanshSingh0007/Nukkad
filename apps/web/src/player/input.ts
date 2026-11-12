@@ -10,6 +10,8 @@ export class PlayerInput {
   /** Sideways (-1 left … 1 right) and forward (-1 back … 1 forward). Length is at most 1. */
   moveX = 0;
   moveY = 0;
+  /** Space (or the on-screen Drift button) = handbrake while driving. */
+  handbrake = false;
   /** Look sensitivity multiplier (settings, Phase 7). */
   sensitivity = 1;
   private lookX = 0;
@@ -19,6 +21,8 @@ export class PlayerInput {
   private readonly stick: HTMLElement;
   private readonly knob: HTMLElement;
   private readonly abort = new AbortController();
+  /** Held by the on-screen Drift button. */
+  touchHandbrake = false;
   private movePointer = -1;
   private lookPointer = -1;
   private stickStart = { x: 0, y: 0 };
@@ -54,6 +58,7 @@ export class PlayerInput {
     const slow = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 0.45 : 1;
     this.moveX = x * slow;
     this.moveY = y * slow;
+    this.handbrake = this.keys.has('Space') || this.touchHandbrake;
   }
 
   /** How far the view was dragged since the last call, in pixels. */

@@ -2,13 +2,20 @@
 
 Read order for a fresh session: PLAN.md → this file → BUGS.md.
 
-## Current status (2026-11-12)
+## Current status (2026-11-13)
 
-- **Direction changed by the owner (2026-11-12): no Day-4 deadline; stay on the web; build "a real human world" of Bengaluru.** The new plan is PLAN.md §15 (steps L1–L6). Fable access lasts until 2026-11-16 — plan work around that and stay token-lean.
-- Phases 1–5 + the scooter are built and pushed. L1 (places), L2 (graphics) and L3 (street life, models built in code) are done; next is **L4 (enterable interiors)**.
-- Rejected on purpose: Unreal Engine (C++, big app download, no browser link, restart), native Rust/Bevy (restart, months). Already true: no Capacitor, no Electron; the physics engine (Rapier) is Rust compiled to WebAssembly.
-- What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
-- `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
+- **Owner's goal now (2026-11-13): "a Bengaluru open-world game like GTA" — an original game in that style, friendly, NO violence** (owner picked "Friendly, no violence"). Must-haves in their words: real Bengaluru apartments, schools, malls (e.g. "VR Bengaluru") where friends gather and go together; **drive any vehicle**; **live traffic & people**.
+- Order: drive any vehicle (DONE) → live traffic (left-hand driving) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
+- Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
+- `npm test` 112 green. Phone fps still unknown.
+
+## Drive any vehicle (2026-11-13)
+
+- Walk within 3.5 m of a parked car / auto / two-wheeler / bus → **Drive …** button (or E / F key). **Get out** parks it where you left it (only on your screen; friends still see the original spot — TODO).
+- `apps/web/src/game/vehicleSpecs.ts`: per-type top speed, acceleration, brakes, wheelbase (bicycle-model steering, less lock at speed), grip and handbrake grip (**Drift** button / Space), collision radius, driver visible or not, camera distance. Car ≈ 60–68 km/h, auto 43, two-wheeler 50, bus 43.
+- While driving, your collision body is a round capsule of the vehicle's width (bumpers are not exact). Hitting a wall cuts speed by 40 %.
+- Friends see the right vehicle: flags bits 4–7 carry a vehicle code (1 own scooter, 2 hatchback, 3 sedan, 4 SUV, 5 auto, 6 two-wheeler, 7 bus). **These bits were reserved for emotes** — emotes now need another byte when they are built.
+- Measured: 0→40 km/h in 3 s, 59 km/h top after 6 s, FOV 62°→75°.
 
 ## Look overhaul (2026-11-13) — owner: "make it cooler, AAA"
 

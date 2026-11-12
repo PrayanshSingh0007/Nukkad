@@ -3,6 +3,8 @@ import { FLAG_AWAY, FLAG_GROUNDED, FLAG_RIDING } from '@nukkad/shared';
 import type { AvatarLook, PlayerInfo, Snapshot } from '@nukkad/shared';
 import { Avatar } from '../player/avatar/avatar.ts';
 import { NameTag } from '../player/nameTag.ts';
+import { specByCode } from '../game/vehicleSpecs.ts';
+import * as THREE_RUNTIME from 'three';
 import { ClockSync, SnapshotBuffer } from './interpolation.ts';
 
 const TELEPORT_M = 8; // further off than this: jump instead of gliding
@@ -17,7 +19,12 @@ interface Remote {
   shown: { x: number; y: number; z: number } | null;
   lastYaw: number;
   lean: number;
+  vehicle: THREE.Mesh | null;
+  vehicleCode: number;
 }
+
+/** Gives the geometry + material for a vehicle model name (from the street-life models). */
+export type VehicleModelSource = (model: string) => { geometry: THREE.BufferGeometry; material: THREE.Material } | null;
 
 /** Everyone else in the room: their avatars, name tags and smoothed movement. */
 export class RemotePlayers {
@@ -25,6 +32,7 @@ export class RemotePlayers {
   private readonly players = new Map<number, Remote>();
   readonly clock = new ClockSync();
   selfSlot = -1;
+  vehicleModels: VehicleModelSource | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -53,7 +61,7 @@ export class RemotePlayers {
     avatar.object.visible = false; // until its first position arrives
     tag.sprite.visible = false;
     this.scene.add(avatar.object, tag.sprite);
-    this.players.set(info.slot, { info, avatar, tag, buffer: new SnapshotBuffer(), shown: null, lastYaw: 0, lean: 0 });
+    this.players.set(info.slot, { info, avatar, tag, buffer: new SnapshotBuffer(), shown: null, lastYaw: 0, lean: 0, vehicle: null, vehicleCode: 0 });
   }
 
   remove(slot: number): void {
@@ -61,6 +69,7 @@ export class RemotePlayers {
     if (!remote) return;
     remote.avatar.dispose();
     remote.tag.dispose();
+    remote.vehicle?.removeFromParent();
     this.players.delete(slot);
   }
 
@@ -97,6 +106,10 @@ export class RemotePlayers {
       remote.tag.sprite.visible = true;
       remote.avatar.setOpacity(away ? 0.4 : 1);
       const riding = (state.flags & FLAG_RIDING) !== 0;
+      const code = riding ? (state.flags >> 4) & 15 : 0;
+      const spec = specByCode(code);
+      this.showVehicle(remote, spec && spec.model ? code : 0, shown, state.yaw);
+      remote.avatar.object.visible = !spec || spec.driverVisible;
       // Lean is not sent: it is worked out from how fast the rider is turning.
       const yawRate = dt > 0 ? Math.atan2(Math.sin(state.yaw - remote.lastYaw), Math.cos(state.yaw - remote.lastYaw)) / dt : 0;
       remote.lastYaw = state.yaw;
@@ -106,11 +119,32 @@ export class RemotePlayers {
         speed: away ? 0 : state.speed,
         heading: state.yaw,
         grounded: (state.flags & FLAG_GROUNDED) !== 0,
-        riding,
+        riding: riding && (!spec || spec.driverVisible),
+        scooter: !spec || spec.model === '',
         lean: remote.lean,
       });
       remote.tag.sprite.position.set(shown.x, shown.y + TAG_HEIGHT, shown.z);
       remote.tag.set(remote.info.name, away);
+    }
+  }
+
+  /** Puts the right vehicle model under a friend who is driving one (code 0 = none). */
+  private showVehicle(remote: Remote, code: number, at: { x: number; y: number; z: number }, yaw: number): void {
+    if (remote.vehicleCode !== code) {
+      remote.vehicle?.removeFromParent();
+      remote.vehicle = null;
+      remote.vehicleCode = code;
+      const spec = specByCode(code);
+      const model = spec && this.vehicleModels ? this.vehicleModels(spec.model) : null;
+      if (model) {
+        remote.vehicle = new THREE_RUNTIME.Mesh(model.geometry, model.material);
+        remote.vehicle.castShadow = true;
+        this.scene.add(remote.vehicle);
+      }
+    }
+    if (remote.vehicle) {
+      remote.vehicle.position.set(at.x, at.y, at.z);
+      remote.vehicle.rotation.set(0, yaw, 0);
     }
   }
 

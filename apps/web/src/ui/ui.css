@@ -356,3 +356,30 @@ button {
   color: #fff;
   font-size: 12px;
 }
+
+.driveButton {
+  position: fixed;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(126px + env(safe-area-inset-bottom));
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.driftButton {
+  position: fixed;
+  right: calc(104px + env(safe-area-inset-right));
+  bottom: calc(46px + env(safe-area-inset-bottom));
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(28, 35, 48, 0.8);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  touch-action: none;
+}

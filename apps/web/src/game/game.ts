@@ -26,7 +26,9 @@ import type { StreamSettings } from '../world/streamPlan.ts';
 import { WorldClient } from '../world/worldClient.ts';
 import { StreetLifeView } from '../world/streetLifeView.ts';
 import { WorldView } from '../world/worldView.ts';
-import { LocalPlayer, RIDE_MAX } from './localPlayer.ts';
+import { LocalPlayer } from './localPlayer.ts';
+import { VEHICLES } from './vehicleSpecs.ts';
+import type { ParkedVehicle } from '../world/streetLifeView.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
 import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
@@ -88,6 +90,11 @@ export class Game {
   onPlayerCount: ((count: number) => void) | null = null;
   /** Called when you get on or off the scooter. */
   onRiding: ((riding: boolean) => void) | null = null;
+  /** Called with the label of the Drive button ("Drive auto", "Get out") or null to hide it. */
+  onDriveHint: ((label: string | null) => void) | null = null;
+  private driving: ParkedVehicle | null = null;
+  private driveMesh: THREE.InstancedMesh | null = null;
+  private driveHint: string | null = null;
   private lastDragAt = 0;
   private static readonly BASE_FOV = 62;
 
@@ -126,7 +133,9 @@ export class Game {
     });
     window.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement | null;
-      if (event.code === 'KeyR' && target?.tagName !== 'INPUT') this.toggleRide();
+      if (target?.tagName === 'INPUT') return;
+      if (event.code === 'KeyR') this.toggleRide();
+      if (event.code === 'KeyE' || event.code === 'KeyF') this.toggleDrive();
     });
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
@@ -148,9 +157,64 @@ export class Game {
   /** Gets on or off your scooter (everyone has their own). */
   toggleRide(): void {
     const player = this.player;
-    if (!player) return;
+    if (!player || this.driving) return;
     player.setRiding(!player.riding);
     this.onRiding?.(player.riding);
+  }
+
+  /** Gets into the nearest parked vehicle, or out of the one you are driving. */
+  toggleDrive(): void {
+    const player = this.player;
+    const streetLife = this.streetLife;
+    if (!player || !streetLife) return;
+    if (this.driving) {
+      const left = player.exitVehicle();
+      if (left) streetLife.park(this.driving, left.x, left.y, left.z, left.heading);
+      this.driving = null;
+      this.driveMesh?.removeFromParent();
+      this.driveMesh = null;
+      player.avatar.object.visible = true;
+      this.onRiding?.(false);
+      return;
+    }
+    if (player.riding) return; // on your own scooter: use Ride/Walk
+    const parked = streetLife.nearestVehicle(player.x, player.z, 3.5);
+    const spec = parked ? VEHICLES[parked.kind.name] : undefined;
+    const model = parked ? streetLife.modelOf(parked) : null;
+    if (!parked || !spec || !model) return;
+    streetLife.take(parked);
+    player.enterVehicle(spec, parked.item.x, parked.item.z, parked.item.rotation);
+    this.driving = parked;
+    const mesh = new THREE.InstancedMesh(model.geometry, model.material, 1);
+    mesh.setMatrixAt(0, new THREE.Matrix4());
+    if (model.paint) mesh.setColorAt(0, model.paint);
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    mesh.rotation.order = 'YXZ';
+    this.driveMesh = mesh;
+    this.view3d.scene.add(mesh);
+    this.onRiding?.(true);
+  }
+
+  /** The on-screen Drift button (handbrake). */
+  setHandbrake(on: boolean): void {
+    this.input.touchHandbrake = on;
+  }
+
+  /** What the Drive button should say right now. */
+  private updateDriveHint(): void {
+    const player = this.player;
+    let label: string | null = null;
+    if (player && this.driving) label = 'Get out';
+    else if (player && !player.riding && this.streetLife) {
+      const parked = this.streetLife.nearestVehicle(player.x, player.z, 3.5);
+      const spec = parked ? VEHICLES[parked.kind.name] : undefined;
+      if (spec) label = `Drive ${spec.label}`;
+    }
+    if (label !== this.driveHint) {
+      this.driveHint = label;
+      this.onDriveHint?.(label);
+    }
   }
 
   /** Connects to a room. Other players appear as their snapshots arrive. */
@@ -210,6 +274,8 @@ export class Game {
       });
       this.view3d.scene.add(this.world.group);
       this.streetLife = new StreetLifeView(ready.props, this.reflections);
+      const streetLife = this.streetLife;
+      this.remotes.vehicleModels = (model) => streetLife.modelByName(model);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
@@ -366,7 +432,13 @@ export class Game {
       const drag = this.input.consumeLook();
       this.rig.look(drag.dx, drag.dy);
       if (drag.dx !== 0 || drag.dy !== 0) this.lastDragAt = now;
+      player.handbrake = this.input.handbrake;
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
+      if (this.driveMesh) {
+        this.driveMesh.position.set(player.x, player.y, player.z);
+        this.driveMesh.rotation.set(0, player.heading, player.lean);
+      }
+      this.updateDriveHint();
       streamer.update(player.x, player.z, forwardX, forwardZ);
       this.sendClock += dt;
       if (this.net && this.sendClock >= 1 / TICK_HZ) {
@@ -377,7 +449,7 @@ export class Game {
           z: player.z,
           yaw: player.avatar.facing,
           speed: player.speed,
-          flags: (player.body.grounded ? FLAG_GROUNDED : 0) | (player.riding ? FLAG_RIDING : 0),
+          flags: (player.body.grounded ? FLAG_GROUNDED : 0) | (player.vehicle ? FLAG_RIDING | (player.vehicle.code << 4) : 0),
         });
       }
       this.remotes.update(dt, now);
@@ -389,12 +461,13 @@ export class Game {
       // On the scooter the camera swings in behind you (unless you just dragged the view),
       // and widens a little with speed — the "FOV kick" that makes speed feel fast.
       const camera = this.view3d.camera;
-      const speedShare = player.riding ? Math.min(1, Math.abs(player.rideSpeed) / RIDE_MAX) : 0;
+      const vehicle = player.vehicle;
+      const speedShare = vehicle ? Math.min(1, Math.abs(player.rideSpeed) / vehicle.maxSpeed) : 0;
       if (player.riding && Math.abs(player.rideSpeed) > 1 && now - this.lastDragAt > 1500) {
         const behind = player.rideSpeed >= 0 ? player.heading : player.heading + Math.PI;
         this.rig.yaw += Math.atan2(Math.sin(behind - this.rig.yaw), Math.cos(behind - this.rig.yaw)) * Math.min(1, dt * 2.5);
       }
-      this.rig.distance = 5.2 + speedShare * 1.3;
+      this.rig.distance = (vehicle ? vehicle.cameraDistance : 5.2) + speedShare * 1.3;
       const fov = Game.BASE_FOV + speedShare * 14;
       if (Math.abs(camera.fov - fov) > 0.05) {
         camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);

@@ -2,6 +2,8 @@ import type { AvatarLook } from '@nukkad/shared';
 import { CharacterBody } from '../physics/characterBody.ts';
 import type { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { Avatar } from '../player/avatar/avatar.ts';
+import { SCOOTER } from './vehicleSpecs.ts';
+import type { VehicleSpec } from './vehicleSpecs.ts';
 
 /** Physics runs in fixed steps of 1/60 s, however fast or slow the screen draws. */
 export const STEP_S = 1 / 60;
@@ -9,22 +11,14 @@ const RUN_SPEED = 5; // metres per second with the stick fully pushed
 const ACCELERATION = 14; // how quickly the player reaches the wanted speed
 const MAX_STEPS_PER_FRAME = 5;
 
-/** Scooter feel (arcade, not a full vehicle simulation). */
-export const RIDE_MAX = 9; // m/s ≈ 32 km/h
-const RIDE_ACCEL = 4.5;
-const RIDE_BRAKE = 9;
-const RIDE_COAST = 1.2; // slowing down with no throttle
-const RIDE_REVERSE = 2;
-const RIDE_TURN = 1.9; // rad/s at walking pace; less at full speed
-const RIDE_GRIP = 9; // how fast the wheels pull the motion back in line (lower = more slide)
-const RIDE_MAX_LEAN = 0.38;
+const MAX_LEAN = 0.38;
 
 /**
  * The player you control: a physics body, the avatar drawn for it, and the walking logic
  * between them. Positions are smoothed between physics steps so movement looks fluid at any fps.
  */
 export class LocalPlayer {
-  readonly body: CharacterBody;
+  body: CharacterBody;
   readonly avatar: Avatar;
   /** Where the avatar is drawn this frame (feet). */
   x = 0;
@@ -32,13 +26,14 @@ export class LocalPlayer {
   z = 0;
   /** Speed along the ground, measured from what really happened (walls included). */
   speed = 0;
-  /** On the scooter? */
-  riding = false;
-  /** Scooter direction (radians, avatar convention) and speed (negative = backwards). */
+  /** The vehicle you are driving, or null when walking. */
+  vehicle: VehicleSpec | null = null;
+  /** Handbrake held (drift). */
+  handbrake = false;
+  /** Vehicle direction (radians, avatar convention) and speed (negative = backwards). */
   heading = 0;
   rideSpeed = 0;
   lean = 0;
-  private steer = 0;
   private readonly physics: PhysicsWorld;
   private readonly limit: number;
   private velocityX = 0;
@@ -64,17 +59,55 @@ export class LocalPlayer {
    * Advances the player by one drawn frame.
    * @param moveX,moveY the stick / keys (-1…1)   @param yaw the camera direction: "forward" on the stick means "away from the camera"
    */
+  get riding(): boolean {
+    return this.vehicle !== null;
+  }
+
+  /** Your own scooter (the Ride button). */
   setRiding(on: boolean): void {
-    this.riding = on;
-    this.heading = this.avatar.facing;
+    if (on) this.enterVehicle(SCOOTER, this.body.x, this.body.z, this.avatar.facing);
+    else this.exitVehicle();
+  }
+
+  /** Gets into a vehicle standing at (x, z) facing `heading`. The collision body becomes the vehicle's size. */
+  enterVehicle(vehicle: VehicleSpec, x: number, z: number, heading: number): void {
+    const y = this.body.y;
+    this.swapBody(new CharacterBody(this.physics, x, y + 0.2, z, vehicle.radius, vehicle.radius > 0.5 ? 0.12 : 0.4));
+    this.vehicle = vehicle;
+    this.heading = heading;
     this.rideSpeed = 0;
     this.velocityX = 0;
     this.velocityZ = 0;
+    this.steerInput = 0;
+    this.lean = 0;
+  }
+
+  /** Gets out on the left side. Returns where the vehicle was left (for parking it there). */
+  exitVehicle(): { x: number; y: number; z: number; heading: number } | null {
+    const vehicle = this.vehicle;
+    if (!vehicle) return null;
+    const left = { x: this.body.x, y: this.body.y, z: this.body.z, heading: this.heading };
+    const side = vehicle.radius + 0.7;
+    const x = left.x - Math.cos(this.heading) * side;
+    const z = left.z + Math.sin(this.heading) * side;
+    this.swapBody(new CharacterBody(this.physics, x, left.y + 0.3, z));
+    this.vehicle = null;
+    this.rideSpeed = 0;
+    this.velocityX = 0;
+    this.velocityZ = 0;
+    return left;
+  }
+
+  private swapBody(next: CharacterBody): void {
+    this.body.dispose();
+    this.body = next;
+    this.previous = { x: next.x, y: next.y, z: next.z };
+    this.accumulator = 0;
   }
 
   update(dt: number, moveX: number, moveY: number, yaw: number, groundAt: (x: number, z: number) => number): void {
-    if (this.riding) {
-      this.updateRide(dt, moveX, moveY, groundAt);
+    if (this.vehicle) {
+      this.updateRide(dt, this.vehicle, moveX, moveY, groundAt);
       return;
     }
     const forwardX = -Math.sin(yaw);
@@ -109,41 +142,48 @@ export class LocalPlayer {
   }
 
   /** Stick up/down = throttle and brake, left/right = steer. */
-  private updateRide(dt: number, moveX: number, moveY: number, groundAt: (x: number, z: number) => number): void {
+  private updateRide(dt: number, vehicle: VehicleSpec, moveX: number, moveY: number, groundAt: (x: number, z: number) => number): void {
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= STEP_S && steps < MAX_STEPS_PER_FRAME) {
-      this.rideStep(moveX, moveY, groundAt);
+      this.rideStep(vehicle, moveX, moveY, groundAt);
       this.accumulator -= STEP_S;
       steps++;
     }
     if (steps === MAX_STEPS_PER_FRAME) this.accumulator = 0;
     this.smoothDrawnPosition(dt);
-    const leanTarget = -this.steer * Math.min(1, Math.abs(this.rideSpeed) / RIDE_MAX) * RIDE_MAX_LEAN * Math.sign(this.rideSpeed || 1);
+    const share = Math.min(1, Math.abs(this.rideSpeed) / vehicle.maxSpeed);
+    const leanTarget = vehicle.leans ? -this.steerInput * share * MAX_LEAN * Math.sign(this.rideSpeed || 1) : 0;
     this.lean += (leanTarget - this.lean) * Math.min(1, dt * 6);
-    this.avatar.update(dt, this.x, this.y, this.z, { speed: Math.abs(this.rideSpeed), heading: this.heading, grounded: this.body.grounded, riding: true, lean: this.lean });
+    this.avatar.object.visible = vehicle.driverVisible;
+    this.avatar.update(dt, this.x, this.y, this.z, { speed: Math.abs(this.rideSpeed), heading: this.heading, grounded: this.body.grounded, riding: vehicle.driverVisible, scooter: vehicle === SCOOTER, lean: this.lean });
   }
 
-  private rideStep(moveX: number, moveY: number, groundAt: (x: number, z: number) => number): void {
-    const throttle = moveY;
-    this.steer += (moveX - this.steer) * Math.min(1, STEP_S * 8);
-    let v = this.rideSpeed;
-    if (throttle > 0.05) v += (v < 0 ? RIDE_BRAKE : RIDE_ACCEL * (1 - Math.max(0, v) / (RIDE_MAX * 1.15))) * throttle * STEP_S;
-    else if (throttle < -0.05) v -= (v > 0 ? RIDE_BRAKE : RIDE_ACCEL * 0.5) * -throttle * STEP_S;
-    else v -= Math.sign(v) * Math.min(Math.abs(v), RIDE_COAST * STEP_S);
-    this.rideSpeed = Math.min(RIDE_MAX, Math.max(-RIDE_REVERSE, v));
+  private steerInput = 0;
 
-    // Steering bites more at low speed; you can't spin on the spot.
-    const pace = Math.min(1, Math.abs(this.rideSpeed) / 2.5);
-    const turn = this.steer * RIDE_TURN * pace * (1 - 0.45 * (Math.abs(this.rideSpeed) / RIDE_MAX)) * Math.sign(this.rideSpeed);
-    this.heading -= turn * STEP_S;
+  /** One physics step of driving: throttle, brakes, a bicycle-model turn, and grip. */
+  private rideStep(vehicle: VehicleSpec, moveX: number, moveY: number, groundAt: (x: number, z: number) => number): void {
+    const throttle = moveY;
+    this.steerInput += (moveX - this.steerInput) * Math.min(1, STEP_S * 7);
+    let v = this.rideSpeed;
+    if (throttle > 0.05) v += (v < 0 ? vehicle.brake : vehicle.accel * (1 - Math.max(0, v) / (vehicle.maxSpeed * 1.12))) * throttle * STEP_S;
+    else if (throttle < -0.05) v -= (v > 0 ? vehicle.brake : vehicle.accel * 0.6) * -throttle * STEP_S;
+    else v -= Math.sign(v) * Math.min(Math.abs(v), (this.handbrake ? 4 : 1.2) * STEP_S);
+    this.rideSpeed = Math.min(vehicle.maxSpeed, Math.max(-vehicle.reverse, v));
+
+    // Less steering lock at speed, like a real car; the turn rate follows from the wheelbase.
+    const share = Math.min(1, Math.abs(this.rideSpeed) / vehicle.maxSpeed);
+    const angle = this.steerInput * vehicle.maxSteer * (1 - 0.55 * share);
+    const yawRate = (this.rideSpeed / vehicle.wheelbase) * Math.tan(angle);
+    this.heading -= yawRate * STEP_S * (this.handbrake ? 1.35 : 1);
 
     const wantX = -Math.sin(this.heading) * this.rideSpeed;
     const wantZ = -Math.cos(this.heading) * this.rideSpeed;
-    const expected = Math.abs(this.rideSpeed) * STEP_S;
-    this.step(wantX, wantZ, groundAt, RIDE_GRIP);
+    this.step(wantX, wantZ, groundAt, this.handbrake ? vehicle.driftGrip : vehicle.grip);
+    // Compare with the distance we actually tried to move (the slide-smoothed velocity), not the throttle speed.
+    const tried = Math.hypot(this.velocityX, this.velocityZ) * STEP_S;
     const moved = Math.hypot(this.body.x - this.previous.x, this.body.z - this.previous.z);
-    if (expected > 0.04 && moved < expected * 0.35) this.rideSpeed *= 0.5; // bumped into something
+    if (tried > 0.05 && moved < tried * 0.3) this.rideSpeed *= 0.6; // bumped into something
   }
 
   private smoothDrawnPosition(dt: number): void {

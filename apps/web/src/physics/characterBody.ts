@@ -4,7 +4,6 @@ import type { PhysicsWorld } from './physicsWorld.ts';
 /** The player's body is a capsule: a pill 1.7 m tall and 0.6 m wide. */
 export const BODY_RADIUS = 0.3;
 const BODY_HALF_HEIGHT = 0.55;
-const CENTRE_HEIGHT = BODY_HALF_HEIGHT + BODY_RADIUS;
 
 const GRAVITY = 22; // a bit stronger than real life: feels snappier
 const MAX_FALL_SPEED = 40;
@@ -29,16 +28,20 @@ export class CharacterBody {
   private readonly body: RigidBody;
   private readonly controller: KinematicCharacterController;
   private fallSpeed = 0;
+  /** Height of the capsule's centre above the feet. */
+  private readonly centre: number;
 
-  constructor(physics: PhysicsWorld, x: number, y: number, z: number) {
+  /** Default size = a person. Vehicles pass a wider radius and a short body. */
+  constructor(physics: PhysicsWorld, x: number, y: number, z: number, radius = BODY_RADIUS, halfHeight = BODY_HALF_HEIGHT) {
+    this.centre = halfHeight + radius;
     this.physics = physics;
     this.x = x;
     this.y = y;
     this.z = z;
     const world = physics.world;
     const RAPIER = physics.rapier;
-    this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + CENTRE_HEIGHT, z));
-    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(BODY_HALF_HEIGHT, BODY_RADIUS), this.body);
+    this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + this.centre, z));
+    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(halfHeight, radius), this.body);
     this.controller = world.createCharacterController(0.03);
     this.controller.enableAutostep(STEP_HEIGHT, STEP_MIN_WIDTH, false);
     this.controller.enableSnapToGround(SNAP_DISTANCE);
@@ -58,7 +61,7 @@ export class CharacterBody {
     this.x += moved.x;
     this.y += moved.y;
     this.z += moved.z;
-    this.body.setNextKinematicTranslation({ x: this.x, y: this.y + CENTRE_HEIGHT, z: this.z });
+    this.body.setNextKinematicTranslation({ x: this.x, y: this.y + this.centre, z: this.z });
   }
 
   /** Puts the body somewhere at once (spawning, or rescuing a player who fell out of the world). */
@@ -68,7 +71,7 @@ export class CharacterBody {
     this.z = z;
     this.fallSpeed = 0;
     this.grounded = false;
-    this.body.setTranslation({ x, y: y + CENTRE_HEIGHT, z }, true);
+    this.body.setTranslation({ x, y: y + this.centre, z }, true);
   }
 
   dispose(): void {

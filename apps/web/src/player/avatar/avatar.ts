@@ -37,6 +37,8 @@ export interface Motion {
   riding?: boolean;
   /** Sideways lean on the scooter, radians. */
   lean?: number;
+  /** Show your own scooter under you (false when riding someone else's two-wheeler or an auto). */
+  scooter?: boolean;
 }
 
 /**
@@ -122,7 +124,7 @@ export class Avatar {
     this.object.rotation.y = this.facingAngle;
     this.body.rotation.z = motion.lean ?? 0;
     this.body.position.y = motion.riding ? 0.16 : 0; // standing on the scooter deck
-    this.scooter.mesh.visible = motion.riding === true;
+    this.scooter.mesh.visible = motion.riding === true && motion.scooter !== false;
     this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);

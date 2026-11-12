@@ -32,6 +32,7 @@ async function invite(roomId: string): Promise<string> {
 export function App({ game, initialLook, roomId }: Props) {
   const [players, setPlayers] = useState(1);
   const [riding, setRiding] = useState(false);
+  const [driveLabel, setDriveLabel] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
   const [look, setLook] = useState(initialLook);
@@ -42,6 +43,7 @@ export function App({ game, initialLook, roomId }: Props) {
   useEffect(() => {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
+    game.onDriveHint = setDriveLabel;
   }, [game]);
   useEffect(() => {
     if (!toast) return;
@@ -84,9 +86,25 @@ export function App({ game, initialLook, roomId }: Props) {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
-      {status.phase === 'playing' && !panelOpen && (
+      {status.phase === 'playing' && !panelOpen && driveLabel && (
+        <button type="button" className="driveButton" onClick={() => game.toggleDrive()}>
+          {driveLabel}
+        </button>
+      )}
+      {status.phase === 'playing' && !panelOpen && driveLabel !== 'Get out' && (
         <button type="button" className={riding ? 'rideButton on' : 'rideButton'} onClick={() => game.toggleRide()}>
           {riding ? 'Walk' : 'Ride'}
+        </button>
+      )}
+      {status.phase === 'playing' && !panelOpen && riding && (
+        <button
+          type="button"
+          className="driftButton"
+          onPointerDown={() => game.setHandbrake(true)}
+          onPointerUp={() => game.setHandbrake(false)}
+          onPointerLeave={() => game.setHandbrake(false)}
+        >
+          Drift
         </button>
       )}
       {panelOpen && <AvatarPanel look={look} onChange={changeLook} onClose={() => setPanelOpen(false)} />}

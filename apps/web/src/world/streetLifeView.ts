@@ -19,6 +19,13 @@ export interface SolidBox {
 const PAINTS = ['#f2f2f0', '#b9bcc0', '#b3261e', '#2f5aa8', '#1d1f22', '#6b6f75', '#7a1f2b', '#2f7f7a'].map((hex) => new THREE.Color(hex));
 const NO_PAINT = new Set(['auto', 'bus']);
 
+/** A vehicle standing on the street, as found by `nearestVehicle`. */
+export interface ParkedVehicle {
+  kind: { name: string };
+  index: number;
+  item: Item;
+}
+
 interface Item {
   x: number;
   y: number;
@@ -188,6 +195,51 @@ export class StreetLifeView {
     this.material.envMapIntensity = 0.15 + 0.85 * (1 - night);
     // Kenney's light colours already look bright; their reflections are kept softer.
     for (const kind of this.kinds) if (kind.material) kind.material.envMapIntensity = this.material.envMapIntensity * 0.6;
+  }
+
+  /** The nearest parked vehicle within `reach` metres whose model is loaded, or null. */
+  nearestVehicle(x: number, z: number, reach: number): ParkedVehicle | null {
+    let best: ParkedVehicle | null = null;
+    let bestDistance = reach;
+    for (const kind of this.kinds) {
+      if (!kind.mesh || !(VEHICLE_KINDS as readonly string[]).includes(kind.name)) continue;
+      kind.items.forEach((item, index) => {
+        const d = Math.hypot(item.x - x, item.z - z);
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = { kind, index, item };
+        }
+      });
+    }
+    return best;
+  }
+
+  /** Takes a vehicle off the street (you are driving it now). */
+  take(parked: ParkedVehicle): void {
+    const kind = parked.kind as Kind;
+    kind.items.splice(kind.items.indexOf(parked.item), 1);
+    this.lastAt = null;
+  }
+
+  /** Parks a vehicle where you left it. */
+  park(parked: ParkedVehicle, x: number, y: number, z: number, heading: number): void {
+    const kind = parked.kind as Kind;
+    kind.items.push({ ...parked.item, x, y, z, rotation: heading });
+    this.lastAt = null;
+  }
+
+  /** Geometry and material to draw the vehicle you are driving. */
+  modelOf(parked: ParkedVehicle): { geometry: THREE.BufferGeometry; material: THREE.Material; paint: THREE.Color | null } | null {
+    const kind = parked.kind as Kind;
+    if (!kind.mesh) return null;
+    const paint = kind.material || NO_PAINT.has(kind.name) ? null : PAINTS[parked.item.variant % PAINTS.length];
+    return { geometry: kind.mesh.geometry, material: kind.material ?? this.material, paint };
+  }
+
+  /** The first loaded model of a vehicle type (to show friends' vehicles). */
+  modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material } | null {
+    const kind = this.kinds.find((k) => k.name === name && k.mesh);
+    return kind?.mesh ? { geometry: kind.mesh.geometry, material: kind.material ?? this.material } : null;
   }
 
   dispose(): void {
