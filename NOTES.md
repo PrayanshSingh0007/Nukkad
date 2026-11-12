@@ -7,7 +7,16 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - **Owner's goal now (2026-11-13): "a Bengaluru open-world game like GTA" — an original game in that style, friendly, NO violence** (owner picked "Friendly, no violence"). Must-haves in their words: real Bengaluru apartments, schools, malls (e.g. "VR Bengaluru") where friends gather and go together; **drive any vehicle**; **live traffic & people**.
 - Order: drive any vehicle (DONE) → live traffic (DONE) → people walking (DONE) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
-- `npm test` 112 green. Phone fps still unknown.
+- `npm test` 122 green. Phone fps still unknown.
+
+## Speedometer + gated societies (2026-11-13)
+
+- **Speedometer**: round km/h dial at the bottom centre whenever you ride or drive (any vehicle); arc fills to the vehicle's top speed, turns red above 85 %, shows "R" when reversing. Updated 10×/s.
+- **Gated societies** (`packages/worldgen/src/pack/compounds.ts`, mesh in `buildings/compoundMesh.ts`): every named `landuse=residential` area of 1,500 m²–60 ha with ≥ 2 buildings inside gets a 2.1 m plastered compound wall with a grey coping along its outline, in ≤ 6 m pieces that follow the ground. Openings wherever a road (road width + 2.4 m) or path (2.2 m) crosses. The widest road in gets the **entrance gate**: two pillars, an arch 4.4–5.9 m high with the society's **real name** on its front, a security cabin inside and a raised (open) boom barrier. Walls and gates are in the chunk building mesh → solid. Walls are left out of far (LOD1) chunks; gates stay.
+- Rules: no road in → no wall (nobody gets trapped); wall pieces inside a building or on top of a neighbour's wall are skipped; edges cut by the world border get no wall or gate; nothing within the gate opening.
+- Test area: 18 walled societies (Assetz East Point, Adarsh Palm Retreat Villas/Mayflower/Jacaranda/Daffodils/Hibiscus/Mayberry, Krishvi Dhavala, Prestige Summer Fields, Saroj Whitesands …). Towers inside are the real mapped blocks (Assetz A1–C4, Tower-01…04) with their names on signs. Verified in the browser at the Assetz gate.
+- Nearby places asked for by the owner are all inside the default 1.2 km area with signs: Mango Hypermarket, Shakti 80 Trees (OSM name; "Suryashakti" not in the map), Kumari Amaranthine Apartment, Krishvi Dhavala (+ Phase-II), Sri Sai Ikon, Adarsh Palm Retreat (+ Villas, phases). **GEAR Innovative International School is NOT drawn as a named place**: our map data only has "Gear B.Ed. College" and "Gear School Road" near it (Nominatim finds the school ~0.4 km from Assetz, as a point our area query does not return). TODO: include school points/areas named in OSM.
+- Honest limits: gate placement is a guess (widest road crossing the outline, not the mapped real gate — OSM rarely maps gates); boom barrier is always up; walls do not stop at mapped gates/barriers; PACK_VERSION now 9.
 
 ## Real names + Bengaluru architecture (2026-11-13) — owner: "yes real names with real architecture"
 

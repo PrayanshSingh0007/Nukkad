@@ -7,6 +7,7 @@ import { draftBuilding, finishBuildings, quantizeRing } from './packBuildings.ts
 import type { BuildingDraft } from './packBuildings.ts';
 import { assembleRings, isClosed } from './rings.ts';
 import { cleanPlaceName } from '@nukkad/shared';
+import { buildCompounds } from './compounds.ts';
 import { buildPlaces, knownPlace } from './places.ts';
 import type { KnownPlace, NamedComplex, PointPlace } from './places.ts';
 import { classifyArea, classifyLine } from './tags.ts';
@@ -175,7 +176,8 @@ export function buildPack(input: BuildPackInput): AreaPack {
   }
 
   const buildings = finishBuildings(outlines, parts);
-  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes);
+  const compounds = buildCompounds(complexes, lines, buildings, half);
+  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes, compounds);
   const attribution = terrain.flat ? [OSM_ATTRIBUTION] : [OSM_ATTRIBUTION, ELEVATION_ATTRIBUTION];
   return {
     v: PACK_VERSION,
@@ -191,6 +193,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
     areas,
     points,
     places,
+    compounds,
     stats: {
       places: places.length,
       realPlaces: places.filter((place) => place.real === 1).length,

@@ -96,6 +96,10 @@ export class Game {
   onRiding: ((riding: boolean) => void) | null = null;
   /** Called when the room moves to another place: (place name, who moved it). */
   onTravel: ((place: string, by: string) => void) | null = null;
+  /** Called about 10 times a second while riding/driving: (speed m/s, top speed, vehicle name), or null on foot. */
+  onSpeed: ((speed: number, max: number, label: string) => void) | null = null;
+  private speedClock = 0;
+  private lastSpeedShown = false;
   /** Called with the label of the Drive button ("Drive auto", "Get out") or null to hide it. */
   onDriveHint: ((label: string | null) => void) | null = null;
   private driving: ParkedVehicle | null = null;
@@ -459,6 +463,14 @@ export class Game {
         this.driveMesh.rotation.set(0, player.heading, player.lean);
       }
       this.updateDriveHint();
+      this.speedClock += dt;
+      if (this.speedClock > 0.1) {
+        this.speedClock = 0;
+        const v = player.vehicle;
+        if (v) this.onSpeed?.(player.rideSpeed, v.maxSpeed, v.label);
+        else if (this.lastSpeedShown) this.onSpeed?.(0, 0, '');
+        this.lastSpeedShown = v !== null;
+      }
       streamer.update(player.x, player.z, forwardX, forwardZ);
       this.sendClock += dt;
       if (this.net && this.sendClock >= 1 / TICK_HZ) {

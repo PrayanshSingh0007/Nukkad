@@ -1,6 +1,7 @@
 import { UNITS_PER_METRE, hash01, hash32 } from '@nukkad/shared';
 import { cleanPlaceName } from '@nukkad/shared';
-import type { PackBuilding, PackLine, PackPlace, PlaceKind } from '@nukkad/shared';
+import type { PackBuilding, PackCompound, PackLine, PackPlace, PlaceKind } from '@nukkad/shared';
+import { GATE_ARCH_BOTTOM, GATE_ARCH_HALF_DEPTH, GATE_ARCH_TOP } from '../buildings/compoundMesh.ts';
 import { distToSegment, pointInRing, ringCentroid, signedArea } from '../geom/polygon.ts';
 import type { OsmTags } from './osmTypes.ts';
 
@@ -162,6 +163,7 @@ export function buildPlaces(
   lines: PackLine[],
   half: number,
   complexes: NamedComplex[] = [],
+  compounds: PackCompound[] = [],
 ): PackPlace[] {
   const streets = lines
     .filter((line) => line.kind !== 'rail' && line.kind !== 'river' && line.kind !== 'stream' && line.kind !== 'footway' && line.kind !== 'steps')
@@ -222,7 +224,27 @@ export function buildPlaces(
   // Named housing complexes ("Assetz East Point"): a free-standing gate board by the road,
   // in front of the complex building closest to the road (even if that building has its own name).
   const gates: PackPlace[] = [];
+  // Walled societies: the name board sits on the front of the gate arch.
+  for (const compound of compounds) {
+    const { x, z, face, half: gateHalf } = compound.gate;
+    const a = (face * Math.PI) / 180;
+    const out = (GATE_ARCH_HALF_DEPTH + 0.03) * UNITS_PER_METRE;
+    const width = Math.min((gateHalf / UNITS_PER_METRE) * 2 + 0.6, 1.6 + compound.name.length * 0.28, 7.5);
+    gates.push({
+      kind: 'apartments',
+      x: Math.round(x + Math.sin(a) * out),
+      z: Math.round(z + Math.cos(a) * out),
+      y: Math.round((GATE_ARCH_BOTTOM + (GATE_ARCH_TOP - GATE_ARCH_BOTTOM - width / 5.33) / 2) * 10),
+      face,
+      w: Math.round(width * UNITS_PER_METRE),
+      seed: hash32(x, z),
+      real: 1,
+      name: compound.name,
+    });
+  }
+  const walled = new Set(compounds.map((compound) => compound.name));
   for (const complex of complexes) {
+    if (walled.has(complex.name)) continue;
     let best: Candidate | undefined;
     for (const c of candidates) {
       if (!pointInRing(c.cx, c.cz, complex.ring)) continue;

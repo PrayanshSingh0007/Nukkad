@@ -87,6 +87,25 @@ describe('test area: map → pack', () => {
     }
   });
 
+  it('walls in gated societies with an entrance gate where a road goes in', () => {
+    const assetz = pack.compounds?.find((c) => c.name === 'Assetz East Point');
+    expect(assetz).toBeDefined();
+    expect(assetz!.walls.length).toBeGreaterThan(40);
+    const half = pack.halfSize * UNITS_PER_METRE;
+    for (const compound of pack.compounds ?? []) {
+      expect(Math.abs(compound.gate.x)).toBeLessThan(half - 10);
+      expect(Math.abs(compound.gate.z)).toBeLessThan(half - 10);
+      // The road through the gate stays open: no wall piece within the opening.
+      const w = compound.walls;
+      for (let i = 0; i + 3 < w.length; i += 4) {
+        const mx = (w[i] + w[i + 2]) / 2;
+        const mz = (w[i + 1] + w[i + 3]) / 2;
+        expect(Math.hypot(mx - compound.gate.x, mz - compound.gate.z)).toBeGreaterThan(compound.gate.half * 0.9);
+      }
+    }
+    expect(pack.places.some((p) => p.name === 'Assetz East Point' && p.y > 40)).toBe(true); // name on the arch
+  });
+
   it('stays inside the download budget (150 KB zipped)', () => {
     expect(gz.length).toBeLessThan(150 * 1024);
   });

@@ -4,6 +4,7 @@ import type { Game, GameStatus } from '../game/game.ts';
 import { saveLook } from '../player/avatar/lookStore.ts';
 import { AvatarPanel } from './AvatarPanel.tsx';
 import { PlacesPanel } from './PlacesPanel.tsx';
+import { Speedometer } from './Speedometer.tsx';
 import { setAutojoin } from './api.ts';
 
 interface Props {
@@ -36,6 +37,7 @@ export function App({ game, initialLook, roomId }: Props) {
   const [riding, setRiding] = useState(false);
   const [driveLabel, setDriveLabel] = useState<string | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
+  const [speed, setSpeed] = useState<{ v: number; max: number; label: string } | null>(null);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
   const [look, setLook] = useState(initialLook);
@@ -47,6 +49,7 @@ export function App({ game, initialLook, roomId }: Props) {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
     game.onDriveHint = setDriveLabel;
+    game.onSpeed = (v, max, label) => setSpeed(max > 0 ? { v, max, label } : null);
     // The room is moving: show who is taking everyone where, then load the new place.
     game.onTravel = (place, by) => {
       setPlacesOpen(false);
@@ -99,6 +102,7 @@ export function App({ game, initialLook, roomId }: Props) {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
+      {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
       {status.phase === 'playing' && !panelOpen && driveLabel && (
         <button type="button" className="driveButton" onClick={() => game.toggleDrive()}>
           {driveLabel}

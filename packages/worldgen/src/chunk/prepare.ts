@@ -5,6 +5,7 @@ import { ringCentroid, signedArea } from '../geom/polygon.ts';
 import { scatterProps } from '../props/scatter.ts';
 import type { PropSet } from '../props/scatter.ts';
 import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
+import type { GateSpot } from '../buildings/compoundMesh.ts';
 import { buildRibbon } from '../roads/ribbon.ts';
 import { cloneTerrain, terrainFromPack } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
@@ -15,6 +16,9 @@ export interface ChunkBucket {
   buildings: PackBuilding[];
   runs: RibbonRun[];
   discs: RoadDisc[];
+  /** Compound wall pieces [ax, az, bx, bz, …] in metres, and society gates. */
+  walls: number[];
+  gates: GateSpot[];
 }
 
 /** A pack unpacked for fast chunk building. Made once per world, in the worker. */
@@ -51,6 +55,8 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     buildings: [],
     runs: [],
     discs: [],
+    walls: [],
+    gates: [],
   }));
   const chunkAt = (x: number, z: number): ChunkBucket => buckets[chunkIndexAt(half, chunksPerSide, x, z)];
 
@@ -95,6 +101,17 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
         if (!cutByEdge) chunkAt(x, z).discs.push({ kind: line.kind, x, z, radius: ribbon.halfWidth });
       }
     }
+  }
+
+  for (const compound of pack.compounds ?? []) {
+    const w = compound.walls;
+    for (let i = 0; i + 3 < w.length; i += 4) {
+      const piece = [w[i], w[i + 1], w[i + 2], w[i + 3]].map((v) => v / UNITS_PER_METRE);
+      chunkAt((piece[0] + piece[2]) / 2, (piece[1] + piece[3]) / 2).walls.push(...piece);
+    }
+    const g = compound.gate;
+    const gate = { x: g.x / UNITS_PER_METRE, z: g.z / UNITS_PER_METRE, face: g.face, half: g.half / UNITS_PER_METRE };
+    chunkAt(gate.x, gate.z).gates.push(gate);
   }
 
   return { pack, half, chunksPerSide, terrain, originalTerrain, buckets, props: scatterProps(pack, terrain) };

@@ -131,6 +131,16 @@ export interface PackStats {
   mappedLamps: number;
 }
 
+/** A gated society: its compound wall and entrance gate (pack units). */
+export interface PackCompound {
+  /** Real name from the map, shown on the gate arch. */
+  name: string;
+  /** Wall pieces as [ax, az, bx, bz, …], each at most 6 m long. */
+  walls: number[];
+  /** Centre of the entrance, the way it faces (degrees, like signs) and half its width. */
+  gate: { x: number; z: number; face: number; half: number };
+}
+
 export interface AreaPack {
   /** Pack format version. */
   v: number;
@@ -149,5 +159,7 @@ export interface AreaPack {
   points: PackPoints;
   /** Shops, schools, offices… with the spot where their sign hangs. Never any real name. */
   places: PackPlace[];
+  /** Gated societies (walls and gates). Older packs have none. */
+  compounds?: PackCompound[];
   stats: PackStats;
 }

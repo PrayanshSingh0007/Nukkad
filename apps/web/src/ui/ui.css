@@ -457,3 +457,71 @@ button {
 .credit {
   margin: 8px 0 0;
 }
+
+.speedo {
+  position: fixed;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(40, 46, 58, 0.92), rgba(16, 19, 26, 0.92));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.speedo svg {
+  position: absolute;
+  inset: 0;
+}
+
+.speedoTrack {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.speedoFill {
+  fill: none;
+  stroke: var(--sun);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: d 0.1s linear;
+}
+
+.speedoFill.hot {
+  stroke: #ff6b4a;
+}
+
+.speedoText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  line-height: 1;
+}
+
+.speedoText strong {
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.speedoText span {
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.speedoText small {
+  margin-top: 6px;
+  font-size: 9px;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
