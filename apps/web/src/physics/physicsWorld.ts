@@ -1,4 +1,4 @@
-import type { Collider, Ray, World } from '@dimforge/rapier3d';
+import type { Collider, Ray, RigidBody, World } from '@dimforge/rapier3d';
 import type { ChunkData, MeshData } from '@nukkad/worldgen';
 import { loadRapier } from './rapier.ts';
 import type { Rapier } from './rapier.ts';
@@ -15,6 +15,8 @@ export class PhysicsWorld {
   private terrain: Collider | null = null;
   private readonly ray: Ray;
   private boxes: Collider[] = [];
+  /** Moving solids (traffic): one kinematic body each, reused frame after frame. */
+  private movers: { body: RigidBody; collider: Collider; size: string }[] = [];
 
   /** Loads the WASM module (once) and creates an empty world. */
   static async create(): Promise<PhysicsWorld> {
@@ -82,6 +84,29 @@ export class PhysicsWorld {
         ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
       );
     });
+  }
+
+  /** Moves the traffic solids to where the vehicles are this frame. */
+  setMovers(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
+    const { ColliderDesc, RigidBodyDesc } = this.rapier;
+    boxes.forEach((b, i) => {
+      const size = `${b.hx},${b.hy},${b.hz}`;
+      let mover = this.movers[i];
+      if (!mover) {
+        const body = this.world.createRigidBody(RigidBodyDesc.kinematicPositionBased().setTranslation(b.x, b.y, b.z));
+        mover = { body, collider: this.world.createCollider(ColliderDesc.cuboid(b.hx, b.hy, b.hz), body), size };
+        this.movers[i] = mover;
+      } else if (mover.size !== size) {
+        this.world.removeCollider(mover.collider, false);
+        mover.collider = this.world.createCollider(ColliderDesc.cuboid(b.hx, b.hy, b.hz), mover.body);
+        mover.size = size;
+      }
+      const half = b.rotation / 2;
+      mover.body.setNextKinematicTranslation({ x: b.x, y: b.y, z: b.z });
+      mover.body.setNextKinematicRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) });
+    });
+    // Unused movers are parked far below the world.
+    for (let i = boxes.length; i < this.movers.length; i++) this.movers[i].body.setNextKinematicTranslation({ x: 0, y: -500, z: 0 });
   }
 
   get boxCount(): number {

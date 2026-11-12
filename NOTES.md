@@ -5,9 +5,17 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 ## Current status (2026-11-13)
 
 - **Owner's goal now (2026-11-13): "a Bengaluru open-world game like GTA" — an original game in that style, friendly, NO violence** (owner picked "Friendly, no violence"). Must-haves in their words: real Bengaluru apartments, schools, malls (e.g. "VR Bengaluru") where friends gather and go together; **drive any vehicle**; **live traffic & people**.
-- Order: drive any vehicle (DONE) → live traffic (left-hand driving) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
+- Order: drive any vehicle (DONE) → live traffic (DONE) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 112 green. Phone fps still unknown.
+
+## Live traffic (2026-11-13)
+
+- `packages/worldgen/src/traffic/routes.ts`: 40 seeded routes per area on trunk/primary/secondary/tertiary roads (≥ 6 m), linked where roads share OSM points; each route ≤ 2.5 km, driven out and back, **on the left** (India). Mix: 38 % two-wheelers, 20 % autos, 14 % hatchbacks, 11 % sedans, 11 % SUVs, 6 % buses; 8.5–12 m/s by road.
+- Position = route + **the room's shared server clock** (`remotes.clock.renderTime`), so friends see the same traffic with zero network cost (before joining, `Date.now()` is used).
+- A vehicle waits when you are 0–9 m in front of it in its lane — **only on your screen** (it falls behind its timetable there; friends' copies keep going). The 5 nearest are solid (kinematic Rapier boxes).
+- Parked vehicles moved off main roads (residential/living/service only) so they don't block lanes. Buses still wait at stops on main roads (traffic passes through them — TODO).
+- Drawn within 1.5 × the street-life radius; one draw call per vehicle type.
 
 ## Drive any vehicle (2026-11-13)
 

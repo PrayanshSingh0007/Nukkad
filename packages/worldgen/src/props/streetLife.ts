@@ -33,7 +33,7 @@ export interface StreetLife {
   stops: Float32Array;
 }
 
-const PARKING_STREETS = new Set<LineKind>(['residential', 'living', 'tertiary', 'service']);
+const PARKING_STREETS = new Set<LineKind>(['residential', 'living', 'service']); // main roads carry moving traffic
 const BUS_STREETS = new Set<LineKind>(['primary', 'secondary', 'tertiary']);
 const MAX_VEHICLES = 3000; // only the ones near the player are drawn
 const STOP_SPACING_M = 320;

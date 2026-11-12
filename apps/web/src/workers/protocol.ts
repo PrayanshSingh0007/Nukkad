@@ -1,5 +1,5 @@
 import type { PackPlace, PackStats } from '@nukkad/shared';
-import type { ChunkData, ChunkLod, MeshData, PropSet, TerrainMesh } from '@nukkad/worldgen';
+import type { ChunkData, ChunkLod, MeshData, PropSet, TerrainMesh, TrafficRoute } from '@nukkad/worldgen';
 
 /** The typed messages between the page (main thread) and the world worker. */
 
@@ -44,6 +44,7 @@ export interface ReadyMessage {
   water: MeshData | null;
   props: PropSet;
   places: PackPlace[];
+  traffic: TrafficRoute[];
 }
 
 export interface ChunkMessage {
