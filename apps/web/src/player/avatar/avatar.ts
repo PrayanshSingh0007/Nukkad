@@ -53,7 +53,7 @@ export class Avatar {
   /** Lean and riding offset are applied to this inner group. */
   readonly body = new THREE.Group();
   private readonly mesh: THREE.SkinnedMesh;
-  private readonly material: THREE.MeshLambertMaterial;
+  private readonly material: THREE.MeshStandardMaterial;
   private readonly bones: THREE.Bone[];
   private readonly shadowMaterial: THREE.MeshBasicMaterial;
   private phase = 0;
@@ -64,7 +64,8 @@ export class Avatar {
   private readonly scooter: ScooterModel;
 
   constructor(look: AvatarLook) {
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
+    // Soft sheen on skin, hair and cloth (players only; street crowds stay on the cheap material).
+    this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, metalness: 0 });
     const skeleton = buildSkeleton();
     this.bones = skeleton.bones;
     this.mesh = new THREE.SkinnedMesh(buildAvatarGeometry(look), this.material);

@@ -79,8 +79,8 @@ export function buildCompounds(complexes: NamedComplex[], lines: PackLine[], bui
     if (n < 3) continue;
     // Only real compounds: at least two buildings inside.
     let inside = 0;
-    for (const s of shapes) if (pointInRing(s.centre[0], s.centre[1], ring) && ++inside >= 2) break;
-    if (inside < 2) continue;
+    for (const s of shapes) if (pointInRing(s.centre[0], s.centre[1], ring)) inside++;
+    if (inside < (complex.minBuildings ?? 2)) continue;
 
     // Edges made by cutting at the world's border are not real walls (and never a gate).
     const onBorder = (e: number): boolean => {

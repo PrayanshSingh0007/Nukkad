@@ -105,7 +105,11 @@ describe('test area: map → pack', () => {
     }
     expect(pack.places.some((p) => p.name === 'Assetz East Point' && p.y > 40)).toBe(true); // name on the arch
     // A school mapped only as a campus outline still gets its name on its main building.
-    expect(pack.places.some((p) => p.name === 'GEAR Innovative International School' && p.kind === 'school')).toBe(true);
+    const gear = pack.places.find((p) => p.name === 'GEAR Innovative International School' && p.kind === 'school');
+    const amaranthine = pack.places.find((p) => p.name === 'Kumari Amaranthine Apartment');
+    expect(gear && amaranthine).toBeTruthy();
+    // It stands on its real campus, next to Kumari Amaranthine (owner's local knowledge).
+    expect(Math.hypot(gear!.x - amaranthine!.x, gear!.z - amaranthine!.z) / UNITS_PER_METRE).toBeLessThan(80);
   });
 
   it('stays inside the download budget (150 KB zipped)', () => {

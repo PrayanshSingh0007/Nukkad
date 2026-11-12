@@ -155,6 +155,8 @@ export interface NamedComplex {
   name: string;
   /** Outline in metres. */
   ring: number[];
+  /** Buildings that must stand inside before it gets a wall (default 2). */
+  minBuildings?: number;
 }
 
 /**
@@ -172,7 +174,7 @@ export function buildPlaces(
   half: number,
   complexes: NamedComplex[] = [],
   compounds: PackCompound[] = [],
-  campuses: Campus[] = [],
+  campuses: (Campus & { buildingId: number })[] = [],
 ): PackPlace[] {
   const streets = lines
     .filter((line) => line.kind !== 'rail' && line.kind !== 'river' && line.kind !== 'stream' && line.kind !== 'footway' && line.kind !== 'steps')
@@ -231,11 +233,9 @@ export function buildPlaces(
   }
 
   // Campuses ("GEAR Innovative International School" mapped as a school ground): the name goes
-  // on the biggest building inside — one without its own real name if there is one.
+  // on the building chosen for it (a real one inside, or a generated block — see campuses.ts).
   for (const campus of campuses) {
-    const inside = candidates.filter((c) => pointInRing(c.cx, c.cz, campus.ring));
-    const pick = (list: Candidate[]): Candidate | undefined => list.reduce<Candidate | undefined>((best, c) => (!best || c.area > best.area ? c : best), undefined);
-    const target = pick(inside.filter((c) => !c.real)) ?? pick(inside);
+    const target = candidates.find((c) => c.building.id === campus.buildingId);
     if (target) Object.assign(target, { kind: campus.kind, name: campus.name, real: true });
   }
 

@@ -7,6 +7,7 @@ import { draftBuilding, finishBuildings, quantizeRing } from './packBuildings.ts
 import type { BuildingDraft } from './packBuildings.ts';
 import { assembleRings, isClosed } from './rings.ts';
 import { cleanPlaceName } from '@nukkad/shared';
+import { settleCampuses } from './campuses.ts';
 import { buildCompounds } from './compounds.ts';
 import { buildPlaces, knownPlace } from './places.ts';
 import type { Campus, KnownPlace, NamedComplex, PointPlace } from './places.ts';
@@ -180,8 +181,13 @@ export function buildPack(input: BuildPackInput): AreaPack {
   }
 
   const buildings = finishBuildings(outlines, parts);
-  const compounds = buildCompounds(complexes, lines, buildings, half);
-  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes, compounds, campuses);
+  const namedBuildings = new Set([...placeOfBuilding].filter(([, known]) => known.name).map(([id]) => id));
+  const settled = settleCampuses(campuses, buildings, namedBuildings, lines, half);
+  buildings.push(...settled.added);
+  // Campuses are walled too (school and hospital compounds), with their name on the gate.
+  const walledAreas = [...complexes, ...settled.campuses.map((c) => ({ name: c.name, ring: c.ring, minBuildings: 1 }))];
+  const compounds = buildCompounds(walledAreas, lines, buildings, half);
+  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes, compounds, settled.campuses);
   const attribution = terrain.flat ? [OSM_ATTRIBUTION] : [OSM_ATTRIBUTION, ELEVATION_ATTRIBUTION];
   return {
     v: PACK_VERSION,
