@@ -5,8 +5,10 @@ export interface MeshData {
   normals: Int8Array;
   /** Vertex colours, 0–255, already in linear colour space. */
   colors: Uint8Array;
-  /** Two extra numbers per vertex (buildings: window column, floor). Absent when unused. */
+  /** Extra numbers per vertex (buildings: window column, floor, style · roads: across, along, half width). */
   extra?: Float32Array;
+  /** How many extra numbers each vertex has (0 when `extra` is absent). */
+  extraSize: number;
   indices: Uint16Array | Uint32Array;
 }
 
@@ -19,10 +21,10 @@ export class MeshBuilder {
   private readonly colors: number[] = [];
   private readonly extra: number[] = [];
   private readonly indices: number[] = [];
-  private readonly withExtra: boolean;
+  private readonly extraSize: number;
 
-  constructor(withExtra = false) {
-    this.withExtra = withExtra;
+  constructor(extraSize: 0 | 2 | 3 = 0) {
+    this.extraSize = extraSize;
   }
 
   get vertexCount(): number {
@@ -33,12 +35,13 @@ export class MeshBuilder {
     return this.indices.length / 3;
   }
 
-  addVertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, color: Rgb, e0 = 0, e1 = 0): number {
+  addVertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, color: Rgb, e0 = 0, e1 = 0, e2 = 0): number {
     const index = this.positions.length / 3;
     this.positions.push(x, y, z);
     this.normals.push(Math.round(nx * 127), Math.round(ny * 127), Math.round(nz * 127));
     this.colors.push(color[0], color[1], color[2]);
-    if (this.withExtra) this.extra.push(e0, e1);
+    if (this.extraSize === 2) this.extra.push(e0, e1);
+    else if (this.extraSize === 3) this.extra.push(e0, e1, e2);
     return index;
   }
 
@@ -64,8 +67,9 @@ export class MeshBuilder {
       normals: new Int8Array(this.normals),
       colors: new Uint8Array(this.colors),
       indices: this.vertexCount > 65535 ? new Uint32Array(this.indices) : new Uint16Array(this.indices),
+      extraSize: this.extraSize,
     };
-    if (this.withExtra) mesh.extra = new Float32Array(this.extra);
+    if (this.extraSize > 0) mesh.extra = new Float32Array(this.extra);
     return mesh;
   }
 }

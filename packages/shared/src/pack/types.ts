@@ -1,4 +1,4 @@
-import type { PackPlace } from '../places.ts';
+import type { PackPlace, PlaceKind } from '../places.ts';
 
 /**
  * The Area Pack: our own small file describing one place.
@@ -37,6 +37,8 @@ export interface PackBuilding {
   ring: number[];
   /** Courtyards. */
   holes?: number[][];
+  /** What the building is used for, when it is one of the area's places (shapes its front). */
+  use?: PlaceKind;
 }
 
 export type LineKind =

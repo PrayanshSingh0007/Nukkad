@@ -223,6 +223,7 @@ export function buildPlaces(
   for (const c of chosen.slice(0, MAX_PLACES)) {
     const sign = signSpot(c);
     if (!sign) continue;
+    c.building.use = c.kind;
     const big = c.kind === 'mall' || c.kind === 'supermarket' || c.kind === 'showroom';
     const width = Math.min(sign.length * 0.75, big ? 7 : 4.2);
     places.push({

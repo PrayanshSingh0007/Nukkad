@@ -22,26 +22,41 @@ function part(geometry: THREE.BufferGeometry, hex: number, x = 0, y = 0, z = 0):
 
 const TRUNK = 0x6b4f3a;
 
+/** Darker low down, lighter on top: leaves catch the sky. Applied to vertices above `from`. */
+function shadeByHeight(geometry: THREE.BufferGeometry, from: number, to: number): THREE.BufferGeometry {
+  const position = geometry.getAttribute('position');
+  const color = geometry.getAttribute('color');
+  for (let i = 0; i < position.count; i++) {
+    const y = position.getY(i);
+    if (y < from) continue;
+    const k = 0.72 + 0.45 * Math.min(1, (y - from) / (to - from));
+    color.setXYZ(i, color.getX(i) * k, color.getY(i) * k, color.getZ(i) * k);
+  }
+  return geometry;
+}
+
 /** Round tree: 28 triangles. */
 function roundTree(): THREE.BufferGeometry {
   const canopy = new THREE.IcosahedronGeometry(1.7, 0).scale(1, 0.85, 1);
-  return mergeGeometries([
-    part(new THREE.CylinderGeometry(0.16, 0.22, 2.4, 4, 1, true), TRUNK, 0, 1.2, 0),
-    part(canopy, 0x5d9a4a, 0, 3.4, 0),
-  ]);
+  return shadeByHeight(
+    mergeGeometries([part(new THREE.CylinderGeometry(0.16, 0.22, 2.4, 4, 1, true), TRUNK, 0, 1.2, 0), part(canopy, 0x5d9a4a, 0, 3.4, 0)]),
+    2.0,
+    4.9,
+  );
 }
 
 /** Tall tree: 20 triangles. */
 function tallTree(): THREE.BufferGeometry {
-  return mergeGeometries([
-    part(new THREE.CylinderGeometry(0.14, 0.2, 1.8, 4, 1, true), TRUNK, 0, 0.9, 0),
-    part(new THREE.ConeGeometry(1.25, 4.6, 6, 1), 0x4c8a4f, 0, 3.9, 0),
-  ]);
+  return shadeByHeight(
+    mergeGeometries([part(new THREE.CylinderGeometry(0.14, 0.2, 1.8, 4, 1, true), TRUNK, 0, 0.9, 0), part(new THREE.ConeGeometry(1.25, 4.6, 6, 1), 0x4c8a4f, 0, 3.9, 0)]),
+    1.6,
+    6.2,
+  );
 }
 
 /** Bush: 20 triangles. */
 function bush(): THREE.BufferGeometry {
-  return part(new THREE.IcosahedronGeometry(0.95, 0).scale(1, 0.7, 1), 0x6f9a52, 0, 0.5, 0);
+  return shadeByHeight(part(new THREE.IcosahedronGeometry(0.95, 0).scale(1, 0.7, 1), 0x6f9a52, 0, 0.5, 0), 0, 1.2);
 }
 
 /** Street lamp pole with its arm: 20 triangles. The arm points along +x. */

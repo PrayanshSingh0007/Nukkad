@@ -44,6 +44,8 @@ export interface Motion {
  * walk / idle / ride animation (made with maths, not animation files).
  */
 export class Avatar {
+  /** True when the sun casts real shadows: the soft blob under the feet is then hidden. */
+  static realShadows = false;
   /** Put this in the scene. Its position is the player's feet. */
   readonly object = new THREE.Group();
   /** Lean and riding offset are applied to this inner group. */
@@ -56,6 +58,7 @@ export class Avatar {
   private swing = 0;
   private idleTime = Math.random() * 10;
   private facingAngle = 0;
+  private blob: THREE.Mesh | null = null;
   private readonly scooter: ScooterModel;
 
   constructor(look: AvatarLook) {
@@ -66,6 +69,7 @@ export class Avatar {
     this.mesh.add(this.bones[BONE.hips]);
     this.mesh.bind(skeleton);
     this.mesh.frustumCulled = false; // bones move the mesh outside its resting box
+    this.mesh.castShadow = true;
     this.body.add(this.mesh);
     this.object.add(this.body);
     this.scooter = new ScooterModel(new THREE.Color(OUTFIT_COLORS[look.color]).getHex());
@@ -80,6 +84,7 @@ export class Avatar {
       polygonOffsetUnits: -4,
     });
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), this.shadowMaterial);
+    this.blob = shadow;
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.03;
     this.object.add(shadow);
@@ -109,6 +114,7 @@ export class Avatar {
   update(dt: number, x: number, y: number, z: number, speedOrMotion: number | Motion, heading: number | null = null, grounded = true): void {
     const motion: Motion = typeof speedOrMotion === 'number' ? { speed: speedOrMotion, heading, grounded } : speedOrMotion;
     this.object.position.set(x, y, z);
+    if (this.blob) this.blob.visible = !Avatar.realShadows;
     if (motion.heading !== null) {
       const difference = Math.atan2(Math.sin(motion.heading - this.facingAngle), Math.cos(motion.heading - this.facingAngle));
       this.facingAngle += difference * Math.min(1, dt * TURN_SPEED);

@@ -12,7 +12,13 @@ export interface Ribbon {
   /** [x0, z0, x1, z1, …] for each edge. */
   left: Float32Array;
   right: Float32Array;
+  /** Metres from the start of the line to each cross-section (for dashed lines). */
+  along: Float32Array;
+  /** Car roads get painted markings. */
+  markings: boolean;
 }
+
+const MARKED = new Set<LineKind>(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential']);
 
 /** Roads are cut into pieces no longer than this so they can follow the ground. */
 export const MAX_STEP_M = 6;
@@ -93,5 +99,7 @@ export function buildRibbon(kind: LineKind, ptsM: number[], width: number, maxSt
     right[i * 2] = x - sx * reach;
     right[i * 2 + 1] = z - sz * reach;
   }
-  return { kind, halfWidth, count, left, right };
+  const along = new Float32Array(count);
+  for (let i = 1; i < count; i++) along[i] = along[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]);
+  return { kind, halfWidth, count, left, right, along, markings: MARKED.has(kind) && width >= 5.5 };
 }

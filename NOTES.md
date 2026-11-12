@@ -5,10 +5,20 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 ## Current status (2026-11-12)
 
 - **Direction changed by the owner (2026-11-12): no Day-4 deadline; stay on the web; build "a real human world" of Bengaluru.** The new plan is PLAN.md §15 (steps L1–L6). Fable access lasts until 2026-11-16 — plan work around that and stay token-lean.
-- Phases 1–5 + the scooter are built and pushed. L1 (places + signs) is done; next is **L2 (graphics)**.
+- Phases 1–5 + the scooter are built and pushed. L1 (places + signs) and L2 (graphics) are done; next is **L3 (Blender asset kit)**.
 - Rejected on purpose: Unreal Engine (C++, big app download, no browser link, restart), native Rust/Bevy (restart, months). Already true: no Capacitor, no Electron; the physics engine (Rapier) is Rust compiled to WebAssembly.
 - What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
 - `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
+
+## L2 — graphics (2026-11-12)
+
+- **Sun shadows** on Medium (1024 px, ±35 m around you) and High (2048 px, ±70 m); Low keeps the blob shadow. The shadow area follows you, snapped to whole shadow pixels so edges don't crawl. Light comes from the sun by day and the moon at night (lifted to ≥ 14° so shadows never stretch forever).
+- Only trees near you cast shadows: invisible copies (≤ 250 per tree type, refreshed every 10 m) on layer 1, which only the sun's shadow pass draws. Without this, tree shadows cost 54k triangles.
+- **Facades** (`apps/web/src/world/materials.ts`): style per building from what it is used for (place) or its map type — house, apartments (slab edges), glass office/mall, shopfront with shutters on the ground floor, school/civic colour band, industrial strip windows; glass lighter at the top (sky reflection); grime near the ground. Offices have more lit windows at night.
+- **Roads**: dashed centre line on car roads ≥ 5.5 m, edge lines on roads ≥ 8.8 m, light kerb strip, asphalt grit noise. Paths have no markings.
+- **Ground**: soft blotches + grain (noise in the shader, no textures). **Water**: moving ripples + sun glint (none at night). **Trees**: darker below, lighter on top, gentle sway in the wind.
+- Pack format v5 (`building.use` = place kind, used for the facade).
+- Measured on the laptop at street level: Medium 32 draw calls / 118k triangles with shadows; High 30 / 117k. Phone fps still unknown.
 
 ## L1 — places (2026-11-12)
 

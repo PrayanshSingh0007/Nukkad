@@ -22,10 +22,14 @@ export interface RoadDisc {
 
 const DISC_SIDES = 6;
 
-function addGroundVertex(mesh: MeshBuilder, terrain: TerrainGrid, x: number, z: number, kind: LineKind): number {
+/**
+ * Extra numbers per vertex for the road shader: metres across from the centre line,
+ * metres along the road, and the half width (0 = no painted markings).
+ */
+function addGroundVertex(mesh: MeshBuilder, terrain: TerrainGrid, x: number, z: number, kind: LineKind, across = 0, along = 0, half = 0): number {
   const style = LINE_STYLES[kind];
   const [nx, ny, nz] = normalAt(terrain, x, z);
-  return mesh.addVertex(x, heightAt(terrain, x, z) + style.lift, z, nx, ny, nz, style.color);
+  return mesh.addVertex(x, heightAt(terrain, x, z) + style.lift, z, nx, ny, nz, style.color, across, along, half);
 }
 
 /**
@@ -37,8 +41,9 @@ export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: Terr
   let prevLeft = -1;
   let prevRight = -1;
   for (let i = from; i <= to; i = i === to ? to + 1 : Math.min(to, i + stride)) {
-    const left = addGroundVertex(mesh, terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1], ribbon.kind);
-    const right = addGroundVertex(mesh, terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1], ribbon.kind);
+    const half = ribbon.markings ? ribbon.halfWidth : 0;
+    const left = addGroundVertex(mesh, terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1], ribbon.kind, -ribbon.halfWidth, ribbon.along[i], half);
+    const right = addGroundVertex(mesh, terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1], ribbon.kind, ribbon.halfWidth, ribbon.along[i], half);
     if (i > from) {
       mesh.addTriangleFacing(prevLeft, left, prevRight, true);
       mesh.addTriangleFacing(prevRight, left, right, true);

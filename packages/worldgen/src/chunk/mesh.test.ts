@@ -52,7 +52,7 @@ describe('building mesh', () => {
   const box: PackBuilding = { id: 7, kind: 'house', h: 6.5, floors: 2, ring: [0, 0, 100, 0, 100, 80, 0, 80] };
 
   it('makes 2 triangles per wall plus the roof, all facing outwards', () => {
-    const builder = new MeshBuilder(true);
+    const builder = new MeshBuilder(3);
     appendBuilding(builder, box, terrain);
     const mesh = builder.finish() as MeshData;
     expect(mesh.indices.length / 3).toBe(10);
@@ -72,7 +72,7 @@ describe('building mesh', () => {
   });
 
   it('stands on the lowest ground under it and reaches below it', () => {
-    const builder = new MeshBuilder(true);
+    const builder = new MeshBuilder(3);
     appendBuilding(builder, box, terrain);
     const mesh = builder.finish() as MeshData;
     const ys = Array.from({ length: mesh.positions.length / 3 }, (_, v) => mesh.positions[v * 3 + 1]);
@@ -83,7 +83,7 @@ describe('building mesh', () => {
 
   it('cuts a courtyard out of the roof and walls it', () => {
     const withYard: PackBuilding = { ...box, holes: [[30, 30, 30, 50, 60, 50, 60, 30]] };
-    const builder = new MeshBuilder(true);
+    const builder = new MeshBuilder(3);
     appendBuilding(builder, withYard, terrain);
     expect(builder.triangleCount).toBe(buildingTriangleEstimate(withYard));
     expect(builder.triangleCount).toBe(16 + 8);
@@ -91,7 +91,7 @@ describe('building mesh', () => {
 
   it('gives floating parts an underside', () => {
     const canopy: PackBuilding = { ...box, kind: 'roof', h: 4, minH: 3.6, floors: 1 };
-    const builder = new MeshBuilder(true);
+    const builder = new MeshBuilder(3);
     appendBuilding(builder, canopy, terrain);
     expect(builder.triangleCount).toBe(12);
   });

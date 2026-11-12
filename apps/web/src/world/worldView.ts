@@ -8,6 +8,9 @@ import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { Signs } from './signs.ts';
 
+/** At most this many trees of each kind cast shadows at once. */
+const SHADOW_TREES = 250;
+
 export interface WorldViewOptions {
   /** How many trees to draw (the list is shuffled, so any prefix is evenly spread). */
   maxTrees: number;
@@ -16,12 +19,13 @@ export interface WorldViewOptions {
   anisotropy: number;
 }
 
-function meshToGeometry(mesh: MeshData): THREE.BufferGeometry {
+/** `extraName` = what the shader calls the extra numbers (aWin for buildings, aRoad for roads). */
+function meshToGeometry(mesh: MeshData, extraName = 'aWin'): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3, true));
   geometry.setAttribute('color', new THREE.BufferAttribute(mesh.colors, 3, true));
-  if (mesh.extra) geometry.setAttribute('aWin', new THREE.BufferAttribute(mesh.extra, 2));
+  if (mesh.extra) geometry.setAttribute(extraName, new THREE.BufferAttribute(mesh.extra, mesh.extraSize));
   geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
   geometry.computeBoundingSphere();
   return geometry;
@@ -36,6 +40,11 @@ export class WorldView {
   private readonly groundMap: THREE.DataTexture;
   private readonly chunks = new Map<string, THREE.Group>();
   private readonly treeMeshes: (THREE.InstancedMesh | null)[] = [];
+  /** Invisible copies of only the trees near you; they exist just to cast sun shadows (layer 1). */
+  private readonly shadowTrees: (THREE.InstancedMesh | null)[] = [];
+  private shadowTreesAt: [number, number] | null = null;
+  private treeLimit = 0;
+  private treePositions = new Float32Array(0);
   private treeVariants = new Uint8Array(0);
   private lampHeads: THREE.MeshBasicMaterial | null = null;
   private glow: THREE.InstancedMesh | null = null;
@@ -64,7 +73,9 @@ export class WorldView {
     terrainGeometry.setAttribute('uv', new THREE.BufferAttribute(ready.terrain.uvs, 2));
     terrainGeometry.setIndex(new THREE.BufferAttribute(ready.terrain.indices, 1));
     terrainGeometry.computeBoundingSphere();
-    this.group.add(new THREE.Mesh(terrainGeometry, this.materials.terrain));
+    const ground = new THREE.Mesh(terrainGeometry, this.materials.terrain);
+    ground.receiveShadow = true;
+    this.group.add(ground);
 
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
     this.addProps(ready.props);
@@ -88,8 +99,17 @@ export class WorldView {
   addChunk(chunk: ChunkData): void {
     const key = `${chunk.cx},${chunk.cz}`;
     const group = new THREE.Group();
-    if (chunk.buildings) group.add(new THREE.Mesh(meshToGeometry(chunk.buildings), this.materials.buildings));
-    if (chunk.ground) group.add(new THREE.Mesh(meshToGeometry(chunk.ground), this.materials.ground));
+    if (chunk.buildings) {
+      const buildings = new THREE.Mesh(meshToGeometry(chunk.buildings), this.materials.buildings);
+      buildings.castShadow = chunk.lod === 0; // far buildings are outside the shadow area anyway
+      buildings.receiveShadow = true;
+      group.add(buildings);
+    }
+    if (chunk.ground) {
+      const ground = new THREE.Mesh(meshToGeometry(chunk.ground, 'aRoad'), this.materials.ground);
+      ground.receiveShadow = true;
+      group.add(ground);
+    }
     this.removeChunk(key);
     this.chunks.set(key, group);
     this.group.add(group);
@@ -113,6 +133,35 @@ export class WorldView {
       if (mesh) mesh.count = counts[variant];
     });
     this.counts.trees = shown;
+    this.treeLimit = shown;
+    this.shadowTreesAt = null;
+  }
+
+  /** Refills the shadow-casting trees when you have moved more than 10 m. */
+  updateShadowTrees(x: number, z: number, range: number): void {
+    if (range <= 0) return;
+    const at = this.shadowTreesAt;
+    if (at && Math.hypot(at[0] - x, at[1] - z) < 10) return;
+    this.shadowTreesAt = [x, z];
+    const reach = range + 15;
+    const filled = [0, 0, 0];
+    const seen = [0, 0, 0];
+    const matrix = new THREE.Matrix4();
+    for (let t = 0; t < this.treeLimit; t++) {
+      const variant = this.treeVariants[t];
+      const index = seen[variant]++;
+      if (Math.abs(this.treePositions[t * 2] - x) > reach || Math.abs(this.treePositions[t * 2 + 1] - z) > reach) continue;
+      const source = this.treeMeshes[variant];
+      const target = this.shadowTrees[variant];
+      if (!source || !target || filled[variant] >= SHADOW_TREES) continue;
+      source.getMatrixAt(index, matrix);
+      target.setMatrixAt(filled[variant]++, matrix);
+    }
+    this.shadowTrees.forEach((mesh, variant) => {
+      if (!mesh) return;
+      mesh.count = filled[variant];
+      mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   setWireframe(on: boolean): void {
@@ -163,6 +212,11 @@ export class WorldView {
 
     const treeCount = props.trees.length / TREE_STRIDE;
     this.treeVariants = new Uint8Array(treeCount);
+    this.treePositions = new Float32Array(treeCount * 2);
+    for (let t = 0; t < treeCount; t++) {
+      this.treePositions[t * 2] = props.trees[t * TREE_STRIDE];
+      this.treePositions[t * 2 + 1] = props.trees[t * TREE_STRIDE + 2];
+    }
     const perVariant = [0, 0, 0];
     for (let t = 0; t < treeCount; t++) {
       this.treeVariants[t] = props.trees[t * TREE_STRIDE + 5];
@@ -171,7 +225,15 @@ export class WorldView {
     models.trees.forEach((geometry, variant) => {
       this.treeMeshes[variant] = null;
       if (perVariant[variant] === 0) return;
-      const mesh = new THREE.InstancedMesh(geometry, this.materials.props, perVariant[variant]);
+      const mesh = new THREE.InstancedMesh(geometry, this.materials.trees, perVariant[variant]);
+      mesh.receiveShadow = true;
+      const shadow = new THREE.InstancedMesh(geometry, this.materials.trees, SHADOW_TREES);
+      shadow.count = 0;
+      shadow.castShadow = true;
+      shadow.frustumCulled = false;
+      shadow.layers.set(1); // the main camera never draws layer 1, the sun's shadow pass does
+      this.shadowTrees[variant] = shadow;
+      this.group.add(shadow);
       let index = 0;
       for (let t = 0; t < treeCount; t++) {
         const o = t * TREE_STRIDE;
@@ -255,6 +317,11 @@ export class WorldView {
       mesh.computeBoundingSphere();
       this.group.add(mesh);
     }
+  }
+
+  /** Moves water and wind. Call every frame. */
+  update(dt: number): void {
+    this.materials.time.value = (this.materials.time.value + dt) % 3600;
   }
 
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */

@@ -15,6 +15,46 @@ const MIN_WINDOW_WALL_M = 1.6;
 
 const toMetres = (ring: number[]): number[] => ring.map((value) => value / UNITS_PER_METRE);
 
+/**
+ * Facade style, read by the building shader: 0 house · 1 apartments · 2 glass office ·
+ * 3 shops on the ground floor · 4 school / civic · 5 industrial.
+ */
+export function facadeStyle(building: PackBuilding): number {
+  switch (building.use) {
+    case 'mall':
+    case 'office':
+    case 'hotel':
+    case 'bank':
+      return 2;
+    case 'school':
+    case 'college':
+    case 'clinic':
+      return 4;
+    case undefined:
+      break;
+    default:
+      return 3; // a shop of some kind: shopfront on the ground floor
+  }
+  switch (building.kind) {
+    case 'house':
+      return 0;
+    case 'apartments':
+      return 1;
+    case 'commercial':
+      return building.floors >= 3 ? 2 : 3;
+    case 'retail':
+      return 3;
+    case 'civic':
+    case 'religious':
+      return 4;
+    case 'industrial':
+    case 'shed':
+      return 5;
+    default:
+      return building.floors >= 4 ? 1 : 0;
+  }
+}
+
 /** Triangles a building adds: 2 per wall edge + roof (+ underside when it floats). */
 export function buildingTriangleEstimate(building: PackBuilding): number {
   let points = building.ring.length / 2;
@@ -40,6 +80,7 @@ function addWalls(
   floorBottom: number,
   floorTop: number,
   color: Rgb,
+  style: number,
 ): void {
   const n = ring.length;
   for (let i = 0; i < n; i += 2) {
@@ -55,10 +96,10 @@ function addWalls(
     const nx = dz / length;
     const nz = -dx / length;
     const columns = length < MIN_WINDOW_WALL_M ? 0 : Math.max(1, Math.round(length / WINDOW_SPACING_M));
-    const a = mesh.addVertex(ax, yBottom, az, nx, 0, nz, color, 0, floorBottom);
-    const b = mesh.addVertex(bx, yBottom, bz, nx, 0, nz, color, columns, floorBottom);
-    const c = mesh.addVertex(bx, yTop, bz, nx, 0, nz, color, columns, floorTop);
-    const d = mesh.addVertex(ax, yTop, az, nx, 0, nz, color, 0, floorTop);
+    const a = mesh.addVertex(ax, yBottom, az, nx, 0, nz, color, 0, floorBottom, style);
+    const b = mesh.addVertex(bx, yBottom, bz, nx, 0, nz, color, columns, floorBottom, style);
+    const c = mesh.addVertex(bx, yTop, bz, nx, 0, nz, color, columns, floorTop, style);
+    const d = mesh.addVertex(ax, yTop, az, nx, 0, nz, color, 0, floorTop, style);
     mesh.addTriangle(a, c, b);
     mesh.addTriangle(a, d, c);
   }
@@ -88,8 +129,9 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   const floorBottom = floats ? 0 : -WALL_DEPTH_M / floorHeight;
   const { wall, roof } = buildingColors(building);
 
-  addWalls(mesh, ring, bottom, top, floorBottom, building.floors, wall);
-  for (const hole of holes) addWalls(mesh, hole, bottom, top, floorBottom, building.floors, wall);
+  const style = facadeStyle(building) + 1; // stored +1: 0 means "no facade data"
+  addWalls(mesh, ring, bottom, top, floorBottom, building.floors, wall, style);
+  for (const hole of holes) addWalls(mesh, hole, bottom, top, floorBottom, building.floors, wall, style);
 
   // Roof: cut the outline (minus courtyards) into triangles.
   const flat = ring.slice();
@@ -101,7 +143,7 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   const triangles = earcut(flat, holeStarts, 2);
   const addCap = (y: number, up: boolean, color: Rgb): void => {
     const first = mesh.vertexCount;
-    for (let i = 0; i < flat.length; i += 2) mesh.addVertex(flat[i], y, flat[i + 1], 0, up ? 1 : -1, 0, color, -1, -1);
+    for (let i = 0; i < flat.length; i += 2) mesh.addVertex(flat[i], y, flat[i + 1], 0, up ? 1 : -1, 0, color, -1, -1, -1);
     for (let i = 0; i < triangles.length; i += 3) {
       mesh.addTriangleFacing(first + triangles[i], first + triangles[i + 1], first + triangles[i + 2], up);
     }

@@ -36,14 +36,14 @@ export function buildChunk(world: PreparedWorld, cx: number, cz: number, lod: Ch
   if (!bucket) throw new Error(`No chunk at ${cx},${cz}`);
   const far = lod === 1;
 
-  const ground = new MeshBuilder();
+  const ground = new MeshBuilder(3);
   for (const run of bucket.runs) {
     if (!far || run.ribbon.halfWidth * 2 >= FAR_MIN_ROAD_WIDTH_M) appendRibbonRun(ground, run, world.terrain, far ? FAR_ROAD_STRIDE : 1);
   }
   if (!far) for (const disc of bucket.discs) appendDisc(ground, disc, world.terrain);
 
   // Far buildings have no window data (the shader then draws plain walls).
-  const buildings = new MeshBuilder(!far);
+  const buildings = new MeshBuilder(far ? 0 : 3);
   const budget = (far ? MAX_FAR_CHUNK_TRIANGLES : MAX_CHUNK_TRIANGLES) - ground.triangleCount;
   let planned = 0;
   let skippedBuildings = 0;

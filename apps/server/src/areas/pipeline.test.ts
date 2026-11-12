@@ -34,7 +34,7 @@ function checkMesh(mesh: MeshData | null): number {
   const vertices = mesh.positions.length / 3;
   expect(mesh.normals.length).toBe(vertices * 3);
   expect(mesh.colors.length).toBe(vertices * 3);
-  if (mesh.extra) expect(mesh.extra.length).toBe(vertices * 2);
+  if (mesh.extra) expect(mesh.extra.length).toBe(vertices * mesh.extraSize);
   expect(mesh.indices.length % 3).toBe(0);
   let maxIndex = 0;
   for (const index of mesh.indices) if (index > maxIndex) maxIndex = index;

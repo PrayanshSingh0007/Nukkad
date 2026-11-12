@@ -69,6 +69,8 @@ export class Atmosphere {
   night = 0;
   /** The place's local clock, for the overlay. */
   clock = '';
+  /** Direction the light comes from (sun by day, moon by night), unit length. */
+  readonly lightDir = new THREE.Vector3(0, 1, 0);
   /** Hours on the place's clock to show instead of now (debug slider and, later, photo mode). */
   override: number | null = null;
   private readonly sun: THREE.DirectionalLight;
@@ -131,7 +133,9 @@ export class Atmosphere {
     this.fog.color.copy(l.horizon);
     this.sun.color.copy(l.light);
     this.sun.intensity = l.lightPower;
-    this.sun.position.copy(degrees > -4 ? sunDir : moonDir);
+    this.lightDir.copy(degrees > -4 ? sunDir : moonDir);
+    // Very low light would make endless shadows; lift it a little.
+    if (this.lightDir.y < 0.25) this.lightDir.setY(0.25).normalize();
     this.ambient.color.copy(l.ambientSky);
     this.ambient.groundColor.copy(l.ambientGround);
     this.ambient.intensity = l.ambientPower;

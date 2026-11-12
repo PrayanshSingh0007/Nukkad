@@ -9,6 +9,7 @@ import { StatsMeter, formatStats } from '../debug/statsHud.ts';
 import { NetClient } from '../net/netClient.ts';
 import type { NetStatus } from '../net/netClient.ts';
 import { RemotePlayers } from '../net/remotePlayers.ts';
+import { Avatar } from '../player/avatar/avatar.ts';
 import { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { CameraRig } from '../player/cameraRig.ts';
 import { PlayerInput } from '../player/input.ts';
@@ -89,6 +90,8 @@ export class Game {
     this.rig = new CameraRig(this.view3d.camera);
     this.remotes = new RemotePlayers(this.view3d.scene);
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
+    this.view3d.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.view3d.scene.add(this.view3d.sun.target);
     this.overlay = new DebugOverlay(
       options.overlay,
       options.logo,
@@ -222,8 +225,57 @@ export class Game {
     this.view3d.camera.far = quality.viewDistance + 80;
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
+    this.applyShadows(quality.shadowSize, quality.shadowRange);
     if (this.streamer) this.streamer.settings = this.streamSettings();
     this.appliedPixelRatio = 0; // re-applied on the next frame
+  }
+
+  /** Sun shadows: one shadow picture that follows you. Off on Low (blob shadows instead). */
+  private applyShadows(size: number, range: number): void {
+    const renderer = this.view3d.renderer;
+    const sun = this.view3d.sun;
+    const on = size > 0;
+    const changed = renderer.shadowMap.enabled !== on || sun.shadow.mapSize.x !== size;
+    renderer.shadowMap.enabled = on;
+    sun.castShadow = on;
+    Avatar.realShadows = on;
+    if (!on || !changed) return;
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    sun.shadow.mapSize.set(size, size);
+    const camera = sun.shadow.camera;
+    camera.left = -range;
+    camera.right = range;
+    camera.top = range;
+    camera.bottom = -range;
+    camera.near = 1;
+    camera.far = 400;
+    camera.updateProjectionMatrix();
+    camera.layers.set(0);
+    camera.layers.enable(1); // layer 1 = the shadow-only copies of nearby trees
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.04;
+    // Materials must be rebuilt once to start (or stop) reading shadows.
+    this.view3d.scene.traverse((object) => {
+      const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      for (const m of Array.isArray(material) ? material : material ? [material] : []) m.needsUpdate = true;
+    });
+  }
+
+  /** Keeps the shadow area centred on you, snapped to whole shadow pixels so edges don't crawl. */
+  private placeSun(x: number, y: number, z: number): void {
+    const sun = this.view3d.sun;
+    const quality = QUALITY[this.level];
+    const dir = this.atmosphere.lightDir;
+    if (quality.shadowSize > 0) {
+      const texel = (2 * quality.shadowRange) / quality.shadowSize;
+      x = Math.round(x / texel) * texel;
+      y = Math.round(y / texel) * texel;
+      z = Math.round(z / texel) * texel;
+    }
+    sun.target.position.set(x, y, z);
+    sun.position.set(x + dir.x * 150, y + dir.y * 150, z + dir.z * 150);
+    sun.target.updateMatrixWorld();
   }
 
   private setStatus(phase: GameStatus['phase'], message: string): void {
@@ -319,6 +371,12 @@ export class Game {
 
     this.atmosphere.update(dt, this.view3d.camera);
     world?.setNight(this.atmosphere.night);
+    world?.update(dt);
+    if (player) {
+      this.placeSun(player.x, player.y, player.z);
+      world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
+    }
+    else if (ready) this.placeSun(ready.info.spawn[0], 0, ready.info.spawn[1]);
 
     const pixelRatio = Math.min(window.devicePixelRatio, QUALITY[this.level].maxPixelRatio) * this.governor.renderScale;
     if (Math.abs(pixelRatio - this.appliedPixelRatio) > 0.01) {
