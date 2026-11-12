@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { SURFACE_GLSL } from './surfaces.ts';
+import type { SurfaceUniforms } from './surfaces.ts';
 
 /**
  * The few materials the whole world shares. Fewer materials = fewer draw calls.
@@ -31,13 +33,32 @@ const NOISE_GLSL = /* glsl */ `
   }
 `;
 
-/** Passes the world position to the fragment shader. */
-function addWorldPosition(shader: THREE.WebGLProgramParametersWithUniforms): void {
+/** Passes the world position (and world normal) to the fragment shader, plus the photo textures. */
+function addWorldPosition(shader: THREE.WebGLProgramParametersWithUniforms, surfaces?: SurfaceUniforms): void {
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nvarying vec3 vNkWorld;')
-    .replace('#include <project_vertex>', '#include <project_vertex>\nvNkWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vNkWorld;\n${NOISE_GLSL}`);
+    .replace('#include <common>', '#include <common>\nvarying vec3 vNkWorld;\nvarying vec3 vNkNormal;')
+    .replace(
+      '#include <project_vertex>',
+      '#include <project_vertex>\nvNkWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNkNormal = normalize(mat3(modelMatrix) * objectNormal);',
+    );
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vNkWorld;\nvarying vec3 vNkNormal;\n${NOISE_GLSL}\n${SURFACE_GLSL}`);
+  if (surfaces) Object.assign(shader.uniforms, surfaces);
 }
+
+/** Walls get painted plaster, roofs get worn concrete — in world space, keeping the map colours. */
+const BUILDING_PHOTO_GLSL = /* glsl */ `
+  if (uTexOn > 0.5) {
+    vec3 n = normalize(vNkNormal);
+    if (abs(n.y) > 0.6) {
+      vec3 t = texture2D(uRoof, vNkWorld.xz / 5.0).rgb / uRoofAvg;
+      diffuseColor.rgb *= mix(vec3(1.0), t, 0.85);
+    } else {
+      vec2 uv = vec2(vNkWorld.x * abs(n.z) + vNkWorld.z * abs(n.x), vNkWorld.y) / 3.2;
+      vec3 t = texture2D(uPlaster, uv).rgb / uPlasterAvg;
+      diffuseColor.rgb *= mix(vec3(1.0), t, 0.75);
+    }
+  }
+`;
 
 /**
  * Facades. Each building vertex carries (window column, floor, style); the shader draws
@@ -76,15 +97,20 @@ const FACADE_GLSL = /* glsl */ `
     if (style == 4) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.3, 0.2), smoothstep(0.86 - fw.y, 0.88 + fw.y, cell.y) * fade);
     // Grime: walls get a little darker near the ground.
     diffuseColor.rgb *= 0.82 + 0.18 * smoothstep(-0.2, 0.4, vWin.y);
-    float lit = step(style == 2 ? 0.4 : 0.6, fract(tone * 7.13 + id.x * 0.37));
+    float lit = step(style == 2 ? 0.62 : 0.6, fract(tone * 7.13 + id.x * 0.37));
     nkGlow = pane * lit * uNight;
   }
 `;
 
 /** Road markings from (metres across, metres along, half width), plus asphalt grit. */
 const ROAD_GLSL = /* glsl */ `
-  float grit = nkNoise(vNkWorld.xz * 1.7) * 0.6 + nkNoise(vNkWorld.xz * 7.0) * 0.4;
-  diffuseColor.rgb *= 0.9 + 0.18 * grit;
+  if (uTexOn > 0.5) {
+    vec3 t = texture2D(uAsphalt, vNkWorld.xz / 3.5).rgb / uAsphaltAvg;
+    diffuseColor.rgb *= mix(vec3(1.0), t, 0.9);
+  } else {
+    float grit = nkNoise(vNkWorld.xz * 1.7) * 0.6 + nkNoise(vNkWorld.xz * 7.0) * 0.4;
+    diffuseColor.rgb *= 0.9 + 0.18 * grit;
+  }
   if (vRoad.z > 0.0) {
     float across = abs(vRoad.x);
     float fw = fwidth(vRoad.x) + 0.001;
@@ -97,46 +123,61 @@ const ROAD_GLSL = /* glsl */ `
   }
 `;
 
-function facades(material: THREE.MeshLambertMaterial, night: { value: number }): void {
+function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = night;
+    addWorldPosition(shader, surfaces);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWin;\nuniform float uNight;')
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${FACADE_GLSL}`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.78, 0.45) * nkGlow * 1.4;');
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\n${FACADE_GLSL}`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.74, 0.42) * nkGlow * 0.55;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-2';
+  material.customProgramCacheKey = () => 'nukkad-facades-3';
 }
 
-function roads(material: THREE.MeshLambertMaterial): void {
+function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {
   material.onBeforeCompile = (shader) => {
-    addWorldPosition(shader);
+    addWorldPosition(shader, surfaces);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aRoad;\nvarying vec3 vRoad;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRoad = aRoad;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vRoad;')
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${ROAD_GLSL}`);
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${ROAD_GLSL}`)
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+         if (uTexOn > 0.5) {
+           vec3 tn = texture2D(uAsphaltNormal, vNkWorld.xz / 3.5).xyz * 2.0 - 1.0;
+           vec3 worldNormal = normalize(vec3(tn.x * 0.8, tn.z, -tn.y * 0.8));
+           normal = normalize((viewMatrix * vec4(worldNormal, 0.0)).xyz);
+         }`,
+      );
   };
-  material.customProgramCacheKey = () => 'nukkad-roads-1';
+  material.customProgramCacheKey = () => 'nukkad-roads-2';
 }
 
 /** Breaks up the flat ground colour with soft blotches and fine grain. */
-function groundDetail(material: THREE.MeshLambertMaterial): void {
+function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {
   material.onBeforeCompile = (shader) => {
-    addWorldPosition(shader);
+    addWorldPosition(shader, surfaces);
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
        float blotch = nkNoise(vNkWorld.xz * 0.08) * 0.6 + nkNoise(vNkWorld.xz * 0.6) * 0.4;
-       float grain = nkNoise(vNkWorld.xz * 4.0);
-       diffuseColor.rgb *= 0.86 + 0.2 * blotch + 0.08 * grain;`,
+       diffuseColor.rgb *= 0.88 + 0.18 * blotch;
+       if (uTexOn > 0.5) {
+         vec3 soil = texture2D(uSoil, vNkWorld.xz / 6.0).rgb / uSoilAvg;
+         diffuseColor.rgb *= mix(vec3(1.0), vec3(dot(soil, vec3(0.333))), 0.6);
+       } else {
+         diffuseColor.rgb *= 0.94 + 0.08 * nkNoise(vNkWorld.xz * 4.0);
+       }`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-1';
+  material.customProgramCacheKey = () => 'nukkad-ground-2';
 }
 
 /** Moving ripples and a sun glint on lakes and pools. */
@@ -180,16 +221,16 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }): voi
   material.customProgramCacheKey = () => 'nukkad-wind-1';
 }
 
-export function createMaterials(groundMap: THREE.Texture, windows: boolean): WorldMaterials {
+export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms): WorldMaterials {
   const night = { value: 0 };
   const time = { value: 0 };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
-  groundDetail(terrain);
+  groundDetail(terrain, surfaces);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) facades(buildings, night);
+  if (windows) facades(buildings, night, surfaces);
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  roads(ground);
+  roads(ground, surfaces);
   const water = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   waterRipples(water, time, night);
   const props = new THREE.MeshLambertMaterial({ vertexColors: true });

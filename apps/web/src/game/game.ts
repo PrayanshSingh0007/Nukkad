@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { CHUNK_SIZE, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
@@ -64,6 +68,8 @@ export class Game {
   private world: WorldView | null = null;
   private streetLife: StreetLifeView | null = null;
   private readonly reflections: THREE.Texture;
+  /** High only: renders through a glow pass. */
+  private composer: EffectComposer | null = null;
   private ready: ReadyMessage | null = null;
   private streamer: Streamer | null = null;
   private player: LocalPlayer | null = null;
@@ -114,7 +120,10 @@ export class Game {
       const lines = formatStats(stats, this.debugLines());
       this.overlay.update(lines, buildReport(this.view3d.renderer, lines), this.level);
     });
-    window.addEventListener('resize', () => this.view3d.resize());
+    window.addEventListener('resize', () => {
+      this.view3d.resize();
+      this.appliedPixelRatio = 0; // the glow pass resizes on the next frame
+    });
     window.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement | null;
       if (event.code === 'KeyR' && target?.tagName !== 'INPUT') this.toggleRide();
@@ -196,6 +205,7 @@ export class Game {
       this.world = new WorldView(ready, {
         maxTrees: settings.maxTrees,
         windows: true,
+        photoSurfaces: settings.photo,
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
@@ -238,6 +248,7 @@ export class Game {
     this.world?.setTreeLimit(quality.maxTrees);
     this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
+    this.applyBloom(quality.bloom);
     if (this.streamer) this.streamer.settings = this.streamSettings();
     this.appliedPixelRatio = 0; // re-applied on the next frame
   }
@@ -272,6 +283,25 @@ export class Game {
       const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       for (const m of Array.isArray(material) ? material : material ? [material] : []) m.needsUpdate = true;
     });
+  }
+
+  /** The glow pass (High). Bright things over the threshold get a soft halo. */
+  private applyBloom(on: boolean): void {
+    if (!on) {
+      this.composer?.dispose();
+      this.composer = null;
+      return;
+    }
+    if (this.composer) return;
+    const { renderer, scene, camera } = this.view3d;
+    const size = renderer.getSize(new THREE.Vector2());
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(renderer, target);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 1.0));
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+    this.appliedPixelRatio = 0; // sizes are set on the next frame
   }
 
   /** Keeps the shadow area centred on you, snapped to whole shadow pixels so edges don't crawl. */
@@ -397,9 +427,12 @@ export class Game {
     if (Math.abs(pixelRatio - this.appliedPixelRatio) > 0.01) {
       this.view3d.renderer.setPixelRatio(pixelRatio);
       this.view3d.resize();
+      this.composer?.setPixelRatio(pixelRatio);
+      this.composer?.setSize(window.innerWidth, window.innerHeight);
       this.appliedPixelRatio = pixelRatio;
     }
-    this.view3d.renderer.render(this.view3d.scene, this.view3d.camera);
+    if (this.composer) this.composer.render(dt);
+    else this.view3d.renderer.render(this.view3d.scene, this.view3d.camera);
     this.meter.frame(dtMs);
   }
 

@@ -15,6 +15,9 @@ export interface GameScene {
 /** Renderer, sky colour, fog and the two lights. (The real sky and day-night arrive in Phase 5.) */
 export function createGameScene(canvas: HTMLCanvasElement, options: { antialias: boolean }): GameScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: options.antialias, powerPreference: 'high-performance' });
+  // Film-style colour: bright highlights roll off softly instead of clipping to white.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);

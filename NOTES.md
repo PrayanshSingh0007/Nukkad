@@ -10,6 +10,14 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
 - `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
 
+## Look overhaul (2026-11-13) — owner: "make it cooler, AAA"
+
+- Owner chose "the most realistic options possible" + "cinematic on High only".
+- **Photo-scanned CC0 textures** (Poly Haven, 3.1 MB, Medium/High only, `apps/web/src/world/surfaces.ts`): asphalt with a normal map on roads, painted plaster on walls, worn concrete on roofs, dry soil on the ground — laid in world space (no UVs needed) and normalised by each photo's average colour, so map colours are kept.
+- **Film-style tone mapping** (ACES, exposure 1.15) on every level; the sky is excluded (`toneMapped: false`) or it washes out.
+- **Glow pass on High** (UnrealBloom 0.22 / 0.4 / threshold 1.0, 4× MSAA half-float target). First try at 0.35/0.92 blew night windows into fog — window light is now 0.55 and offices light ~38 % of windows.
+- **Realistic cars are NOT available for free without an account**: Poly Haven has no cars, Kenney/Quaternius are stylised. The most realistic route is CC-BY Sketchfab models the owner downloads with their own account into `apps/web/public/models/<name>.glb` (names: hatchback, sedan, suv, auto, two_wheeler, bus, stall, bus_stop) — the loader already uses a .glb only when no code model exists, so that priority must be flipped when real files arrive.
+
 ## L3 — street life (2026-11-13)
 
 - **Blender could not be used:** the MCP add-on never listened on port 9876, headless Blender crashes in Claude's sandbox (Metal GPU blocked), and the owner's paste of the Python one-liner did not work. The owner said to use something else. `tools/blender/build_assets.py` stays in the repo (builds the same 8 models in Blender) for later; any `public/models/<name>.glb` is only used for names that have no code model.

@@ -69,6 +69,7 @@ export class Sky {
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
+      toneMapped: false, // the sky colours are already picked for the screen
     });
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(10, 24, 12), material);
     this.mesh.frustumCulled = false;

@@ -43,6 +43,19 @@ https://github.com/tilezen/joerd/blob/master/docs/attribution.md
 | typescript 7.0.2 | type checking | Apache-2.0 |
 | @types/three, @types/node, @types/express, @types/tz-lookup | type definitions | MIT |
 
+## Surface textures (CC0)
+
+Photo-scanned textures from **Poly Haven** (https://polyhaven.com), licence **CC0** (public domain),
+1K JPEG, in `apps/web/public/textures/`:
+
+| File | Poly Haven asset |
+|---|---|
+| asphalt_diff.jpg, asphalt_nor.jpg | asphalt_02 |
+| plaster_diff.jpg | beige_wall_001 (diffuse) |
+| plaster_nor.jpg | beige_wall_001 (normal, not used yet) |
+| roof_diff.jpg | concrete_floor_worn_001 |
+| soil_diff.jpg | brown_mud_dry |
+
 ## Our own models
 
 All vehicles, carts, bus stops, avatars and props are built by Nukkad's own code

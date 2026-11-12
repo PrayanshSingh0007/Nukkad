@@ -7,6 +7,7 @@ import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { Signs } from './signs.ts';
+import { createSurfaceUniforms, loadSurfaces } from './surfaces.ts';
 
 /** At most this many trees of each kind cast shadows at once. */
 const SHADOW_TREES = 250;
@@ -15,6 +16,8 @@ export interface WorldViewOptions {
   /** How many trees to draw (the list is shuffled, so any prefix is evenly spread). */
   maxTrees: number;
   windows: boolean;
+  /** Photo-scanned surface detail (Medium and High). */
+  photoSurfaces?: boolean;
   /** Sharper ground texture at flat angles; 1 = off. */
   anisotropy: number;
 }
@@ -65,7 +68,9 @@ export class WorldView {
     this.groundMap.generateMipmaps = true;
     this.groundMap.anisotropy = options.anisotropy;
     this.groundMap.needsUpdate = true;
-    this.materials = createMaterials(this.groundMap, options.windows);
+    const surfaces = createSurfaceUniforms();
+    this.materials = createMaterials(this.groundMap, options.windows, surfaces);
+    if (options.photoSurfaces) void loadSurfaces(surfaces, options.anisotropy);
 
     const terrainGeometry = new THREE.BufferGeometry();
     terrainGeometry.setAttribute('position', new THREE.BufferAttribute(ready.terrain.positions, 3));
