@@ -24,6 +24,7 @@ interface Connection {
   slot: number;
   stateBucket: TokenBuckets;
   jsonBucket: TokenBuckets;
+  travelBucket: TokenBuckets;
   dropped: number;
 }
 
@@ -104,6 +105,7 @@ export class RealtimeHub {
       slot: -1,
       stateBucket: new TokenBuckets(60, 20 * 60), // 4 s of catch-up after a network stall
       jsonBucket: new TokenBuckets(20, 10 * 60),
+      travelBucket: new TokenBuckets(2, 4), // moving the whole room: a couple at once, then 4 a minute
       dropped: 0,
     };
     this.connections.add(connection);
@@ -164,6 +166,14 @@ export class RealtimeHub {
       this.send(c.socket, { t: 'welcome', slot: c.slot, token: result.member.token, room: room!.info, players: rooms.players(message.room) });
       if (!result.rejoined) this.toRoom(message.room, { t: 'joined', player: { slot: c.slot, name: result.member.name, look: result.member.look } }, c);
       else this.toRoom(message.room, { t: 'look', slot: c.slot, look: result.member.look }, c);
+    } else if (message.t === 'travel' && c.roomId) {
+      if (!c.travelBucket.consume('t')) {
+        this.send(c.socket, { t: 'error', code: 'slow_down', message: 'Wait a little before moving everyone again.' });
+        return;
+      }
+      if (rooms.travel(c.roomId, message.lat, message.lng)) {
+        this.toRoom(c.roomId, { t: 'travel', lat: message.lat, lng: message.lng, place: message.place, by: c.slot });
+      }
     } else if (message.t === 'leave' && c.roomId) {
       rooms.leave(c.roomId, c.slot);
       this.toRoom(c.roomId, { t: 'left', slot: c.slot }, c);

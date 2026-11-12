@@ -61,6 +61,11 @@ describe('slow lane validation', () => {
     expect(join).toEqual({ t: 'join', room: 'abcdefgh1234', name: 'Sam', look: { skin: 1, hair: 0, hairColor: 0, outfit: 0, color: 5 }, token: 'A'.repeat(24) });
   });
 
+  it('accepts a travel request and cleans its place name', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'travel', lat: 12.99, lng: 77.69, place: 'Mall\u0000 X' }))).toEqual({ t: 'travel', lat: 12.99, lng: 77.69, place: 'Mall X' });
+    expect(parseClientMessage(JSON.stringify({ t: 'travel', lat: 120, lng: 77.69, place: 'x' }))).toBeNull();
+  });
+
   it('rejects junk', () => {
     for (const bad of ['', 'nope', '[]', '{"t":"join","room":"short","name":"x"}', '{"t":"join","room":"abcdefgh1234","name":""}', '{"t":"teleport"}', '{"t":"ping","c":"x"}', 'x'.repeat(5000)]) {
       expect(parseClientMessage(bad)).toBeNull();

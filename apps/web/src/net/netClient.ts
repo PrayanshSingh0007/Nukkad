@@ -11,6 +11,8 @@ export interface NetEvents {
   onSnapshot?: (snapshot: Snapshot, localTime: number) => void;
   onError?: (code: ErrorCode | 'offline', message: string) => void;
   onStatus?: (status: NetStatus) => void;
+  /** Someone moved the room to another place. */
+  onTravel?: (lat: number, lng: number, place: string, by: number) => void;
 }
 
 const BACKOFF_MS = [500, 1000, 2000, 4000, 8000];
@@ -129,6 +131,9 @@ export class NetClient {
       case 'pong':
         this.rtt = performance.now() - message.c;
         break;
+      case 'travel':
+        this.events.onTravel?.(message.lat, message.lng, message.place, message.by);
+        break;
       case 'error':
         if (FATAL.includes(message.code)) this.stopped = true;
         this.events.onError?.(message.code, message.message);
@@ -148,6 +153,11 @@ export class NetClient {
   setLook(look: AvatarLook): void {
     this.look = look;
     this.sendJson({ t: 'look', look });
+  }
+
+  /** Moves the whole room to a place (everyone goes together). */
+  travel(lat: number, lng: number, place: string): void {
+    this.sendJson({ t: 'travel', lat, lng, place });
   }
 
   /** Leaving on purpose frees your slot at once. */

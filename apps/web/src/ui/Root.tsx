@@ -5,7 +5,9 @@ import { Game } from '../game/game.ts';
 import { startingQuality } from '../game/quality.ts';
 import { loadLook } from '../player/avatar/lookStore.ts';
 import { App } from './App.tsx';
-import { createRoom, getRoom, loadName, saveName } from './api.ts';
+import { PlacesPanel } from './PlacesPanel.tsx';
+import { createRoom, getRoom, loadName, saveName, takeAutojoin } from './api.ts';
+import type { PlaceResult } from './api.ts';
 
 type Screen =
   | { kind: 'home'; busy: boolean; error: string }
@@ -46,24 +48,46 @@ function startGame(id: string, lat: number, lng: number, name: string, look: Ava
   return game;
 }
 
+/** Read once per page load: did we just reload because the room moved? (Effects can run twice.) */
+const PATH_ROOM = roomFromPath();
+const AUTOJOIN = PATH_ROOM ? takeAutojoin(PATH_ROOM) : false;
+let gameStarted = false;
+
 /** Home → invite → playing. No signup: a name is all you need. */
 export function Root() {
   // Read the address once: after "Start a Nukkad" it changes to /r/<id>, which must not reopen the invite.
-  const [roomId] = useState(roomFromPath);
+  const [roomId] = useState(PATH_ROOM);
   const [screen, setScreen] = useState<Screen>(roomId ? { kind: 'loadingRoom' } : { kind: 'home', busy: false, error: '' });
   const [name, setName] = useState(loadName());
   const [look] = useState(loadLook);
+  const [spot, setSpot] = useState<PlaceResult | null>(null);
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
+    let cancelled = false;
     getRoom(roomId)
-      .then((room) => setScreen({ kind: 'invite', id: room.id, lat: room.lat, lng: room.lng, players: room.players, busy: false }))
-      .catch((error: Error) => setScreen({ kind: 'missing', message: error.message }));
-  }, [roomId]);
+      .then((room) => {
+        if (cancelled || gameStarted) return;
+        const name = cleanName(loadName());
+        // Coming back after the room moved: join again without asking.
+        if (AUTOJOIN && name) {
+          gameStarted = true;
+          setScreen({ kind: 'playing', game: startGame(room.id, room.lat, room.lng, name, look), id: room.id });
+        } else setScreen({ kind: 'invite', id: room.id, lat: room.lat, lng: room.lng, players: room.players, busy: false });
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setScreen({ kind: 'missing', message: error.message });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, look]);
 
   const cleaned = cleanName(name);
   const play = (id: string, lat: number, lng: number): void => {
-    if (!cleaned) return;
+    if (!cleaned || gameStarted) return;
+    gameStarted = true;
     saveName(cleaned);
     setScreen({ kind: 'playing', game: startGame(id, lat, lng, cleaned, look), id });
   };
@@ -72,7 +96,7 @@ export function Root() {
     if (!cleaned) return;
     setScreen({ kind: 'home', busy: true, error: '' });
     try {
-      const [lat, lng] = startSpot();
+      const [lat, lng] = spot ? [spot.lat, spot.lng] : startSpot();
       const room = await createRoom(lat, lng);
       history.replaceState(null, '', `/r/${room.id}`);
       play(room.id, room.lat, room.lng);
@@ -97,9 +121,22 @@ export function Root() {
         <>
           <p>Hang out with your friends in a 3D copy of a real neighbourhood. Pick a name and start one.</p>
           {nameField}
+          <button type="button" className="secondary" onClick={() => setPicking(true)}>
+            {spot ? `Place: ${spot.name}` : 'Pick a place (optional)'}
+          </button>
           <button type="button" disabled={!cleaned || screen.busy} onClick={() => void start()}>
             {screen.busy ? 'Starting…' : 'Start a Nukkad'}
           </button>
+          {picking && (
+            <PlacesPanel
+              action="Meet here"
+              onPick={(place) => {
+                setSpot(place);
+                setPicking(false);
+              }}
+              onClose={() => setPicking(false)}
+            />
+          )}
           {screen.error && <p className="errorText">{screen.error}</p>}
         </>
       )}

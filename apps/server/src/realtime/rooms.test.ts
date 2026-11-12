@@ -63,6 +63,16 @@ describe('rooms', () => {
     expect(rooms.snapshot(room.id)[0].flags & FLAG_AWAY).toBe(FLAG_AWAY);
   });
 
+  it('moves a whole room to a new place and forgets old positions', () => {
+    const { rooms, room } = setup();
+    const joined = rooms.join(room.id, 'Sam', DEFAULT_LOOK);
+    if (!joined.ok) throw new Error('join failed');
+    rooms.applyState(room.id, joined.member.slot, at(5, 5));
+    expect(rooms.travel(room.id, 12.99, 77.69)).toMatchObject({ id: room.id, lat: 12.99, lng: 77.69 });
+    expect(rooms.snapshot(room.id)).toEqual([]);
+    expect(rooms.applyState(room.id, joined.member.slot, at(300, -200))).toBe(true); // no "too fast" at the new place
+  });
+
   it('keeps an empty room for 24 h, then deletes it', () => {
     const { rooms, room, advance } = setup();
     const joined = rooms.join(room.id, 'Sam', DEFAULT_LOOK);

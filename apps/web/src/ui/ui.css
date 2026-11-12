@@ -383,3 +383,77 @@ button {
   font-size: 13px;
   touch-action: none;
 }
+
+.cover button.secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f3f6fb;
+  font-weight: 600;
+}
+
+.places {
+  max-height: 70vh;
+  overflow: auto;
+  text-align: left;
+}
+
+.searchRow {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.searchRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d4d9e0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.searchRow button,
+.results button {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #e6e9ee;
+}
+
+.results strong {
+  display: block;
+  font-size: 14px;
+}
+
+.results span {
+  font-size: 12px;
+  color: #5b6672;
+}
+
+.small {
+  font-size: 12px;
+  color: #5b6672;
+}
+
+.credit {
+  margin: 8px 0 0;
+}

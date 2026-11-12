@@ -49,6 +49,10 @@ export class RemotePlayers {
     for (const player of players) if (player.slot !== selfSlot) this.add(player);
   }
 
+  nameOf(slot: number): string | undefined {
+    return this.players.get(slot)?.info.name;
+  }
+
   add(info: PlayerInfo): void {
     const existing = this.players.get(info.slot);
     if (existing) {

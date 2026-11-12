@@ -6,11 +6,13 @@ import { DEFAULT_HALF_SIZE, PACK_VERSION, ROOM_ID_PATTERN, areaRefFor, isValidLa
 import { AreaError } from '../areas/areaService.ts';
 import type { AreaService } from '../areas/areaService.ts';
 import type { RoomManager } from '../realtime/rooms.ts';
+import type { Geocoder } from '../geocode/nominatim.ts';
 import { TokenBuckets } from '../security/tokenBuckets.ts';
 
 export interface AppOptions {
   areas: AreaService;
   rooms: RoomManager;
+  geocoder?: Geocoder;
   /** New rooms per IP: a burst, then this many per minute. */
   roomBurst?: number;
   roomsPerMinute?: number;
@@ -133,6 +135,32 @@ export function createApp(options: AppOptions): express.Express {
       return;
     }
     res.json({ ...room.info, players: room.members.filter(Boolean).length });
+  });
+
+  const searches = new TokenBuckets(10, 10);
+
+  /** GET /api/search?q=… → up to 6 places (OpenStreetMap Nominatim, cached, 1 request/s). */
+  app.get('/api/search', async (req: Request, res: Response) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (q.length < 3 || q.length > 100) {
+      sendError(res, 400, 'bad_request', 'Type at least 3 letters.');
+      return;
+    }
+    if (!options.geocoder) {
+      sendError(res, 503, 'unavailable', 'Search is not available on this server.');
+      return;
+    }
+    if (!searches.consume(req.ip ?? 'unknown')) {
+      sendError(res, 429, 'slow_down', 'Searching very fast. Wait a moment and try again.');
+      return;
+    }
+    try {
+      const results = await options.geocoder.search(q);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.json({ results, attribution: '© OpenStreetMap contributors' });
+    } catch {
+      sendError(res, 502, 'search_unavailable', 'The place search did not answer. Try again in a minute.');
+    }
   });
 
   app.use((_req, res) => sendError(res, 404, 'not_found', 'No such page.'));

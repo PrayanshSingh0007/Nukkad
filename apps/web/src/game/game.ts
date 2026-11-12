@@ -94,6 +94,8 @@ export class Game {
   onPlayerCount: ((count: number) => void) | null = null;
   /** Called when you get on or off the scooter. */
   onRiding: ((riding: boolean) => void) | null = null;
+  /** Called when the room moves to another place: (place name, who moved it). */
+  onTravel: ((place: string, by: string) => void) | null = null;
   /** Called with the label of the Drive button ("Drive auto", "Get out") or null to hide it. */
   onDriveHint: ((label: string | null) => void) | null = null;
   private driving: ParkedVehicle | null = null;
@@ -156,6 +158,11 @@ export class Game {
     this.look = look;
     this.player?.avatar.setLook(look);
     this.net?.setLook(look);
+  }
+
+  /** Takes the whole room to a place found by search. */
+  travel(lat: number, lng: number, place: string): void {
+    this.net?.travel(lat, lng, place);
   }
 
   /** Gets on or off your scooter (everyone has their own). */
@@ -239,6 +246,7 @@ export class Game {
         count();
       },
       onLook: (slot, look) => remotes.setLook(slot, look),
+      onTravel: (_lat, _lng, place, by) => this.onTravel?.(place, by === remotes.selfSlot ? 'You' : remotes.nameOf(by) ?? 'A friend'),
       onSnapshot: (snapshot, local) => remotes.onSnapshot(snapshot, local),
       onStatus: (status) => (this.netStatus = status),
       onError: (code, message) => {

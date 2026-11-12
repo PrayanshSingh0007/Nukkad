@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 112 green. Phone fps still unknown.
 
+## Places + going together (2026-11-13)
+
+- **Search**: `GET /api/search?q=` → OpenStreetMap Nominatim, server-side only, global queue (≥ 1.1 s between requests), identifying User-Agent (OSM_CONTACT in production), 30-day in-memory cache, results biased to Bengaluru (viewbox) and limited to India, duplicates of the same name within ~300 m merged, 10 searches/min per IP. Search runs only on Enter/Search (policy: no autocomplete).
+- **Home**: optional "Pick a place" before "Start a Nukkad" (otherwise the test area).
+- **In game**: **Places** button → search → **Go with everyone** → `{t:'travel'}` (2 burst, 4/min per connection) → server moves the room (old positions forgotten) and tells everyone → each client shows "X is taking everyone to …", reloads, and **re-joins by itself** (sessionStorage flag read once per page load; React dev mode runs effects twice — guarded).
+- Verified: test area → VR Bengaluru (Whitefield, area a_12996_77695_600: 2,020 buildings, 53 real places, the real mall building found as `mall`, glass front). A brand-new area takes ~30–60 s (Overpass).
+- Real place names appear only in search results and the travel message; signboards still show made-up names (owner's rule) — **open question to the owner**.
+- B-005 hit again: every server restart (also `node --watch` in dev) loses rooms → "expired link". Rooms in MongoDB is now high priority.
+
 ## People walking (2026-11-13)
 
 - 160 seeded walking routes per area on almost every street, 0.8 m beyond the road edge, either side, 1.1–1.6 m/s, same shared-clock trick as traffic (friends see the same people). They pause if you stand right in front.

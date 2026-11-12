@@ -1,4 +1,5 @@
 import { sanitizeLook } from '../avatar.ts';
+import { isValidLatLng } from '../geo/area.ts';
 import type { AvatarLook } from '../avatar.ts';
 
 /** The slow lane: rare, readable JSON messages (PLAN §6.2). Every one is validated on arrival. */
@@ -27,7 +28,9 @@ export type ClientMessage =
   | { t: 'join'; room: string; name: string; look: AvatarLook; token?: string }
   | { t: 'look'; look: AvatarLook }
   | { t: 'ping'; c: number }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  /** Move the whole room to another place (a search result). */
+  | { t: 'travel'; lat: number; lng: number; place: string };
 
 export type ErrorCode = 'bad_message' | 'room_not_found' | 'room_full' | 'slow_down' | 'bad_name' | 'server_error';
 
@@ -37,6 +40,7 @@ export type ServerMessage =
   | { t: 'left'; slot: number }
   | { t: 'look'; slot: number; look: AvatarLook }
   | { t: 'pong'; c: number; s: number }
+  | { t: 'travel'; lat: number; lng: number; place: string; by: number }
   | { t: 'error'; code: ErrorCode; message: string };
 
 const MAX_NAME = 16;
@@ -86,6 +90,11 @@ export function parseClientMessage(text: string): ClientMessage | null {
       return typeof m.c === 'number' && Number.isFinite(m.c) ? { t: 'ping', c: m.c } : null;
     case 'leave':
       return { t: 'leave' };
+    case 'travel': {
+      if (!isValidLatLng(m.lat, m.lng)) return null;
+      const place = typeof m.place === 'string' ? m.place.replace(/[\p{C}]/gu, '').trim().slice(0, 80) : '';
+      return { t: 'travel', lat: m.lat as number, lng: m.lng as number, place: place || 'a new place' };
+    }
     default:
       return null;
   }
@@ -120,6 +129,10 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return isSlot(m.slot) ? { t: 'look', slot: m.slot, look: sanitizeLook(m.look) } : null;
     case 'pong':
       return typeof m.c === 'number' && typeof m.s === 'number' ? { t: 'pong', c: m.c, s: m.s } : null;
+    case 'travel':
+      return isValidLatLng(m.lat, m.lng) && isSlot(m.by) && typeof m.place === 'string'
+        ? { t: 'travel', lat: m.lat as number, lng: m.lng as number, place: m.place.slice(0, 80), by: m.by }
+        : null;
     case 'error':
       return typeof m.code === 'string' && typeof m.message === 'string' ? { t: 'error', code: m.code as ErrorCode, message: m.message } : null;
     default:

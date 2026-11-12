@@ -3,6 +3,7 @@ import { createAreaSource } from './areas/areaSource.ts';
 import { loadConfig, osmUserAgent } from './config.ts';
 import { createApp } from './http/app.ts';
 import { RealtimeHub } from './realtime/hub.ts';
+import { Geocoder } from './geocode/nominatim.ts';
 import { RoomManager } from './realtime/rooms.ts';
 import { FileAreaStore } from './store/areaStore.ts';
 import type { AreaStore } from './store/areaStore.ts';
@@ -29,7 +30,8 @@ async function main(): Promise<void> {
 
   const areas = new AreaService({ store, source: createAreaSource(config), log });
   const rooms = new RoomManager();
-  const app = createApp({ areas, rooms, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy });
+  const geocoder = new Geocoder({ userAgent: osmUserAgent(config) });
+  const app = createApp({ areas, rooms, geocoder, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy });
   const hub = new RealtimeHub({ rooms, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy, log });
   const server = app.listen(config.port, '0.0.0.0', (error?: Error) => {
     if (error) {

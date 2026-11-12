@@ -3,6 +3,8 @@ import type { AvatarLook } from '@nukkad/shared';
 import type { Game, GameStatus } from '../game/game.ts';
 import { saveLook } from '../player/avatar/lookStore.ts';
 import { AvatarPanel } from './AvatarPanel.tsx';
+import { PlacesPanel } from './PlacesPanel.tsx';
+import { setAutojoin } from './api.ts';
 
 interface Props {
   game: Game;
@@ -33,6 +35,7 @@ export function App({ game, initialLook, roomId }: Props) {
   const [players, setPlayers] = useState(1);
   const [riding, setRiding] = useState(false);
   const [driveLabel, setDriveLabel] = useState<string | null>(null);
+  const [placesOpen, setPlacesOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
   const [look, setLook] = useState(initialLook);
@@ -44,6 +47,13 @@ export function App({ game, initialLook, roomId }: Props) {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
     game.onDriveHint = setDriveLabel;
+    // The room is moving: show who is taking everyone where, then load the new place.
+    game.onTravel = (place, by) => {
+      setPlacesOpen(false);
+      setToast(`${by} ${by === 'You' ? 'are' : 'is'} taking everyone to ${place}…`);
+      setAutojoin(roomId);
+      setTimeout(() => location.reload(), 1500);
+    };
   }, [game]);
   useEffect(() => {
     if (!toast) return;
@@ -77,6 +87,9 @@ export function App({ game, initialLook, roomId }: Props) {
           <span className="people" aria-label={`${players} in this Nukkad`}>
             {players}/8
           </span>
+          <button type="button" onClick={() => setPlacesOpen(true)}>
+            Places
+          </button>
           <button type="button" onClick={() => void invite(roomId).then(setToast)}>
             Invite friends
           </button>
@@ -107,6 +120,7 @@ export function App({ game, initialLook, roomId }: Props) {
           Drift
         </button>
       )}
+      {placesOpen && <PlacesPanel action="Go with everyone" onPick={(place) => game.travel(place.lat, place.lng, place.name)} onClose={() => setPlacesOpen(false)} />}
       {panelOpen && <AvatarPanel look={look} onChange={changeLook} onClose={() => setPanelOpen(false)} />}
     </>
   );

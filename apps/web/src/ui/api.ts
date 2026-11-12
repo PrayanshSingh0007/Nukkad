@@ -38,3 +38,35 @@ export function saveName(name: string): void {
     // storage blocked
   }
 }
+
+export interface PlaceResult {
+  name: string;
+  detail: string;
+  lat: number;
+  lng: number;
+}
+
+/** Real place search (OpenStreetMap). Only call this when the player presses Search/Enter. */
+export const searchPlaces = async (query: string): Promise<PlaceResult[]> =>
+  (await call<{ results: PlaceResult[] }>(`/api/search?q=${encodeURIComponent(query)}`)).results;
+
+const AUTOJOIN_KEY = 'nukkad.autojoin';
+
+/** After the room moves, the page reloads and joins again by itself (same tab only). */
+export function setAutojoin(roomId: string): void {
+  try {
+    sessionStorage.setItem(AUTOJOIN_KEY, roomId);
+  } catch {
+    // storage blocked: the player presses Join once more
+  }
+}
+
+export function takeAutojoin(roomId: string): boolean {
+  try {
+    const yes = sessionStorage.getItem(AUTOJOIN_KEY) === roomId;
+    sessionStorage.removeItem(AUTOJOIN_KEY);
+    return yes;
+  } catch {
+    return false;
+  }
+}

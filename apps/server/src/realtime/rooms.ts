@@ -110,6 +110,15 @@ export class RoomManager {
     if (room.members.every((m) => m === null)) room.emptySince = this.now();
   }
 
+  /** Moves a room to another place. Old positions mean nothing there, so they are forgotten. */
+  travel(roomId: string, lat: number, lng: number): RoomInfo | null {
+    const room = this.rooms.get(roomId);
+    if (!room) return null;
+    room.info = { ...room.info, lat, lng };
+    for (const member of room.members) if (member) member.state = null;
+    return room.info;
+  }
+
   setLook(roomId: string, slot: number, look: AvatarLook): void {
     const member = this.rooms.get(roomId)?.members[slot];
     if (member) member.look = look;
