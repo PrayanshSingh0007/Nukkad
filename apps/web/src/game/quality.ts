@@ -15,12 +15,14 @@ export interface QualitySettings {
   /** Sun shadow picture size in pixels (0 = blob shadows only) and how far around you it reaches. */
   shadowSize: number;
   shadowRange: number;
+  /** Parked vehicles, stalls and bus stops are drawn this far around you. */
+  streetLifeRadius: number;
 }
 
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
-  low: { level: 'low', maxPixelRatio: 1, viewDistance: 200, nearRing: 1, maxTrees: 300, antialias: false, shadowSize: 0, shadowRange: 0 },
-  medium: { level: 'medium', maxPixelRatio: 1.5, viewDistance: 350, nearRing: 1, maxTrees: 1000, antialias: false, shadowSize: 1024, shadowRange: 35 },
-  high: { level: 'high', maxPixelRatio: 2, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70 },
+  low: { level: 'low', maxPixelRatio: 1, viewDistance: 200, nearRing: 1, maxTrees: 300, antialias: false, shadowSize: 0, shadowRange: 0, streetLifeRadius: 50 },
+  medium: { level: 'medium', maxPixelRatio: 1.5, viewDistance: 350, nearRing: 1, maxTrees: 1000, antialias: false, shadowSize: 1024, shadowRange: 35, streetLifeRadius: 80 },
+  high: { level: 'high', maxPixelRatio: 2, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70, streetLifeRadius: 140 },
 };
 
 const KEY = 'nukkad.quality';

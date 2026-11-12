@@ -14,6 +14,7 @@ export class PhysicsWorld {
   private readonly chunkColliders = new Map<string, Collider[]>();
   private terrain: Collider | null = null;
   private readonly ray: Ray;
+  private boxes: Collider[] = [];
 
   /** Loads the WASM module (once) and creates an empty world. */
   static async create(): Promise<PhysicsWorld> {
@@ -69,6 +70,22 @@ export class PhysicsWorld {
       this.chunkColliders.delete(key);
     }
     return complete;
+  }
+
+  /** Replaces the solid boxes of parked vehicles and stalls near the player. */
+  setBoxes(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
+    for (const collider of this.boxes) this.world.removeCollider(collider, false);
+    const { ColliderDesc } = this.rapier;
+    this.boxes = boxes.map((b) => {
+      const half = b.rotation / 2;
+      return this.world.createCollider(
+        ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
+      );
+    });
+  }
+
+  get boxCount(): number {
+    return this.boxes.length;
   }
 
   get colliderChunkCount(): number {

@@ -16,3 +16,4 @@ export { meshBuffers } from './mesh/meshBuilder.ts';
 export type { MeshData } from './mesh/meshBuilder.ts';
 export { BENCH_STRIDE, LAMP_STRIDE, TREE_STRIDE } from './props/scatter.ts';
 export type { PropSet } from './props/scatter.ts';
+export { STALL_STRIDE, STOP_STRIDE, VEHICLE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from './props/streetLife.ts';

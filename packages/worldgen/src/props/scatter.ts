@@ -4,13 +4,15 @@ import { pointInPolygon, ringBounds, signedArea } from '../geom/polygon.ts';
 import { heightAt } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
 import { Occupancy } from './occupancy.ts';
+import { placeStreetLife } from './streetLife.ts';
+import type { StreetLife } from './streetLife.ts';
 
 /**
  * Positions of trees, street lamps and benches. OpenStreetMap rarely has them,
  * so most are invented — but from seeds, so every player sees the same ones.
  * Each list is shuffled: a lower quality level simply draws the first N.
  */
-export interface PropSet {
+export interface PropSet extends StreetLife {
   /** Per tree: x, y, z, scale, rotation, variant (0 round · 1 tall · 2 bush), tint 0–1. */
   trees: Float32Array;
   /** Per lamp: x, y, z, rotation. */
@@ -173,5 +175,6 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
     trees: shuffleAndCap(trees, TREE_STRIDE, MAX_TREES, seed),
     lamps: shuffleAndCap(lamps, LAMP_STRIDE, MAX_LAMPS, seed + 1),
     benches: shuffleAndCap(benches, BENCH_STRIDE, MAX_BENCHES, seed + 2),
+    ...placeStreetLife(pack, terrain, occupancy),
   };
 }

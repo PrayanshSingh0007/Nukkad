@@ -19,6 +19,7 @@ import { Streamer } from '../world/streamer.ts';
 import { chunkAt } from '../world/streamPlan.ts';
 import type { StreamSettings } from '../world/streamPlan.ts';
 import { WorldClient } from '../world/worldClient.ts';
+import { StreetLifeView } from '../world/streetLifeView.ts';
 import { WorldView } from '../world/worldView.ts';
 import { LocalPlayer, RIDE_MAX } from './localPlayer.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
@@ -60,6 +61,7 @@ export class Game {
   private benchmarking: boolean;
   private physics: PhysicsWorld | null = null;
   private world: WorldView | null = null;
+  private streetLife: StreetLifeView | null = null;
   private ready: ReadyMessage | null = null;
   private streamer: Streamer | null = null;
   private player: LocalPlayer | null = null;
@@ -191,6 +193,9 @@ export class Game {
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
+      this.streetLife = new StreetLifeView(ready.props);
+      this.streetLife.setRadius(settings.streetLifeRadius);
+      this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
       physics.setTerrain(ready.terrain.positions, ready.terrain.indices);
       this.streamer = new Streamer(client, this.world, this.streamSettings());
@@ -225,6 +230,7 @@ export class Game {
     this.view3d.camera.far = quality.viewDistance + 80;
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
+    this.streetLife?.setRadius(quality.streetLifeRadius);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     if (this.streamer) this.streamer.settings = this.streamSettings();
     this.appliedPixelRatio = 0; // re-applied on the next frame
@@ -374,6 +380,8 @@ export class Game {
     world?.update(dt);
     if (player) {
       this.placeSun(player.x, player.y, player.z);
+      const solids = this.streetLife?.update(player.x, player.z);
+      if (solids) this.physics?.setBoxes(solids);
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
     }
     else if (ready) this.placeSun(ready.info.spawn[0], 0, ready.info.spawn[1]);
@@ -395,6 +403,7 @@ export class Game {
     const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
     return [
       `quality ${this.level}${this.benchmarking ? ' (testing)' : ''} · render scale ${this.governor.renderScale.toFixed(2)} · pixel ratio ${this.appliedPixelRatio.toFixed(2)}`,
+      `street life shown ${this.streetLife?.shown ?? 0} · solid ${physics?.boxCount ?? 0}`,
       `chunks near ${counts.near} · far ${counts.far} · building ${counts.building} · colliders ${physics?.colliderChunkCount ?? 0}`,
       `chunk ${cx},${cz} · x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)} · ${player.speed.toFixed(1)} m/s`,
       `local time ${this.atmosphere.clock}${this.atmosphere.override === null ? '' : ' (slider)'} · night ${this.atmosphere.night.toFixed(2)}`,
