@@ -69,6 +69,6 @@ describe('Overpass query', () => {
     expect(query).toContain('[bbox:12.915');
     expect(query).toContain('way["building"]');
     expect(query).toContain('out body geom');
-    expect(query).not.toMatch(/name|shop|brand/); // we never ask for shop or brand names
+    expect(query).not.toMatch(/name|brand/); // we ask what kind of place it is, never for names or brands
   });
 });

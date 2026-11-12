@@ -1,4 +1,4 @@
-import type { PackStats } from '@nukkad/shared';
+import type { PackPlace, PackStats } from '@nukkad/shared';
 import type { ChunkData, ChunkLod, MeshData, PropSet, TerrainMesh } from '@nukkad/worldgen';
 
 /** The typed messages between the page (main thread) and the world worker. */
@@ -43,6 +43,7 @@ export interface ReadyMessage {
   groundMap: { size: number; pixels: Uint8Array };
   water: MeshData | null;
   props: PropSet;
+  places: PackPlace[];
 }
 
 export interface ChunkMessage {

@@ -34,6 +34,11 @@ export function overpassQuery(box: GeoBox): string {
   node["natural"="tree"];
   node["highway"="street_lamp"];
   node["amenity"="bench"];
+  node["shop"];
+  node["amenity"~"^(restaurant|fast_food|food_court|cafe|ice_cream|pharmacy|clinic|doctors|dentist|hospital|bank|school|kindergarten|college|university)$"];
+  node["office"];
+  node["tourism"~"^(hotel|guest_house|hostel)$"];
+  node["leisure"~"^(fitness_centre|sports_centre)$"];
 );
 out body geom qt;`;
 }

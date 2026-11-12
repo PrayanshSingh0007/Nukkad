@@ -1,5 +1,5 @@
 /** Version of the Area Pack format. Bump it when the layout changes: old cached packs are then ignored. */
-export const PACK_VERSION = 3;
+export const PACK_VERSION = 4;
 
 /** Half the side of an area in metres. 600 → a 1.2 km square (1 km playable + 100 m margin). */
 export const DEFAULT_HALF_SIZE = 600;

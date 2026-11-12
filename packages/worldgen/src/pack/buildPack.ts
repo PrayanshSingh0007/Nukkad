@@ -1,11 +1,13 @@
 import { ELEVATION_ATTRIBUTION, OSM_ATTRIBUTION, PACK_VERSION, UNITS_PER_METRE, makeProjector } from '@nukkad/shared';
-import type { AreaKind, AreaPack, AreaRef, PackArea, PackLine, PackPoints, PackTerrain, PointKind } from '@nukkad/shared';
+import type { AreaKind, AreaPack, AreaRef, PackArea, PackLine, PackPoints, PackTerrain, PlaceKind, PointKind } from '@nukkad/shared';
 import { clipLineToSquare, clipRingToSquare } from '../geom/clip.ts';
 import { cleanRing, orientRing, pointInRing, signedArea } from '../geom/polygon.ts';
 import type { OsmLatLon, OsmRelation, OsmTags, OsmWay, OverpassResponse } from './osmTypes.ts';
 import { draftBuilding, finishBuildings, quantizeRing } from './packBuildings.ts';
 import type { BuildingDraft } from './packBuildings.ts';
 import { assembleRings, isClosed } from './rings.ts';
+import { buildPlaces, classifyPlace } from './places.ts';
+import type { PointPlace } from './places.ts';
 import { classifyArea, classifyLine } from './tags.ts';
 
 export interface BuildPackInput {
@@ -40,6 +42,13 @@ export function buildPack(input: BuildPackInput): AreaPack {
   const areas: PackArea[] = [];
   const points: PackPoints = { tree: [], lamp: [], bench: [] };
   let roadMetres = 0;
+  /** Buildings and points the map says are a shop, school, office… (kind only, never the name). */
+  const placeOfBuilding = new Map<number, PlaceKind>();
+  const placePoints: PointPlace[] = [];
+  const notePlace = (id: number, tags: OsmTags): void => {
+    const kind = classifyPlace(tags);
+    if (kind) placeOfBuilding.set(id, kind);
+  };
 
   const addPoint = (kind: PointKind, x: number, z: number): void => {
     if (inside(x, z)) points[kind].push(Math.round(x * UNITS_PER_METRE), Math.round(z * UNITS_PER_METRE));
@@ -101,6 +110,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
     const pushDraft = (list: BuildingDraft[]): void => {
       const draft = draftBuilding(way.id, tags, pts, [], half);
       if (draft) list.push(draft);
+      notePlace(way.id, tags);
     };
     if (closed && isBuilding(tags.building)) return pushDraft(outlines);
     if (closed && isBuilding(tags['building:part'])) return pushDraft(parts);
@@ -129,6 +139,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
       if (isBuilding(tags.building)) {
         const draft = draftBuilding(id, tags, outer, holes, half);
         if (draft) outlines.push(draft);
+        notePlace(id, tags);
       } else if (kind) {
         addArea(id, kind, outer, holes);
       }
@@ -143,6 +154,10 @@ export function buildPack(input: BuildPackInput): AreaPack {
       if (tags.natural === 'tree') addPoint('tree', x, z);
       else if (tags.highway === 'street_lamp') addPoint('lamp', x, z);
       else if (tags.amenity === 'bench') addPoint('bench', x, z);
+      else {
+        const kind = classifyPlace(tags);
+        if (kind && inside(x, z)) placePoints.push({ kind, x, z });
+      }
     } else if (element.type === 'way') {
       addWay(element, tags);
     } else {
@@ -151,6 +166,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
   }
 
   const buildings = finishBuildings(outlines, parts);
+  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half);
   const attribution = terrain.flat ? [OSM_ATTRIBUTION] : [OSM_ATTRIBUTION, ELEVATION_ATTRIBUTION];
   return {
     v: PACK_VERSION,
@@ -165,7 +181,10 @@ export function buildPack(input: BuildPackInput): AreaPack {
     lines,
     areas,
     points,
+    places,
     stats: {
+      places: places.length,
+      realPlaces: places.filter((place) => place.real === 1).length,
       buildings: buildings.length,
       heightsGuessed: buildings.filter((building) => building.guessed === 1).length,
       roadKm: Math.round(roadMetres / 100) / 10,

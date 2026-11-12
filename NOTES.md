@@ -5,10 +5,19 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 ## Current status (2026-11-12)
 
 - **Direction changed by the owner (2026-11-12): no Day-4 deadline; stay on the web; build "a real human world" of Bengaluru.** The new plan is PLAN.md §15 (steps L1–L6). Fable access lasts until 2026-11-16 — plan work around that and stay token-lean.
-- Phases 1–5 + the scooter are built and pushed. Working on **L1 (places)**.
+- Phases 1–5 + the scooter are built and pushed. L1 (places + signs) is done; next is **L2 (graphics)**.
 - Rejected on purpose: Unreal Engine (C++, big app download, no browser link, restart), native Rust/Bevy (restart, months). Already true: no Capacitor, no Electron; the physics engine (Rapier) is Rust compiled to WebAssembly.
 - What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
 - `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
+
+## L1 — places (2026-11-12)
+
+- The map query now also asks for point shops / food / pharmacies / banks / schools / offices / hotels / gyms (kind only — names, brands and operators are never used).
+- `packages/worldgen/src/pack/places.ts` picks up to 100 places per area: real ones first (building tags + points), then invented ones: one mall, one vehicle showroom and one supermarket if the map has none, offices and shops in commercial/retail buildings, ground-floor shops along busy streets (45 % of small buildings there, 6 % on quiet streets).
+- Test area: 98 signs, 30 real (8 schools, 4 colleges, supermarket, bank, pharmacies, eateries…), 68 invented (incl. the mall and the showroom). Pack 67 KB.
+- Names come from `placeName(kind, seed)` in `packages/shared/src/places.ts` (e.g. "Lakeside Supermarket", "Banyan Darshini"). A test proves no real name from the map appears in the pack or on a sign.
+- Signs: one canvas picture (512 × 2400, ≈ 4.7 MB GPU) + one merged mesh = 1 draw call; unlit, so they glow at night.
+- Pack format v4.
 
 ## Phase 5 — what was built
 

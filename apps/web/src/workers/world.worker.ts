@@ -76,6 +76,7 @@ async function load(url: string): Promise<void> {
       groundMap: { size: GROUND_MAP_SIZE, pixels },
       water,
       props,
+      places: pack.places,
     },
     [
       terrain.positions.buffer,

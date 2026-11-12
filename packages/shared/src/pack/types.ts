@@ -1,3 +1,5 @@
+import type { PackPlace } from '../places.ts';
+
 /**
  * The Area Pack: our own small file describing one place.
  * The server builds it once from OpenStreetMap + elevation data and caches it;
@@ -111,6 +113,9 @@ export interface PackTerrain {
 }
 
 export interface PackStats {
+  /** Signed places, and how many of them the map really has (the rest are invented). */
+  places: number;
+  realPlaces: number;
   buildings: number;
   heightsGuessed: number;
   roadKm: number;
@@ -135,5 +140,7 @@ export interface AreaPack {
   lines: PackLine[];
   areas: PackArea[];
   points: PackPoints;
+  /** Shops, schools, offices… with the spot where their sign hangs. Never any real name. */
+  places: PackPlace[];
   stats: PackStats;
 }

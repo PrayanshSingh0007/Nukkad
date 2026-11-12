@@ -6,6 +6,7 @@ import type { ReadyMessage } from '../workers/protocol.ts';
 import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
+import { Signs } from './signs.ts';
 
 export interface WorldViewOptions {
   /** How many trees to draw (the list is shuffled, so any prefix is evenly spread). */
@@ -39,6 +40,7 @@ export class WorldView {
   private lampHeads: THREE.MeshBasicMaterial | null = null;
   private glow: THREE.InstancedMesh | null = null;
   private glowMaterial: THREE.MeshBasicMaterial | null = null;
+  private readonly signs: Signs;
   private readonly borders: THREE.LineSegments;
   private readonly halfSize: number;
 
@@ -66,6 +68,8 @@ export class WorldView {
 
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
     this.addProps(ready.props);
+    this.signs = new Signs(ready.places, this.terrain, options.anisotropy);
+    if (this.signs.mesh) this.group.add(this.signs.mesh);
     this.setTreeLimit(options.maxTrees);
 
     this.borders = this.buildChunkBorders(ready.info.chunksPerSide);
@@ -127,6 +131,7 @@ export class WorldView {
     });
     for (const material of this.materials.all) material.dispose();
     this.lampHeads?.dispose();
+    this.signs.dispose();
     this.glowMaterial?.map?.dispose();
     this.glowMaterial?.dispose();
     (this.borders.material as THREE.Material).dispose();
@@ -255,6 +260,7 @@ export class WorldView {
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
   setNight(night: number): void {
     this.materials.night.value = night;
+    this.signs.setNight(night);
     this.lampHeads?.color.setRGB(0.85 + night * 0.15, 0.82 + night * 0.06, 0.75 - night * 0.2);
     if (this.glow && this.glowMaterial) {
       this.glow.visible = night > 0.05;

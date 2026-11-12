@@ -17,7 +17,8 @@ const pack: AreaPack = {
   lines: [{ id: 2, kind: 'residential', w: 6, pts: [-6000, 0, -5990, 12, 6000, -3] }],
   areas: [{ id: 3, kind: 'park', ring: [0, 0, 500, 0, 500, 500] }],
   points: { tree: [10, 20], lamp: [], bench: [] },
-  stats: { buildings: 1, heightsGuessed: 0, roadKm: 1.2, areas: 1, mappedTrees: 1, mappedLamps: 0 },
+  places: [{ kind: 'food', x: 10, z: 20, y: 30, face: 90, w: 40, seed: 7, real: 1 }],
+  stats: { places: 1, realPlaces: 1, buildings: 1, heightsGuessed: 0, roadKm: 1.2, areas: 1, mappedTrees: 1, mappedLamps: 0 },
 };
 
 describe('pack wire format', () => {
