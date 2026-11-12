@@ -2,7 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_AREA, UNITS_PER_METRE, areaRefFor, decodePack, placeName } from '@nukkad/shared';
 import type { AreaPack, WirePack } from '@nukkad/shared';
-import { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, TREE_STRIDE, buildChunk, buildTerrainMesh, buildWaterMesh, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, VEHICLE_STRIDE, TREE_STRIDE, buildChunk, buildTerrainMesh, buildWaterMesh, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkData, MeshData, PreparedWorld } from '@nukkad/worldgen';
 import { loadConfig } from '../config.ts';
 import { MemoryAreaStore } from '../store/areaStore.ts';
@@ -193,9 +193,33 @@ describe('test area: pack → meshes', () => {
     }
   });
 
+  it('parks vehicles on streets (never inside buildings) and adds stalls and bus stops', () => {
+    const { vehicles, stalls, stops } = world.props;
+    expect(vehicles.length / VEHICLE_STRIDE).toBeGreaterThan(200);
+    expect(stalls.length / 4).toBeGreaterThan(3);
+    expect(stops.length / 4).toBeGreaterThan(0);
+    const kinds = new Set<number>();
+    for (let i = 0; i < vehicles.length; i += VEHICLE_STRIDE) {
+      kinds.add(vehicles[i + 4]);
+      const x = vehicles[i] * UNITS_PER_METRE;
+      const z = vehicles[i + 2] * UNITS_PER_METRE;
+      for (const building of pack.buildings) {
+        if (building.minH) continue;
+        let inside = false;
+        const r = building.ring;
+        for (let a = 0, b = r.length - 2; a < r.length; b = a, a += 2) {
+          if (r[a + 1] > z !== r[b + 1] > z && x < ((r[b] - r[a]) * (z - r[a + 1])) / (r[b + 1] - r[a + 1]) + r[a]) inside = !inside;
+        }
+        if (inside) throw new Error(`vehicle ${i / VEHICLE_STRIDE} is inside building ${building.id}`);
+      }
+    }
+    expect(kinds.size).toBeGreaterThanOrEqual(5); // cars, autos and two-wheelers all show up
+  });
+
   it('builds exactly the same world twice', () => {
     const second = prepareWorld(pack);
     expect(Array.from(second.props.trees)).toEqual(Array.from(world.props.trees));
+    expect(Array.from(second.props.vehicles)).toEqual(Array.from(world.props.vehicles));
     const a = buildChunk(world, 3, 4);
     const b = buildChunk(second, 3, 4);
     expect(Array.from(b.buildings?.positions ?? [])).toEqual(Array.from(a.buildings?.positions ?? []));

@@ -43,6 +43,13 @@ https://github.com/tilezen/joerd/blob/master/docs/attribution.md
 | typescript 7.0.2 | type checking | Apache-2.0 |
 | @types/three, @types/node, @types/express, @types/tz-lookup | type definitions | MIT |
 
+## Our own models
+
+All vehicles, carts, bus stops, avatars and props are built by Nukkad's own code
+(`apps/web/src/world/vehicleModels.ts`, `propModels.ts`, `player/`). No downloaded models.
+`tools/blender/build_assets.py` is our own Blender script for the same kit (not used yet).
+Reflections use three.js's built-in RoomEnvironment (MIT, part of three).
+
 ## Not used, on purpose
 
 Google Maps, Street View, any scraped imagery, real brand logos or shop signs, assets taken from other games.

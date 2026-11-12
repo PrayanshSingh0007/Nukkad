@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { STALL_STRIDE, STOP_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
 import type { PropSet } from '@nukkad/worldgen';
-import { createModelMaterial, loadModel } from './models.ts';
+import { loadModel } from './models.ts';
+import { createVehicleMaterial, streetModel } from './vehicleModels.ts';
 
 /** A solid box for the physics: centre, half sizes, turn around the up axis. */
 export interface SolidBox {
@@ -32,6 +33,8 @@ interface Kind {
   /** Half sizes for the solid box (0 = you can walk through it). */
   half: [number, number, number];
   mesh: THREE.InstancedMesh | null;
+  /** Invisible copies of only the nearest ones, to cast sun shadows (layer 1). */
+  shadow: THREE.InstancedMesh | null;
 }
 
 const MAX_SHOWN = 90; // per kind, nearest first
@@ -45,14 +48,16 @@ const SOLID_RADIUS = 30;
 export class StreetLifeView {
   readonly group = new THREE.Group();
   private readonly kinds: Kind[] = [];
-  private readonly material = createModelMaterial();
+  readonly material: THREE.MeshStandardMaterial;
   private radius = 80;
+  private shadowRadius = 0;
   private lastAt: [number, number] | null = null;
 
-  constructor(props: PropSet) {
+  constructor(props: PropSet, envMap: THREE.Texture | null) {
+    this.material = createVehicleMaterial(envMap);
     VEHICLE_KINDS.forEach((name, index) => {
       const [hw, hl] = VEHICLE_HALF[index];
-      this.kinds.push({ name, items: [], half: [hw, VEHICLE_HEIGHT[index] / 2, hl], mesh: null });
+      this.kinds.push({ name, items: [], half: [hw, VEHICLE_HEIGHT[index] / 2, hl], mesh: null, shadow: null });
     });
     for (let i = 0; i < props.vehicles.length; i += VEHICLE_STRIDE) {
       const v = props.vehicles;
@@ -61,29 +66,37 @@ export class StreetLifeView {
     const simple = (name: string, data: Float32Array, stride: number, half: [number, number, number]): void => {
       const items: Item[] = [];
       for (let i = 0; i < data.length; i += stride) items.push({ x: data[i], y: data[i + 1], z: data[i + 2], rotation: data[i + 3], variant: 0 });
-      this.kinds.push({ name, items, half, mesh: null });
+      this.kinds.push({ name, items, half, mesh: null, shadow: null });
     };
     simple('stall', props.stalls, STALL_STRIDE, [1.0, 1.1, 0.7]);
     simple('bus_stop', props.stops, STOP_STRIDE, [0, 0, 0]);
     for (const kind of this.kinds) {
       if (kind.items.length === 0) continue;
-      void loadModel(kind.name).then((geometry) => {
+      // Built-in code models first; a .glb in public/models/ is only used for names we can't build.
+      const built = streetModel(kind.name);
+      void (built ? Promise.resolve(built) : loadModel(kind.name)).then((geometry) => {
         if (!geometry) return;
         const mesh = new THREE.InstancedMesh(geometry, this.material, Math.min(MAX_SHOWN, kind.items.length));
         mesh.count = 0;
-        mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.frustumCulled = false; // copies move around; the set is small anyway
         kind.mesh = mesh;
-        this.group.add(mesh);
+        const shadow = new THREE.InstancedMesh(geometry, this.material, Math.min(24, kind.items.length));
+        shadow.count = 0;
+        shadow.castShadow = true;
+        shadow.frustumCulled = false;
+        shadow.layers.set(1);
+        kind.shadow = shadow;
+        this.group.add(mesh, shadow);
         this.lastAt = null; // fill it on the next update
       });
     }
   }
 
   /** How far away parked things are still drawn (by quality level). */
-  setRadius(radius: number): void {
+  setRadius(radius: number, shadowRadius = 0): void {
     this.radius = radius;
+    this.shadowRadius = shadowRadius;
     this.lastAt = null;
   }
 
@@ -126,13 +139,29 @@ export class StreetLifeView {
       }
       mesh.count = shown;
       mesh.instanceMatrix.needsUpdate = true;
+      const shadow = kind.shadow;
+      if (shadow) {
+        let casting = 0;
+        while (casting < shown && casting < shadow.instanceMatrix.count && near[casting].d < this.shadowRadius) {
+          mesh.getMatrixAt(casting, matrix);
+          shadow.setMatrixAt(casting, matrix);
+          casting++;
+        }
+        shadow.count = casting;
+        shadow.instanceMatrix.needsUpdate = true;
+      }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
     return solids;
   }
 
+  /** Reflections are dimmer at night. */
+  setNight(night: number): void {
+    this.material.envMapIntensity = 0.15 + 0.85 * (1 - night);
+  }
+
   dispose(): void {
-    for (const kind of this.kinds) kind.mesh?.geometry.dispose();
+    for (const kind of this.kinds) kind.mesh?.dispose();
     this.material.dispose();
     this.group.removeFromParent();
   }

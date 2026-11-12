@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CHUNK_SIZE, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
@@ -62,6 +63,7 @@ export class Game {
   private physics: PhysicsWorld | null = null;
   private world: WorldView | null = null;
   private streetLife: StreetLifeView | null = null;
+  private readonly reflections: THREE.Texture;
   private ready: ReadyMessage | null = null;
   private streamer: Streamer | null = null;
   private player: LocalPlayer | null = null;
@@ -94,6 +96,10 @@ export class Game {
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
     this.view3d.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.view3d.scene.add(this.view3d.sun.target);
+    // Soft studio light for reflections on car paint and glass only. Built once, ~1 MB on the GPU.
+    const pmrem = new THREE.PMREMGenerator(this.view3d.renderer);
+    this.reflections = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
     this.overlay = new DebugOverlay(
       options.overlay,
       options.logo,
@@ -193,8 +199,8 @@ export class Game {
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
-      this.streetLife = new StreetLifeView(ready.props);
-      this.streetLife.setRadius(settings.streetLifeRadius);
+      this.streetLife = new StreetLifeView(ready.props, this.reflections);
+      this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
       physics.setTerrain(ready.terrain.positions, ready.terrain.indices);
@@ -230,7 +236,7 @@ export class Game {
     this.view3d.camera.far = quality.viewDistance + 80;
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
-    this.streetLife?.setRadius(quality.streetLifeRadius);
+    this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     if (this.streamer) this.streamer.settings = this.streamSettings();
     this.appliedPixelRatio = 0; // re-applied on the next frame
@@ -377,6 +383,7 @@ export class Game {
 
     this.atmosphere.update(dt, this.view3d.camera);
     world?.setNight(this.atmosphere.night);
+    this.streetLife?.setNight(this.atmosphere.night);
     world?.update(dt);
     if (player) {
       this.placeSun(player.x, player.y, player.z);

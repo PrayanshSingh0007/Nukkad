@@ -5,10 +5,19 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 ## Current status (2026-11-12)
 
 - **Direction changed by the owner (2026-11-12): no Day-4 deadline; stay on the web; build "a real human world" of Bengaluru.** The new plan is PLAN.md §15 (steps L1–L6). Fable access lasts until 2026-11-16 — plan work around that and stay token-lean.
-- Phases 1–5 + the scooter are built and pushed. L1 (places + signs) and L2 (graphics) are done; next is **L3 (Blender asset kit)**.
+- Phases 1–5 + the scooter are built and pushed. L1 (places), L2 (graphics) and L3 (street life, models built in code) are done; next is **L4 (enterable interiors)**.
 - Rejected on purpose: Unreal Engine (C++, big app download, no browser link, restart), native Rust/Bevy (restart, months). Already true: no Capacitor, no Electron; the physics engine (Rapier) is Rust compiled to WebAssembly.
 - What the map really has in the test square: buildings tagged supermarket 1, school 7, college 4, office 1, retail 6, commercial 8, hotel 1, worship 11; point places 48 (fast food 4, restaurant 3, pharmacy 2, laundry 2, bank, gym, salon, a few shops). **No mall and no vehicle showroom are mapped** — those will be invented and marked as invented.
 - `npm test`: 109 green · `npm run stress`: PASS. Owner's phone report (fps, model) is still missing.
+
+## L3 — street life (2026-11-13)
+
+- **Blender could not be used:** the MCP add-on never listened on port 9876, headless Blender crashes in Claude's sandbox (Metal GPU blocked), and the owner's paste of the Python one-liner did not work. The owner said to use something else. `tools/blender/build_assets.py` stays in the repo (builds the same 8 models in Blender) for later; any `public/models/<name>.glb` is only used for names that have no code model.
+- **Models in code** (`apps/web/src/world/vehicleModels.ts`): hatchback, sedan, SUV (bodies cut from real side silhouettes with wheel arches, rounded edges, cabin narrowing above the belt line, tinted glass, head/tail lights, blank plates, mirrors, rims), green-and-yellow auto-rickshaw, two-wheeler, city bus in our own colours (no operator logos), fruit cart, bus shelter. ≈ 330–1,050 triangles each.
+- **Glossy paint**: `MeshStandardMaterial` with a studio reflection map (RoomEnvironment) on vehicles only (on everything it washed the world out). `aPaint` per vertex: 0 matte, 1 paint (per-car colour, roughness 0.28, metalness 0.35), 2 glass/lights (roughness 0.12). Reflections dim at night.
+- **Placement** (`packages/worldgen/src/props/streetLife.ts`): kerbside parking on residential/tertiary/service streets (42 % two-wheelers, 18 % hatchbacks, 12 % sedans, 12 % SUVs, 16 % autos), skipping junctions and buildings; bus stops every ~320 m on main roads with a waiting bus at 40 %; fruit/food carts in front of 60 % of food/grocery/cafe places. Test area: ≈ 600+ vehicles, 12 carts, 4 stops.
+- **Only near things exist on screen**: nearest ≤ 90 per kind within 50 / 80 / 140 m (Low/Medium/High), refreshed every 8 m; ≤ 24 per kind cast shadows (shadow-only copies); the ones within 30 m are solid (Rapier boxes) — never before their model is drawn.
+- Measured (laptop, Medium, a busy street): 71 draw calls, 164k triangles with shadows — a bit over the 150k Medium budget; trim `MAX_SHOWN` or the radius if the phone struggles.
 
 ## L2 — graphics (2026-11-12)
 
