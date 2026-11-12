@@ -26,6 +26,7 @@ import type { StreamSettings } from '../world/streamPlan.ts';
 import { WorldClient } from '../world/worldClient.ts';
 import { StreetLifeView } from '../world/streetLifeView.ts';
 import { TrafficView } from '../world/trafficView.ts';
+import { PedestrianView } from '../world/pedestrianView.ts';
 import { WorldView } from '../world/worldView.ts';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES } from './vehicleSpecs.ts';
@@ -71,6 +72,7 @@ export class Game {
   private world: WorldView | null = null;
   private streetLife: StreetLifeView | null = null;
   private traffic: TrafficView | null = null;
+  private walkers: PedestrianView | null = null;
   private readonly reflections: THREE.Texture;
   /** High only: renders through a glow pass. */
   private composer: EffectComposer | null = null;
@@ -281,6 +283,9 @@ export class Game {
       this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name) => streetLife.modelByName(name), (material) => material === streetLife.material);
       this.traffic.setRadius(settings.streetLifeRadius * 1.5);
       this.view3d.scene.add(this.traffic.group);
+      this.walkers = new PedestrianView(ready.walkers, this.world.terrain);
+      this.walkers.setRadius(settings.streetLifeRadius * 0.8);
+      this.view3d.scene.add(this.walkers.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
@@ -318,6 +323,7 @@ export class Game {
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
     this.traffic?.setRadius(quality.streetLifeRadius * 1.5);
+    this.walkers?.setRadius(quality.streetLifeRadius * 0.8);
     this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     this.applyBloom(quality.bloom);
@@ -503,6 +509,7 @@ export class Game {
         const clock = this.remotes.clock;
         const seconds = (clock.ready ? clock.renderTime(now) : Date.now()) / 1000;
         this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z));
+        this.walkers?.update(dt, seconds, player.x, player.z);
       }
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
     }

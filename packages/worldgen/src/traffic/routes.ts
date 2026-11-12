@@ -48,9 +48,50 @@ interface Edge {
   to: number;
 }
 
-/** Builds up to `count` routes. Roads are linked where their points touch (shared OSM nodes). */
+/** What kind of routes to build: which roads, how far off the centre, how fast, which vehicle. */
+interface RouteRules {
+  roads: (kind: LineKind, width: number) => boolean;
+  lane: (width: number, random: () => number) => number;
+  speed: (kind: LineKind, vehicle: number, random: () => number) => number;
+  kind: (random: () => number) => number;
+  salt: number;
+  minLength: number;
+}
+
+const DRIVING: RouteRules = {
+  roads: (kind, width) => TRAFFIC_ROADS.has(kind) && width >= 6,
+  lane: (width) => Math.min(width / 4 + 0.3, 2.6),
+  speed: (kind, vehicle, random) => (SPEED[kind] ?? 9) * (vehicle === 5 ? 0.75 : 0.85 + random() * 0.3),
+  kind: (random) => pickKind(random()),
+  salt: 120,
+  minLength: 150,
+};
+
+const NO_WALKING = new Set<LineKind>(['motorway', 'trunk', 'rail', 'river', 'stream', 'construction']);
+
+/** People: on both sides of almost any street, just beyond the road edge. `kind` = which look (0–7). */
+const WALKING: RouteRules = {
+  roads: (kind) => !NO_WALKING.has(kind),
+  lane: (width, random) => (width / 2 + 0.8) * (random() < 0.5 ? 1 : -1),
+  speed: (_kind, _look, random) => 1.1 + random() * 0.5,
+  kind: (random) => Math.floor(random() * 8),
+  salt: 140,
+  minLength: 60,
+};
+
+/** Builds up to `count` vehicle routes on the main roads. */
 export function buildTrafficRoutes(pack: AreaPack, count: number): TrafficRoute[] {
-  const lines = pack.lines.filter((line) => TRAFFIC_ROADS.has(line.kind) && line.w >= 6);
+  return buildRoutes(pack, count, DRIVING);
+}
+
+/** Builds up to `count` walking routes along the streets (`kind` = which person look). */
+export function buildWalkRoutes(pack: AreaPack, count: number): TrafficRoute[] {
+  return buildRoutes(pack, count, WALKING);
+}
+
+/** Roads are linked where their points touch (shared OSM nodes). */
+function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficRoute[] {
+  const lines = pack.lines.filter((line) => rules.roads(line.kind, line.w));
   if (lines.length === 0) return [];
   // Graph: node = a point shared by any road, edges = consecutive points of a line.
   const nodes = new Map<string, number>();
@@ -78,7 +119,7 @@ export function buildTrafficRoutes(pack: AreaPack, count: number): TrafficRoute[
   });
 
   const routes: TrafficRoute[] = [];
-  const random = makeRng(hash32(pack.lines.length * 31 + pack.buildings.length, 120));
+  const random = makeRng(hash32(pack.lines.length * 31 + pack.buildings.length, rules.salt));
   const starts = adjacency.map((edges, id) => ({ id, edges })).filter((n) => n.edges.length > 0);
   for (let attempt = 0; attempt < count * 4 && routes.length < count; attempt++) {
     const start = starts[Math.floor(random() * starts.length)];
@@ -98,7 +139,7 @@ export function buildTrafficRoutes(pack: AreaPack, count: number): TrafficRoute[
       const same = onward.filter((e) => e.line === edge.line);
       edge = same.length > 0 && random() < 0.75 ? same[0] : onward[Math.floor(random() * onward.length)];
     }
-    if (length < 150) continue;
+    if (length < rules.minLength) continue;
     const pts = new Float32Array(path.length * 2);
     const dist = new Float32Array(path.length);
     path.forEach((id, i) => {
@@ -107,13 +148,13 @@ export function buildTrafficRoutes(pack: AreaPack, count: number): TrafficRoute[
       if (i > 0) dist[i] = dist[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]);
     });
     const line = lines[start.edges[0].line];
-    const kind = pickKind(random());
+    const kind = rules.kind(random);
     routes.push({
       pts,
       dist,
       length,
-      lane: Math.min(line.w / 4 + 0.3, 2.6),
-      speed: (SPEED[line.kind] ?? 9) * (kind === 5 ? 0.75 : 0.85 + random() * 0.3),
+      lane: rules.lane(line.w, random),
+      speed: rules.speed(line.kind, kind, random),
       kind,
       variant: Math.floor(random() * 8),
       offset: random() * length * 2,

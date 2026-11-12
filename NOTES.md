@@ -5,9 +5,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 ## Current status (2026-11-13)
 
 - **Owner's goal now (2026-11-13): "a Bengaluru open-world game like GTA" — an original game in that style, friendly, NO violence** (owner picked "Friendly, no violence"). Must-haves in their words: real Bengaluru apartments, schools, malls (e.g. "VR Bengaluru") where friends gather and go together; **drive any vehicle**; **live traffic & people**.
-- Order: drive any vehicle (DONE) → live traffic (DONE) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
+- Order: drive any vehicle (DONE) → live traffic (DONE) → people walking (DONE) → people walking → place search + "Take everyone there" → real place names (needs the owner's OK: it bends their own "no shop signage" rule — names would be map labels/plain boards, never logos).
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 112 green. Phone fps still unknown.
+
+## People walking (2026-11-13)
+
+- 160 seeded walking routes per area on almost every street, 0.8 m beyond the road edge, either side, 1.1–1.6 m/s, same shared-clock trick as traffic (friends see the same people). They pause if you stand right in front.
+- Light avatars (`buildAvatarGeometry(look, true)`, ≈ 420 triangles), 8 seeded looks = 8 instanced meshes; arms and legs swing in the vertex shader from the bone index already in the geometry (no skeletons). Not solid, no shadows.
+- Drawn within 0.8 × the street-life radius (40 / 64 / 112 m).
 
 ## Live traffic (2026-11-13)
 

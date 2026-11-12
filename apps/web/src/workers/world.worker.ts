@@ -1,6 +1,6 @@
 import { PACK_VERSION, decodePack } from '@nukkad/shared';
 import type { WirePack } from '@nukkad/shared';
-import { GROUND_MAP_SIZE, buildTrafficRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { GROUND_MAP_SIZE, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkLod, PreparedWorld } from '@nukkad/worldgen';
 import type { FromWorker, ToWorker } from './protocol.ts';
 
@@ -81,6 +81,7 @@ async function load(url: string): Promise<void> {
       props,
       places: pack.places,
       traffic: buildTrafficRoutes(pack, 40),
+      walkers: buildWalkRoutes(pack, 160),
     },
     [
       terrain.positions.buffer,

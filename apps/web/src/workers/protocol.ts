@@ -45,6 +45,7 @@ export interface ReadyMessage {
   props: PropSet;
   places: PackPlace[];
   traffic: TrafficRoute[];
+  walkers: TrafficRoute[];
 }
 
 export interface ChunkMessage {

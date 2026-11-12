@@ -65,6 +65,10 @@ interface Place {
   scale?: [number, number, number];
 }
 
+/** 1 = full detail (players) · lower = fewer segments (people in the street). */
+let detail = 1;
+const seg = (n: number): number => Math.max(3, Math.round(n * detail));
+
 /** Collects coloured parts, each glued to one bone. */
 class Parts {
   readonly list: THREE.BufferGeometry[] = [];
@@ -93,11 +97,11 @@ class Parts {
   /** A pill between two heights (limbs). */
   limb(bone: BoneId, color: number, x: number, top: number, bottom: number, radius: number): void {
     const length = Math.max(0.01, top - bottom - radius * 2);
-    this.add(new THREE.CapsuleGeometry(radius, length, 3, 10), bone, color, { at: [x, (top + bottom) / 2, 0] });
+    this.add(new THREE.CapsuleGeometry(radius, length, detail < 1 ? 1 : 3, seg(10)), bone, color, { at: [x, (top + bottom) / 2, 0] });
   }
 
-  ball(bone: BoneId, color: number, radius: number, place: Place, detail: [number, number] = [10, 8]): void {
-    this.add(new THREE.SphereGeometry(radius, detail[0], detail[1]), bone, color, place);
+  ball(bone: BoneId, color: number, radius: number, place: Place, segments: [number, number] = [10, 8]): void {
+    this.add(new THREE.SphereGeometry(radius, seg(segments[0]), seg(segments[1])), bone, color, place);
   }
 
   box(bone: BoneId, color: number, size: [number, number, number], place: Place): void {
@@ -180,7 +184,7 @@ function addHead(p: Parts, skin: number, hair: number): void {
 
 /** The top of the hair: a dome tilted back so the forehead stays free. */
 function hairDome(p: Parts, color: number, radius: number, cover = 0.5): void {
-  p.add(new THREE.SphereGeometry(radius, 16, 8, 0, Math.PI * 2, 0, Math.PI * cover), BONE.head, color, {
+  p.add(new THREE.SphereGeometry(radius, seg(16), seg(8), 0, Math.PI * 2, 0, Math.PI * cover), BONE.head, color, {
     at: [0, 1.645, 0.005],
     rot: [0.5, 0, 0], // front edge up (clears the forehead), back edge down
     scale: [0.97, 1.12, 1.03],
@@ -232,8 +236,9 @@ function addHair(p: Parts, style: (typeof HAIR_STYLES)[number], color: number): 
   }
 }
 
-/** Builds the merged avatar geometry for a look. */
-export function buildAvatarGeometry(look: AvatarLook): THREE.BufferGeometry {
+/** Builds the merged avatar geometry for a look. `light` = the cheap version for crowds. */
+export function buildAvatarGeometry(look: AvatarLook, light = false): THREE.BufferGeometry {
+  detail = light ? 0.5 : 1;
   const p = new Parts();
   const skin = new THREE.Color(SKIN_TONES[look.skin]).getHex();
   const hair = new THREE.Color(HAIR_COLORS[look.hairColor]).getHex();
@@ -247,6 +252,7 @@ export function buildAvatarGeometry(look: AvatarLook): THREE.BufferGeometry {
   const merged = mergeGeometries(p.list);
   for (const part of p.list) part.dispose();
   merged.computeBoundingSphere();
+  detail = 1;
   return merged;
 }
 
