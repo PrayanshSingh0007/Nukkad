@@ -56,9 +56,15 @@ Photo-scanned textures from **Poly Haven** (https://polyhaven.com), licence **CC
 | roof_diff.jpg | concrete_floor_worn_001 |
 | soil_diff.jpg | brown_mud_dry |
 
+## 3D models (CC0)
+
+**Car Kit 3.1** by **Kenney** (https://kenney.nl/assets/car-kit), licence **CC0**: hatchback-sports,
+sedan, sedan-sports, suv, suv-luxury and their shared colour texture, in
+`apps/web/public/models/kenney/` (Kenney's License.txt is included there).
+
 ## Our own models
 
-All vehicles, carts, bus stops, avatars and props are built by Nukkad's own code
+Auto-rickshaws, two-wheelers, buses, carts, bus stops, avatars and props are built by Nukkad's own code
 (`apps/web/src/world/vehicleModels.ts`, `propModels.ts`, `player/`). No downloaded models.
 `tools/blender/build_assets.py` is our own Blender script for the same kit (not used yet).
 Reflections use three.js's built-in RoomEnvironment (MIT, part of three).

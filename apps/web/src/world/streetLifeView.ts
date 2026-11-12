@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { STALL_STRIDE, STOP_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
 import type { PropSet } from '@nukkad/worldgen';
-import { loadModel } from './models.ts';
+import { loadModel, loadTexturedModel } from './models.ts';
 import { createVehicleMaterial, streetModel } from './vehicleModels.ts';
 
 /** A solid box for the physics: centre, half sizes, turn around the up axis. */
@@ -29,6 +29,10 @@ interface Item {
 
 interface Kind {
   name: string;
+  /** Kenney model file, when this kind uses a textured model instead of a code model. */
+  textured?: { path: string; width: number };
+  /** Own material (textured models); otherwise the shared vehicle material. */
+  material?: THREE.MeshStandardMaterial;
   items: Item[];
   /** Half sizes for the solid box (0 = you can walk through it). */
   half: [number, number, number];
@@ -37,7 +41,17 @@ interface Kind {
   shadow: THREE.InstancedMesh | null;
 }
 
-const MAX_SHOWN = 90; // per kind, nearest first
+const MAX_SHOWN = 60; // per kind, nearest first
+
+/**
+ * Cars use Kenney's Car Kit (CC0) — two looks per type, picked by the car's colour variant.
+ * Autos, two-wheelers, buses, carts and bus stops keep our own code models.
+ */
+const KENNEY: Record<string, { files: string[]; width: number }> = {
+  hatchback: { files: ['hatchback-sports'], width: 1.7 },
+  sedan: { files: ['sedan', 'sedan-sports'], width: 1.78 },
+  suv: { files: ['suv', 'suv-luxury'], width: 1.88 },
+};
 const SOLID_RADIUS = 30;
 
 /**
@@ -55,13 +69,19 @@ export class StreetLifeView {
 
   constructor(props: PropSet, envMap: THREE.Texture | null) {
     this.material = createVehicleMaterial(envMap);
-    VEHICLE_KINDS.forEach((name, index) => {
+    // One kind per model file: each vehicle type may have several looks.
+    const byType: Kind[][] = VEHICLE_KINDS.map((name, index) => {
       const [hw, hl] = VEHICLE_HALF[index];
-      this.kinds.push({ name, items: [], half: [hw, VEHICLE_HEIGHT[index] / 2, hl], mesh: null, shadow: null });
+      const half: [number, number, number] = [hw, VEHICLE_HEIGHT[index] / 2, hl];
+      const kenney = KENNEY[name];
+      if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
+      return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, width: kenney.width }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
     });
+    for (const kinds of byType) this.kinds.push(...kinds);
     for (let i = 0; i < props.vehicles.length; i += VEHICLE_STRIDE) {
       const v = props.vehicles;
-      this.kinds[v[i + 4]].items.push({ x: v[i], y: v[i + 1], z: v[i + 2], rotation: v[i + 3], variant: v[i + 5] });
+      const looks = byType[v[i + 4]];
+      looks[v[i + 5] % looks.length].items.push({ x: v[i], y: v[i + 1], z: v[i + 2], rotation: v[i + 3], variant: v[i + 5] });
     }
     const simple = (name: string, data: Float32Array, stride: number, half: [number, number, number]): void => {
       const items: Item[] = [];
@@ -72,16 +92,24 @@ export class StreetLifeView {
     simple('bus_stop', props.stops, STOP_STRIDE, [0, 0, 0]);
     for (const kind of this.kinds) {
       if (kind.items.length === 0) continue;
-      // Built-in code models first; a .glb in public/models/ is only used for names we can't build.
-      const built = streetModel(kind.name);
-      void (built ? Promise.resolve(built) : loadModel(kind.name)).then((geometry) => {
+      const ready = kind.textured
+        ? loadTexturedModel(kind.textured.path, kind.textured.width, true).then((model) => {
+            if (!model) return streetModel(kind.name); // fall back to our own model
+            model.material.envMap = this.material.envMap;
+            kind.material = model.material;
+            kind.half = [model.halfWidth, kind.half[1], model.halfLength];
+            return model.geometry;
+          })
+        : Promise.resolve(streetModel(kind.name) ?? null).then((built) => built ?? loadModel(kind.name));
+      void ready.then((geometry) => {
         if (!geometry) return;
-        const mesh = new THREE.InstancedMesh(geometry, this.material, Math.min(MAX_SHOWN, kind.items.length));
+        const material = kind.material ?? this.material;
+        const mesh = new THREE.InstancedMesh(geometry, material, Math.min(MAX_SHOWN, kind.items.length));
         mesh.count = 0;
         mesh.receiveShadow = true;
         mesh.frustumCulled = false; // copies move around; the set is small anyway
         kind.mesh = mesh;
-        const shadow = new THREE.InstancedMesh(geometry, this.material, Math.min(24, kind.items.length));
+        const shadow = new THREE.InstancedMesh(geometry, material, Math.min(24, kind.items.length));
         shadow.count = 0;
         shadow.castShadow = true;
         shadow.frustumCulled = false;
@@ -135,7 +163,7 @@ export class StreetLifeView {
         const item = near[i].item;
         rotation.setFromAxisAngle(up, item.rotation);
         mesh.setMatrixAt(i, matrix.compose(position.set(item.x, item.y, item.z), rotation, one));
-        mesh.setColorAt(i, NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[item.variant % PAINTS.length]);
+        if (!kind.material) mesh.setColorAt(i, NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[item.variant % PAINTS.length]);
       }
       mesh.count = shown;
       mesh.instanceMatrix.needsUpdate = true;
@@ -158,6 +186,8 @@ export class StreetLifeView {
   /** Reflections are dimmer at night. */
   setNight(night: number): void {
     this.material.envMapIntensity = 0.15 + 0.85 * (1 - night);
+    // Kenney's light colours already look bright; their reflections are kept softer.
+    for (const kind of this.kinds) if (kind.material) kind.material.envMapIntensity = this.material.envMapIntensity * 0.6;
   }
 
   dispose(): void {
