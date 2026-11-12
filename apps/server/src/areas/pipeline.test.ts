@@ -244,6 +244,25 @@ describe('test area: pack → meshes', () => {
     expect(kinds.size).toBeGreaterThanOrEqual(5); // cars, autos and two-wheelers all show up
   });
 
+  it('gives buildings a front door on an outside wall, facing out', () => {
+    expect(world.doors.length).toBeGreaterThan(1000);
+    const gear = world.doors.find((d) => d.name === 'GEAR Innovative International School');
+    expect(gear?.kind).toBe('school');
+    expect(world.doors.find((d) => d.name === 'Mango Hypermarket')?.kind).toBe('supermarket');
+    for (const door of world.doors) {
+      const building = world.pack.buildings.find((b) => b.id === door.id)!;
+      const ring = building.ring.map((v) => v / UNITS_PER_METRE);
+      // One step out of the door is outside the building.
+      const ox = door.x + Math.sin(door.face) * 0.6;
+      const oz = door.z + Math.cos(door.face) * 0.6;
+      let inside = false;
+      for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+        if (ring[i + 1] > oz !== ring[j + 1] > oz && ox < ((ring[j] - ring[i]) * (oz - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) inside = !inside;
+      }
+      expect(inside).toBe(false);
+    }
+  });
+
   it('builds exactly the same world twice', () => {
     const second = prepareWorld(pack);
     expect(Array.from(second.props.trees)).toEqual(Array.from(world.props.trees));

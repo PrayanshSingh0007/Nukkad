@@ -86,6 +86,20 @@ export class PhysicsWorld {
     });
   }
 
+  private interior: Collider[] = [];
+
+  /** The walls, floor and furniture of the building you are inside (empty list = outside). */
+  setInterior(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
+    for (const collider of this.interior) this.world.removeCollider(collider, false);
+    const { ColliderDesc } = this.rapier;
+    this.interior = boxes.map((b) => {
+      const half = b.rotation / 2;
+      return this.world.createCollider(
+        ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
+      );
+    });
+  }
+
   /** Moves the traffic solids to where the vehicles are this frame. */
   setMovers(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
     const { ColliderDesc, RigidBodyDesc } = this.rapier;

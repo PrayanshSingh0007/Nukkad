@@ -8,6 +8,7 @@ export type { TerrainGrid, TerrainMesh } from './terrain/grid.ts';
 export { GROUND_MAP_SIZE, paintGroundMap } from './areas/groundMap.ts';
 export { buildWaterMesh } from './areas/water.ts';
 export { prepareWorld } from './chunk/prepare.ts';
+export type { Door, InteriorKind } from './buildings/doors.ts';
 export { findSpawn } from './chunk/spawn.ts';
 export type { PreparedWorld } from './chunk/prepare.ts';
 export { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, buildChunk } from './chunk/buildChunk.ts';

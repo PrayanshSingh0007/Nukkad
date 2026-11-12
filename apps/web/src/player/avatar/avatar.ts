@@ -60,6 +60,7 @@ export class Avatar {
   private swing = 0;
   private idleTime = Math.random() * 10;
   private facingAngle = 0;
+  private nextBlink = 1 + Math.random() * 3;
   private blob: THREE.Mesh | null = null;
   private readonly scooter: ScooterModel;
 
@@ -129,6 +130,11 @@ export class Avatar {
     this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);
+    // Blink every few seconds (a quick 0.12 s), sometimes twice.
+    this.nextBlink -= dt;
+    const closed = this.nextBlink < 0.12 && this.nextBlink > 0;
+    if (this.nextBlink <= 0) this.nextBlink = Math.random() < 0.2 ? 0.35 : 2.5 + Math.random() * 3.5;
+    this.bones[BONE.lids].scale.setScalar(closed ? 1 : 0.001);
   }
 
   private walkPose(dt: number, speed: number, grounded: boolean): void {
@@ -159,8 +165,12 @@ export class Avatar {
     b[BONE.chest].rotation.x = -0.06 * s;
     b[BONE.chest].rotation.y = step * 0.14 * s;
     b[BONE.chest].scale.y = 1 + breathe * 0.012;
+    // Standing still you look around a little; walking, the hips sway side to side.
+    const look = (1 - s) * (Math.sin(this.idleTime * 0.37) * 0.25 + Math.sin(this.idleTime * 0.91) * 0.08);
     b[BONE.head].rotation.x = 0.03 * s + breathe * 0.015;
-    b[BONE.head].rotation.y = -step * 0.06 * s;
+    b[BONE.head].rotation.y = -step * 0.06 * s + look;
+    b[BONE.hips].rotation.z = step * 0.04 * s;
+    b[BONE.chest].rotation.z = -step * 0.03 * s;
   }
 
   /** Standing on a scooter: knees soft, both hands forward on the handlebar. */

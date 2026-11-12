@@ -221,6 +221,16 @@ export class LocalPlayer {
     }
   }
 
+  /** Forget speed and the last position (after being moved through a door). */
+  resetMotion(): void {
+    const body = this.body;
+    this.velocityX = 0;
+    this.velocityZ = 0;
+    this.speed = 0;
+    this.previous = { x: body.x, y: body.y, z: body.z };
+    this.smoothY = body.y;
+  }
+
   dispose(): void {
     this.body.dispose();
     this.avatar.dispose();

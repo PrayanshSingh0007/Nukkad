@@ -83,6 +83,7 @@ async function load(url: string): Promise<void> {
       places: pack.places,
       traffic: buildTrafficRoutes(pack, 40),
       walkers: buildWalkRoutes(pack, 160),
+      doors: world.doors,
     },
     [
       terrain.positions.buffer,

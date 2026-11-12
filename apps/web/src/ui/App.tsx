@@ -49,6 +49,7 @@ export function App({ game, initialLook, roomId }: Props) {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
     game.onDriveHint = setDriveLabel;
+    game.onToast = setToast;
     game.onSpeed = (v, max, label) => setSpeed(max > 0 ? { v, max, label } : null);
     // The room is moving: show who is taking everyone where, then load the new place.
     game.onTravel = (place, by) => {

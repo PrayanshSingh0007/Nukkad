@@ -28,6 +28,9 @@ import { StreetLifeView } from '../world/streetLifeView.ts';
 import { TrafficView } from '../world/trafficView.ts';
 import { PedestrianView } from '../world/pedestrianView.ts';
 import { WorldView } from '../world/worldView.ts';
+import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
+import type { Interior } from '../world/interiors.ts';
+import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES } from './vehicleSpecs.ts';
 import type { ParkedVehicle } from '../world/streetLifeView.ts';
@@ -103,6 +106,12 @@ export class Game {
   /** Called with the label of the Drive button ("Drive auto", "Get out") or null to hide it. */
   onDriveHint: ((label: string | null) => void) | null = null;
   private driving: ParkedVehicle | null = null;
+  /** Front doors by 10 m grid cell, the door you are standing at, and the building you are inside. */
+  private doorGrid = new Map<string, Door[]>();
+  private doorNear: Door | null = null;
+  private interior: Interior | null = null;
+  /** Called with a short message for the player ("Inside: Mango Hypermarket"). */
+  onToast: ((text: string) => void) | null = null;
   private driveMesh: THREE.InstancedMesh | null = null;
   private driveHint: string | null = null;
   private lastDragAt = 0;
@@ -177,11 +186,92 @@ export class Game {
     this.onRiding?.(player.riding);
   }
 
-  /** Gets into the nearest parked vehicle, or out of the one you are driving. */
+  /** The front door you are standing at (on foot), if any. */
+  private findDoor(x: number, z: number): Door | null {
+    let best: Door | null = null;
+    let bestD = 2.2;
+    const gx = Math.floor(x / 10);
+    const gz = Math.floor(z / 10);
+    for (let i = -1; i <= 1; i++)
+      for (let k = -1; k <= 1; k++)
+        for (const door of this.doorGrid.get(`${gx + i},${gz + k}`) ?? []) {
+          const d = Math.hypot(door.x - x, door.z - z);
+          if (d < bestD) {
+            bestD = d;
+            best = door;
+          }
+        }
+    return best;
+  }
+
+  /** Walks you through a front door into the building's inside. */
+  private goInside(door: Door): void {
+    const player = this.player;
+    const physics = this.physics;
+    if (!player || !physics) return;
+    const inside = buildInterior(door);
+    this.interior = inside;
+    this.view3d.scene.add(inside.group);
+    physics.setInterior(inside.solids);
+    player.body.teleport(inside.spawn.x, inside.floorY + 0.9, inside.spawn.z);
+    player.resetMotion();
+    this.rig.yaw = door.face; // look into the room
+    this.setOutsideVisible(false);
+    if (door.kind === 'showroom') this.addShowroomCars(inside);
+    this.onToast?.(door.name ? `Inside: ${door.name}` : `Inside: ${INTERIOR_NAMES[door.kind]}`);
+  }
+
+  /** Back out through the door you came in. */
+  private goOutside(): void {
+    const player = this.player;
+    const inside = this.interior;
+    if (!player || !inside || !this.physics) return;
+    const door = inside.door;
+    const out = 1.6;
+    player.body.teleport(door.x + Math.sin(door.face) * out, door.y + 0.9, door.z + Math.cos(door.face) * out);
+    player.resetMotion();
+    this.rig.yaw = door.face + Math.PI; // look back out at the street
+    this.physics.setInterior([]);
+    inside.dispose();
+    this.interior = null;
+    this.setOutsideVisible(true);
+  }
+
+  /** While inside, the city is not drawn at all (cheaper, and nothing leaks through the walls). */
+  private setOutsideVisible(on: boolean): void {
+    for (const group of [this.world?.group, this.traffic?.group, this.walkers?.group, this.streetLife?.group]) if (group) group.visible = on;
+  }
+
+  private addShowroomCars(inside: Interior): void {
+    const names = ['sedan-sports', 'suv-luxury', 'hatchback-sports'];
+    carSpots(inside).forEach((spot, i) => {
+      const model = this.streetLife?.modelByName(names[i % names.length]);
+      if (!model) return;
+      const mesh = new THREE.Mesh(model.geometry, model.material);
+      mesh.position.set(spot.x, inside.floorY + 0.12, spot.z);
+      mesh.rotation.y = spot.heading;
+      inside.group.attach(mesh);
+    });
+  }
+
+  /** The action button / E key: get in or out of a vehicle, go into or out of a building. */
   toggleDrive(): void {
     const player = this.player;
     const streetLife = this.streetLife;
     if (!player || !streetLife) return;
+    if (this.interior) {
+      if (this.interior.nearExit(player.x, player.z)) this.goOutside();
+      return;
+    }
+    if (!this.driving && !player.riding && this.doorNear) {
+      // A parked car right next to you wins only if it is closer than the door.
+      const parked = streetLife.nearestVehicle(player.x, player.z, 3.5);
+      const carD = parked ? Math.hypot(parked.item.x - player.x, parked.item.z - player.z) : Infinity;
+      if (carD > Math.hypot(this.doorNear.x - player.x, this.doorNear.z - player.z)) {
+        this.goInside(this.doorNear);
+        return;
+      }
+    }
     if (this.driving) {
       const left = player.exitVehicle();
       if (left) streetLife.park(this.driving, left.x, left.y, left.z, left.heading);
@@ -220,11 +310,18 @@ export class Game {
   private updateDriveHint(): void {
     const player = this.player;
     let label: string | null = null;
-    if (player && this.driving) label = 'Get out';
+    this.doorNear = null;
+    if (player && this.interior) {
+      if (this.interior.nearExit(player.x, player.z)) label = 'Go outside';
+    } else if (player && this.driving) label = 'Get out';
     else if (player && !player.riding && this.streetLife) {
       const parked = this.streetLife.nearestVehicle(player.x, player.z, 3.5);
       const spec = parked ? VEHICLES[parked.kind.name] : undefined;
-      if (spec) label = `Drive ${spec.label}`;
+      const door = this.findDoor(player.x, player.z);
+      this.doorNear = door;
+      const carD = parked ? Math.hypot(parked.item.x - player.x, parked.item.z - player.z) : Infinity;
+      if (door && (!spec || carD > Math.hypot(door.x - player.x, door.z - player.z))) label = 'Go inside';
+      else if (spec) label = `Drive ${spec.label}`;
     }
     if (label !== this.driveHint) {
       this.driveHint = label;
@@ -281,6 +378,17 @@ export class Game {
       ]);
       this.physics = physics;
       this.ready = ready;
+      for (const door of ready.doors) {
+        const key = `${Math.floor(door.x / 10)},${Math.floor(door.z / 10)}`;
+        const list = this.doorGrid.get(key) ?? [];
+        list.push(door);
+        this.doorGrid.set(key, list);
+      }
+      this.remotes.canSee = (x, y, z) => {
+        const me = this.interior;
+        if (me) return me.contains(x, y, z);
+        return y > heightAt((this.world as WorldView).terrain, x, z) - 10;
+      };
       const settings = QUALITY[this.level];
       this.world = new WorldView(ready, {
         maxTrees: settings.maxTrees,
@@ -451,7 +559,8 @@ export class Game {
     }
     if (player && physics && world && streamer) {
       const terrain = world.terrain;
-      const groundAt = (x: number, z: number): number => heightAt(terrain, x, z);
+      const inside = this.interior;
+      const groundAt = (x: number, z: number): number => (inside ? inside.floorY : heightAt(terrain, x, z));
       this.input.update();
       const drag = this.input.consumeLook();
       this.rig.look(drag.dx, drag.dy);
@@ -499,7 +608,7 @@ export class Game {
         const behind = player.rideSpeed >= 0 ? player.heading : player.heading + Math.PI;
         this.rig.yaw += Math.atan2(Math.sin(behind - this.rig.yaw), Math.cos(behind - this.rig.yaw)) * Math.min(1, dt * 2.5);
       }
-      this.rig.distance = (vehicle ? vehicle.cameraDistance : 5.2) + speedShare * 1.3;
+      this.rig.distance = (vehicle ? vehicle.cameraDistance : inside ? 3.4 : 5.2) + speedShare * 1.3;
       const fov = Game.BASE_FOV + speedShare * 14;
       if (Math.abs(camera.fov - fov) > 0.05) {
         camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
@@ -517,6 +626,11 @@ export class Game {
     }
 
     this.atmosphere.update(dt, this.view3d.camera);
+    if (this.interior) {
+      // Indoors: lit by the room's lamps, not the sun (same lights, other strengths — no shader rebuild).
+      this.view3d.sun.intensity = 0.7;
+      this.view3d.ambient.intensity = 2.6;
+    }
     world?.setNight(this.atmosphere.night);
     this.streetLife?.setNight(this.atmosphere.night);
     world?.update(dt);

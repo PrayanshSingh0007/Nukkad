@@ -6,6 +6,8 @@ import { scatterProps } from '../props/scatter.ts';
 import type { PropSet } from '../props/scatter.ts';
 import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
+import { findDoors } from '../buildings/doors.ts';
+import type { Door } from '../buildings/doors.ts';
 import { buildRibbon } from '../roads/ribbon.ts';
 import { cloneTerrain, terrainFromPack } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
@@ -19,6 +21,7 @@ export interface ChunkBucket {
   /** Compound wall pieces [ax, az, bx, bz, …] in metres, and society gates. */
   walls: number[];
   gates: GateSpot[];
+  doors: Door[];
 }
 
 /** A pack unpacked for fast chunk building. Made once per world, in the worker. */
@@ -32,6 +35,8 @@ export interface PreparedWorld {
   originalTerrain: TerrainGrid;
   buckets: ChunkBucket[];
   props: PropSet;
+  /** One front door per building (walk up to it to go inside). */
+  doors: Door[];
 }
 
 /** Road ends get a filling disc only when the road is at least this wide. */
@@ -57,6 +62,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     discs: [],
     walls: [],
     gates: [],
+    doors: [],
   }));
   const chunkAt = (x: number, z: number): ChunkBucket => buckets[chunkIndexAt(half, chunksPerSide, x, z)];
 
@@ -114,5 +120,8 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     chunkAt(gate.x, gate.z).gates.push(gate);
   }
 
-  return { pack, half, chunksPerSide, terrain, originalTerrain, buckets, props: scatterProps(pack, terrain) };
+  const doors = findDoors(pack, terrain);
+  for (const door of doors) chunkAt(door.x, door.z).doors.push(door);
+
+  return { doors, pack, half, chunksPerSide, terrain, originalTerrain, buckets, props: scatterProps(pack, terrain) };
 }

@@ -23,6 +23,8 @@ export const BONE = {
   thighR: 8,
   shinL: 9,
   shinR: 10,
+  /** Closed eyelids: shrunk to nothing, grown for a blink (full-detail avatars only). */
+  lids: 11,
 } as const;
 export type BoneId = (typeof BONE)[keyof typeof BONE];
 
@@ -39,6 +41,7 @@ export const JOINTS: Record<BoneId, [number, number, number]> = {
   [BONE.thighR]: [0.095, 0.92, 0],
   [BONE.shinL]: [-0.095, 0.5, 0],
   [BONE.shinR]: [0.095, 0.5, 0],
+  [BONE.lids]: [0, 1.656, -0.112],
 };
 const PARENT: Record<BoneId, BoneId | null> = {
   [BONE.hips]: null,
@@ -52,6 +55,7 @@ const PARENT: Record<BoneId, BoneId | null> = {
   [BONE.thighR]: BONE.hips,
   [BONE.shinL]: BONE.thighL,
   [BONE.shinR]: BONE.thighR,
+  [BONE.lids]: BONE.head,
 };
 
 const PANTS: Record<(typeof OUTFITS)[number], number> = { tee: 0x34425e, hoodie: 0x3f434b, kurta: 0xece6d6, jacket: 0x2b303a };
@@ -226,7 +230,9 @@ function addTorso(p: Parts, outfit: (typeof OUTFITS)[number], cloth: number, ski
       }
       break;
     case 'kurta':
-      p.add(new THREE.CylinderGeometry(0.158, 0.215, 0.42, seg(18), 1, true), BONE.hips, cloth, { at: [0, 0.81, 0], scale: [1, 1, 0.72] });
+      // The kurta's lower half flares out over the hips and thighs (tucked under the chest at the top).
+      if (full()) p.lathe(BONE.hips, cloth, [[0.217, 0.6], [0.205, 0.75], [0.192, 0.9], [0.17, 0.98], [0.15, 1.035]], 0.74);
+      else p.add(new THREE.CylinderGeometry(0.165, 0.215, 0.42, seg(18), 1, true), BONE.hips, cloth, { at: [0, 0.81, 0], scale: [1, 1, 0.72] });
       p.box(BONE.chest, dark, [0.02, 0.2, 0.012], { at: [0, 1.36, -0.118] }); // placket
       if (full()) {
         for (let k = 0; k < 3; k++) p.ball(BONE.chest, BUTTON, 0.008, { at: [0, 1.43 - k * 0.06, -0.126] });
@@ -321,6 +327,7 @@ function addHead(p: Parts, skin: number, hair: number): void {
     p.ball(h, 0xffffff, 0.0028, { at: [x + 0.004, 1.659, -0.122] }, [4, 3]);
     p.add(new THREE.SphereGeometry(0.0215, 12, 4, 0, Math.PI * 2, 0, Math.PI * 0.3), h, shade(skin, 0.86), { at: [x, 1.661, -0.105], rot: [-1.25, 0, 0], scale: [1.3, 1, 0.55] }); // upper lid
     p.box(h, hair, [0.05, 0.009, 0.012], { at: [x, 1.69, -0.117], rot: [0, 0, x < 0 ? 0.12 : -0.12] }); // eyebrow
+    p.ball(BONE.lids, shade(skin, 0.9), 0.0215, { at: [x, 1.656, -0.109], scale: [1.3, 1, 0.62] }, [12, 8]); // closed lid (blink)
   }
   // Lips: thin upper lip, slightly fuller lower lip.
   p.add(new THREE.CapsuleGeometry(0.0048, 0.03, 2, 6), h, lip, { at: [0, 1.568, -0.117], rot: [0, 0, Math.PI / 2], scale: [1, 1, 0.8] });

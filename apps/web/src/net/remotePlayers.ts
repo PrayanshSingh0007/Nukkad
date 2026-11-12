@@ -91,6 +91,9 @@ export class RemotePlayers {
     }
   }
 
+  /** Decides who you can see right now (set by the game: inside vs outside). */
+  canSee: ((x: number, y: number, z: number) => boolean) | null = null;
+
   update(dt: number, now: number): void {
     if (!this.clock.ready) return;
     const t = this.clock.renderTime(now);
@@ -98,7 +101,7 @@ export class RemotePlayers {
       const state = remote.buffer.sample(t);
       if (!state) continue;
       let shown = remote.shown;
-      if (!shown || Math.hypot(state.x - shown.x, state.z - shown.z) > TELEPORT_M) {
+      if (!shown || Math.hypot(state.x - shown.x, state.z - shown.z) > TELEPORT_M || Math.abs(state.y - shown.y) > 5) {
         shown = { x: state.x, y: state.y, z: state.z };
       } else {
         const k = Math.min(1, dt * GLIDE);
@@ -129,6 +132,12 @@ export class RemotePlayers {
       });
       remote.tag.sprite.position.set(shown.x, shown.y + TAG_HEIGHT, shown.z);
       remote.tag.set(remote.info.name, away);
+      // Friends inside a building are only seen by those in the same room (and the other way round).
+      if (this.canSee && !this.canSee(shown.x, shown.y, shown.z)) {
+        remote.avatar.object.visible = false;
+        remote.tag.sprite.visible = false;
+        if (remote.vehicle) remote.vehicle.visible = false;
+      } else if (remote.vehicle) remote.vehicle.visible = true;
     }
   }
 

@@ -9,6 +9,19 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Enterable buildings (2026-11-13) — owner: "make the apartments and buildings so that people can go inside"
+
+- **Every building has a front door** (1,819 in the test area): on the wall facing the nearest street (`packages/worldgen/src/buildings/doors.ts`), drawn on the facade (wooden door for homes/temples, wide glass door for shops). Walk up to it → **Go inside** button (or E). Inside, at the doormat → **Go outside**.
+- **The inside is its own room** (like most open-world games): built on the device from the building's kind and size (`apps/web/src/world/interiors.ts`), placed 60–100 m under the building (different depth per building, so neighbours never overlap). Same door → same room for everyone, so **friends see each other inside**; people inside are hidden from people outside and the other way round. Nothing changed in the network protocol or server (the server only limits sideways speed).
+- 13 layouts: home/flat (shoe rack, living room with sofa/TV/rug, kitchen, dining table, bedroom behind a partition, a small prayer shelf), supermarket (checkouts, aisles of products with a centre aisle, fridges, section boards), mall (shop fronts, fountain, benches, plants, kiosk, skylight), car showroom (3 real CC0 Kenney cars on stands), school/college classroom (desks + benches, blackboard, fans), office (reception, desks with monitors, water cooler), restaurant/café/bakery, shop (wall shelves, counter), place of worship (carpet, platform, plain golden arch — no deity art), hotel lobby, clinic, gym, warehouse. Sizes follow the footprint, clamped per kind.
+- One merged mesh per room with **baked lighting** (MeshBasic, no extra lights → no shader rebuild); walls/floor/furniture are solid physics boxes; the city, traffic and people are not drawn while inside (cheaper). Indoors the sun is turned down and the sky light up.
+- Honest limits: every flat in a tower is the same single flat (no lifts/stairs/floors yet); doors are a guess (the map rarely marks entrances); doors of buildings beyond the walkable edge (±500 m) cannot be reached; no interactive furniture yet (sit, buy, open fridge); not tested on a phone.
+
+## Characters, round 2 (2026-11-13)
+
+- Blinking (new eyelid bone, every 2.5–6 s, sometimes twice), slow look-around when standing, hip and chest sway when walking; kurta reshaped (legs no longer poke through).
+- Honest: code-built characters are near their limit. A real AAA look needs sculpted/scanned models and motion-captured animation — see BUGS/next steps for the options (all must be CC0/CC-BY or ours).
+
 ## More detailed characters (2026-11-13)
 
 - Players (full detail, ≈ 8,600 triangles, was ≈ 3,000): shaped torso and hips (lathe profiles), tapered thighs/upper arms, knees and elbows, **soft bending** (vertices near shoulders, elbows, hips and knees shared with the parent bone), hands with four fingers and a thumb, face with jaw/chin, irises, pupils, eye highlights, upper lids, nose with nostrils, lips, ears; clothing details (tee collar + hem, hoodie drawstrings + hood + waistband, kurta buttons + band collar + hem border, jacket front edges + pocket flaps + shirt buttons), belt + buckle, back pockets, jeans seams + hems, sneaker laces + side stripe + heel tab, a watch; rounded long hair and fringe; soft baked shade on down-facing surfaces; MeshStandardMaterial (roughness 0.68).
