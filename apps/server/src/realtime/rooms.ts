@@ -1,11 +1,13 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { CLIENT_FLAGS_MASK, FLAG_AWAY, MAX_PLAYERS } from '@nukkad/shared';
 import type { AvatarLook, PlayerInfo, PlayerState, RoomInfo, SnapshotEntry } from '@nukkad/shared';
+import type { RoomRecord, RoomStore } from '../store/roomStore.ts';
 
 /**
  * Rooms and who is in them. The server is the only authority on membership (PLAN §6.5).
  * Pure logic with an injectable clock, so every rule is unit-tested without sockets.
- * Nothing here is written to disk: names and looks live only while you are connected.
+ * Names, looks and positions are never written anywhere. Only a room's id and place are
+ * handed to `store` (if given) so invite links survive a server restart (BUGS B-005).
  */
 export const AWAY_AFTER_MS = 10_000; // silent this long → others see you as "reconnecting…"
 export const FREE_AFTER_MS = 60_000; // gone this long → your slot is free again
@@ -51,9 +53,31 @@ const newToken = (): string => randomBytes(18).toString('base64url'); // 24 char
 export class RoomManager {
   private readonly rooms = new Map<string, Room>();
   private readonly now: () => number;
+  private readonly store: RoomStore | null;
 
-  constructor(now: () => number = Date.now) {
+  constructor(now: () => number = Date.now, store: RoomStore | null = null) {
     this.now = now;
+    this.store = store;
+  }
+
+  /** Brings back rooms saved before a restart. Nobody is in them yet; old expired ones are dropped. */
+  restore(records: RoomRecord[]): number {
+    const time = this.now();
+    let restored = 0;
+    for (const record of records) {
+      const emptySince = record.emptySince ?? time;
+      if (time - emptySince > ROOM_TTL_MS || this.rooms.has(record.id)) {
+        if (time - emptySince > ROOM_TTL_MS) this.store?.remove(record.id);
+        continue;
+      }
+      this.rooms.set(record.id, { info: { id: record.id, lat: record.lat, lng: record.lng }, createdAt: record.createdAt, emptySince, members: new Array(MAX_PLAYERS).fill(null) });
+      restored++;
+    }
+    return restored;
+  }
+
+  private persist(room: Room): void {
+    this.store?.save({ id: room.info.id, lat: room.info.lat, lng: room.info.lng, createdAt: room.createdAt, emptySince: room.emptySince });
   }
 
   get roomCount(): number {
@@ -64,7 +88,9 @@ export class RoomManager {
     let id = newRoomId();
     while (this.rooms.has(id)) id = newRoomId();
     const info = { id, lat, lng };
-    this.rooms.set(id, { info, createdAt: this.now(), emptySince: this.now(), members: new Array(MAX_PLAYERS).fill(null) });
+    const room: Room = { info, createdAt: this.now(), emptySince: this.now(), members: new Array(MAX_PLAYERS).fill(null) };
+    this.rooms.set(id, room);
+    this.persist(room);
     return info;
   }
 
@@ -81,7 +107,10 @@ export class RoomManager {
       const member = room.members.find((m) => m?.token === token);
       if (member) {
         Object.assign(member, { name, look, connected: true, lastStateAt: time });
-        room.emptySince = null;
+        if (room.emptySince !== null) {
+          room.emptySince = null;
+          this.persist(room);
+        }
         return { ok: true, member, rejoined: true };
       }
     }
@@ -89,7 +118,10 @@ export class RoomManager {
     if (slot < 0) return { ok: false, code: 'room_full' };
     const member: Member = { slot, name, look, token: newToken(), state: null, lastStateAt: time, acceptedAt: time, connected: true, disconnectedAt: 0, rejected: 0 };
     room.members[slot] = member;
-    room.emptySince = null;
+    if (room.emptySince !== null) {
+      room.emptySince = null;
+      this.persist(room);
+    }
     return { ok: true, member, rejoined: false };
   }
 
@@ -107,7 +139,10 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return;
     room.members[slot] = null;
-    if (room.members.every((m) => m === null)) room.emptySince = this.now();
+    if (room.members.every((m) => m === null)) {
+      room.emptySince = this.now();
+      this.persist(room);
+    }
   }
 
   /** Moves a room to another place. Old positions mean nothing there, so they are forgotten. */
@@ -116,6 +151,7 @@ export class RoomManager {
     if (!room) return null;
     room.info = { ...room.info, lat, lng };
     for (const member of room.members) if (member) member.state = null;
+    this.persist(room);
     return room.info;
   }
 
@@ -183,7 +219,10 @@ export class RoomManager {
           freed.push({ roomId: id, slot: member.slot });
         }
       }
-      if (room.emptySince !== null && time - room.emptySince > ROOM_TTL_MS) this.rooms.delete(id);
+      if (room.emptySince !== null && time - room.emptySince > ROOM_TTL_MS) {
+        this.rooms.delete(id);
+        this.store?.remove(id);
+      }
     }
     return freed;
   }

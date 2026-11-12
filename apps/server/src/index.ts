@@ -8,6 +8,9 @@ import { RoomManager } from './realtime/rooms.ts';
 import { FileAreaStore } from './store/areaStore.ts';
 import type { AreaStore } from './store/areaStore.ts';
 import { connectMongoAreaStore } from './store/mongoAreaStore.ts';
+import { FileRoomStore, MongoRoomStore } from './store/roomStore.ts';
+import type { RoomStore } from './store/roomStore.ts';
+import path from 'node:path';
 
 const log = (message: string): void => console.log(`[nukkad] ${message}`);
 
@@ -15,12 +18,16 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   let store: AreaStore;
+  let roomStore: RoomStore;
   if (config.mongoUri) {
-    store = await connectMongoAreaStore(config.mongoUri);
-    log('area cache: MongoDB');
+    const mongo = await connectMongoAreaStore(config.mongoUri);
+    store = mongo;
+    roomStore = new MongoRoomStore(mongo.connection);
+    log('area cache and rooms: MongoDB');
   } else {
     store = new FileAreaStore(config.cacheDir);
-    log('area cache: memory + .cache/ on disk (no MONGODB_URI set)');
+    roomStore = new FileRoomStore(path.join(path.dirname(config.cacheDir), 'rooms'));
+    log('area cache: memory + .cache/ on disk; rooms: .cache/rooms/ (no MONGODB_URI set)');
   }
 
   if (!config.osmContact) {
@@ -29,7 +36,8 @@ async function main(): Promise<void> {
   }
 
   const areas = new AreaService({ store, source: createAreaSource(config), log });
-  const rooms = new RoomManager();
+  const rooms = new RoomManager(Date.now, roomStore);
+  log(`rooms restored after restart: ${rooms.restore(await roomStore.loadAll())}`);
   const geocoder = new Geocoder({ userAgent: osmUserAgent(config) });
   const app = createApp({ areas, rooms, geocoder, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy });
   const hub = new RealtimeHub({ rooms, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy, log });

@@ -9,6 +9,10 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Rooms survive restarts (2026-11-13, B-005 fixed)
+
+- `apps/server/src/store/roomStore.ts`: FileRoomStore (dev, `.cache/rooms/rooms.json`, atomic writes, ≤ 2 writes/s) and MongoRoomStore (prod, untested). Stored: room id, lat, lng, createdAt, emptySince — never names, looks or positions. Players re-join as new members after a restart (their reconnect tokens were in memory); live positions are simply lost, as before.
+
 ## Real 3D people (2026-11-13) — owner: "Yes, find models"
 
 - Players and friends are now **Quaternius' CC0 Universal Base Characters** (two rigged bodies, ≈ 14k triangles, detailed faces, real hair models) moved by the **CC0 Universal Animation Library** (idle, walk, jog, sprint, jump, driving, sitting, talking, dance — matched to speed). Credits in CREDITS.md. The built-in body shows until the files load (≈ 2.4 MB in total, loaded after the world).

@@ -30,8 +30,11 @@ areaSchema.index({ lastUsedAt: 1 }, { expireAfterSeconds: UNUSED_DAYS * 24 * 60 
 
 export class MongoAreaStore implements AreaStore {
   private readonly model: mongoose.Model<AreaDoc>;
+  /** Shared with the room store. */
+  readonly connection: mongoose.Connection;
 
   constructor(connection: mongoose.Connection) {
+    this.connection = connection;
     this.model = connection.model<AreaDoc>('Area', areaSchema);
   }
 

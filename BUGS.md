@@ -56,7 +56,7 @@ Template:
 
 ### B-005 Rooms disappear when the server restarts
 - Type: wrong behaviour
-- Status: open — fix before deploy (store rooms in MongoDB, PLAN §6.5)
+- Status: FIXED 2026-11-13 — rooms (id + place + times only) are saved to `.cache/rooms/rooms.json` in development and to MongoDB collection `rooms` when MONGODB_URI is set (TTL 24 h after the room empties), and restored at start. Verified: room created, server killed and restarted, `GET /api/rooms/:id` still answers. The MongoDB version is written but untested (no MongoDB locally).
 - Found: 2026-11-12, dev server restarted by a code change
 - Steps to reproduce:
   1. Start a Nukkad, copy the link. 2. Restart the server. 3. Open the link.

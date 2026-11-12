@@ -86,3 +86,47 @@ describe('rooms', () => {
     expect(rooms.get(room.id)).toBeUndefined();
   });
 });
+
+describe('rooms survive a server restart (B-005)', () => {
+  it('saves only id, place and times, and brings rooms back after a restart', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const path = await import('node:path');
+    const { FileRoomStore } = await import('../store/roomStore.ts');
+    const dir = mkdtempSync(path.join(tmpdir(), 'nukkad-rooms-'));
+    let time = 5_000_000;
+    const store = new FileRoomStore(dir);
+    const before = new RoomManager(() => time, store);
+    const room = before.create(12.92, 77.69);
+    const joined = before.join(room.id, 'Sam', DEFAULT_LOOK);
+    expect(joined.ok).toBe(true);
+    before.travel(room.id, 12.99, 77.7);
+    store.flush();
+    const { readFileSync } = await import('node:fs');
+    const saved = readFileSync(path.join(dir, 'rooms.json'), 'utf8');
+    expect(saved).not.toContain('Sam'); // never names or looks
+    expect(JSON.parse(saved)).toEqual([{ id: room.id, lat: 12.99, lng: 77.7, createdAt: 5_000_000, emptySince: null }]);
+
+    // "Restart": a new manager and store read the file.
+    time += 60_000;
+    const again = new FileRoomStore(dir);
+    const after = new RoomManager(() => time, again);
+    expect(after.restore(await again.loadAll())).toBe(1);
+    expect(after.get(room.id)?.info).toEqual({ id: room.id, lat: 12.99, lng: 77.7 });
+    expect(after.join(room.id, 'Sam', DEFAULT_LOOK).ok).toBe(true);
+  });
+
+  it('drops saved rooms that were empty for more than 24 h', () => {
+    const removed: string[] = [];
+    const store = { loadAll: async () => [], save: () => {}, remove: (id: string) => removed.push(id) };
+    const time = 10 * ROOM_TTL_MS;
+    const rooms = new RoomManager(() => time, store);
+    const count = rooms.restore([
+      { id: 'aaaaaaaaaaaa', lat: 1, lng: 2, createdAt: 0, emptySince: time - ROOM_TTL_MS - 1 },
+      { id: 'bbbbbbbbbbbb', lat: 1, lng: 2, createdAt: 0, emptySince: time - 1000 },
+    ]);
+    expect(count).toBe(1);
+    expect(removed).toEqual(['aaaaaaaaaaaa']);
+    expect(rooms.get('bbbbbbbbbbbb')).toBeDefined();
+  });
+});
