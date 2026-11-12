@@ -1,10 +1,10 @@
 import { hash32 } from './util/random.ts';
 
 /**
- * Places that make the world feel lived in: shops, food, schools, offices, malls…
- * Where OpenStreetMap knows a place we keep its KIND and position — never its name.
- * Every name shown in Nukkad is made up here (legal rule: no real shop or brand names),
- * from the place's seed, so all players read the same sign.
+ * Places that make the world feel lived in: shops, food, schools, offices, malls, apartment
+ * complexes, temples… Real places show their REAL name from OpenStreetMap as plain text
+ * (owner's decision, 2026-11-13 — never logos). Places we invent get a made-up name from
+ * their seed, so all players read the same sign.
  */
 export const PLACE_KINDS = [
   'supermarket',
@@ -26,6 +26,8 @@ export const PLACE_KINDS = [
   'mall',
   'showroom',
   'shop',
+  'apartments',
+  'worship',
 ] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
@@ -43,6 +45,20 @@ export interface PackPlace {
   seed: number;
   /** 1 = this kind of place really is here on the map · 0 = invented by us. */
   real: 0 | 1;
+  /** The real name from the map (real places only). */
+  name?: string;
+}
+
+/** Tidies a name from the map for a signboard: no hidden characters, at most 40 characters. */
+export function cleanPlaceName(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const text = [...value.replace(/[\p{C}]/gu, '').replace(/\s+/g, ' ').trim()].slice(0, 40).join('').trim();
+  return text.length >= 2 ? text : undefined;
+}
+
+/** What a sign says: the real name, or a made-up one. */
+export function signText(place: PackPlace): string {
+  return place.name ?? placeName(place.kind, place.seed);
 }
 
 const FIRST = [
@@ -92,6 +108,8 @@ const LAST: Record<PlaceKind, string[]> = {
   mall: ['Mall', 'Galleria', 'Plaza'],
   showroom: ['Motors', 'Wheels', 'Auto World'],
   shop: ['Stores', 'Traders', 'Enterprises', 'Fancy Store'],
+  apartments: ['Residency', 'Enclave', 'Apartments', 'Heights'],
+  worship: ['Temple', 'Mandir'],
 };
 
 /** The made-up name on a place's sign. Same seed → same name on every device. */
@@ -122,4 +140,6 @@ export const PLACE_COLORS: Record<PlaceKind, string> = {
   mall: '#c2185b',
   showroom: '#212121',
   shop: '#00695c',
+  apartments: '#3949ab',
+  worship: '#e65100',
 };

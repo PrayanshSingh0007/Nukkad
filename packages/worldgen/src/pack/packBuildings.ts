@@ -1,6 +1,7 @@
 import { UNITS_PER_METRE } from '@nukkad/shared';
 import type { BuildingKind, PackBuilding } from '@nukkad/shared';
 import { cleanRing, orientRing, pointInRing, ringBounds, ringCentroid, signedArea } from '../geom/polygon.ts';
+import { parseColour, parseMaterial } from './colours.ts';
 import { HEIGHT_FIXES } from './heightFixes.ts';
 import type { HeightFixes } from './heightFixes.ts';
 import { buildingHeight, heightFromFloors } from './heights.ts';
@@ -125,6 +126,12 @@ export function finishBuildings(
     const building: PackBuilding = { id: draft.id, kind, h: height.h, floors: height.floors, ring };
     if (height.minH > 0) building.minH = height.minH;
     if (height.guessed) building.guessed = 1;
+    const colour = parseColour(draft.tags['building:colour']);
+    const roofColour = parseColour(draft.tags['roof:colour']);
+    const material = parseMaterial(draft.tags['building:material']);
+    if (colour) building.colour = colour;
+    if (roofColour) building.roofColour = roofColour;
+    if (material) building.material = material;
     const holes = draft.holes.map(quantizeRing).filter((hole) => hole.length >= 6);
     if (holes.length > 0) building.holes = holes;
     result.push(building);

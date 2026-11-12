@@ -300,7 +300,19 @@ function busStop(): THREE.BufferGeometry {
   return p.finish();
 }
 
+/** The black plastic terrace water tank, on a small steel stand. */
+function waterTank(): THREE.BufferGeometry {
+  const p = new Parts();
+  p.add(new THREE.CylinderGeometry(0.55, 0.6, 1.15, 14, 1), 0x1c1d20, MATTE, [0, 0.95, 0]);
+  p.add(new THREE.CylinderGeometry(0.25, 0.3, 0.12, 12, 1), 0x2a2b2e, MATTE, [0, 1.58, 0]);
+  for (const r of [0.38, 0.5, 0.62]) p.add(new THREE.TorusGeometry(0.585, 0.02, 4, 16), 0x111214, MATTE, [0, r + 0.25, 0], [Math.PI / 2, 0, 0]);
+  p.box([1.3, 0.08, 1.3], 0x6b6f75, MATTE, [0, 0.34, 0]);
+  for (const x of [-0.55, 0.55]) for (const z of [-0.55, 0.55]) p.box([0.06, 0.32, 0.06], 0x6b6f75, MATTE, [x, 0.16, z]);
+  return p.finish();
+}
+
 const BUILDERS: Record<string, () => THREE.BufferGeometry> = {
+  water_tank: waterTank,
   hatchback: () => car(HATCHBACK),
   sedan: () => car(SEDAN),
   suv: () => car(SUV),

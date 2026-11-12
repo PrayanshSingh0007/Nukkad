@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 112 green. Phone fps still unknown.
 
+## Real names + Bengaluru architecture (2026-11-13) — owner: "yes real names with real architecture"
+
+- **Real names on signs** (owner's decision, replaces the old "no shop signage" rule): real places show their OpenStreetMap `name:en`/`name` as plain text (≤ 40 characters, hidden characters removed) — never logos. Invented places keep made-up names; a test proves they never copy a real one. Named apartment buildings and places of worship are now places too.
+- **Named housing complexes** (`landuse=residential` with a name, e.g. "Assetz East Point") get a free-standing gate board by the road (≤ 20 per area). The board has no posts yet (floats 2.2 m up) — TODO.
+- Sign limit 120 per area (picture 512 × 2880). Priority: named real places and the three must-haves (mall, showroom, supermarket) first.
+- **Architecture from the map**: `building:colour`, `roof:colour` (names or #hex) and `building:material` (glass → glass facade; brick/stone/concrete/metal/wood → wall colour) are used when tagged. **Honest: in the test area only 1 of 1,903 buildings has any of these tags.** Roof shapes (gabled/hipped/dome) are NOT built — Bengaluru data has 1 tagged roof.
+- **Bengaluru typology instead** (applies everywhere): terrace parapet walls (0.9 m, both faces, no windows) on flat roofs of homes/flats/shops/civic; black plastic water tanks on a steel stand on terraces (1–3 per building by roof size; 1,440 in the test area; only the nearest 60 drawn).
+- **Raise PACK_VERSION whenever pack rules change** (now 8): an unchanged version silently reuses old cached packs.
+
 ## Places + going together (2026-11-13)
 
 - **Search**: `GET /api/search?q=` → OpenStreetMap Nominatim, server-side only, global queue (≥ 1.1 s between requests), identifying User-Agent (OSM_CONTACT in production), 30-day in-memory cache, results biased to Bengaluru (viewbox) and limited to India, duplicates of the same name within ~300 m merged, 10 searches/min per IP. Search runs only on Enter/Search (policy: no autocomplete).

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STALL_STRIDE, STOP_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
+import { STALL_STRIDE, STOP_STRIDE, TANK_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
 import type { PropSet } from '@nukkad/worldgen';
 import { loadModel, loadTexturedModel } from './models.ts';
 import { createVehicleMaterial, streetModel } from './vehicleModels.ts';
@@ -97,6 +97,7 @@ export class StreetLifeView {
     };
     simple('stall', props.stalls, STALL_STRIDE, [1.0, 1.1, 0.7]);
     simple('bus_stop', props.stops, STOP_STRIDE, [0, 0, 0]);
+    simple('water_tank', props.tanks, TANK_STRIDE, [0, 0, 0]);
     for (const kind of this.kinds) {
       if (kind.items.length === 0) continue;
       const ready = kind.textured

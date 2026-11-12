@@ -52,6 +52,7 @@ async function load(url: string): Promise<void> {
     vehicles: world.props.vehicles.slice(),
     stalls: world.props.stalls.slice(),
     stops: world.props.stops.slice(),
+    tanks: world.props.tanks.slice(),
   };
   const prepareMs = performance.now() - prepareStart;
 
@@ -96,6 +97,7 @@ async function load(url: string): Promise<void> {
       props.vehicles.buffer,
       props.stalls.buffer,
       props.stops.buffer,
+      props.tanks.buffer,
       ...meshBuffers(water),
     ],
   );

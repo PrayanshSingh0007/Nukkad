@@ -1,6 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { TEST_AREA, UNITS_PER_METRE, areaRefFor, decodePack, placeName } from '@nukkad/shared';
+import { TEST_AREA, UNITS_PER_METRE, areaRefFor, decodePack, signText } from '@nukkad/shared';
 import type { AreaPack, WirePack } from '@nukkad/shared';
 import { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, VEHICLE_STRIDE, TREE_STRIDE, buildChunk, buildTerrainMesh, buildWaterMesh, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkData, MeshData, PreparedWorld } from '@nukkad/worldgen';
@@ -64,24 +64,27 @@ describe('test area: map → pack', () => {
     const kinds = new Set(pack.places.map((place) => place.kind));
     for (const kind of ['mall', 'showroom', 'supermarket', 'school', 'food', 'grocery'] as const) expect(kinds.has(kind)).toBe(true);
     expect(pack.stats.realPlaces).toBeGreaterThan(20); // the map really knows these
-    expect(pack.places.length).toBeLessThanOrEqual(100);
+    expect(pack.places.length).toBeLessThanOrEqual(120);
   });
 
-  it('never carries a real name or brand from the map (legal rule)', async () => {
+  it('shows real names for real places, and made-up names only for invented ones', async () => {
     const { readFixtureOsm } = await import('./fixtures.ts');
     const osm = await readFixtureOsm(loadConfig().fixturesDir, pack.id);
     const realNames = new Set<string>();
     for (const element of osm?.elements ?? []) {
-      for (const key of ['name', 'brand', 'operator', 'name:en', 'name:kn']) {
-        const value = element.tags?.[key];
-        if (value && value.length >= 4) realNames.add(value.toLowerCase());
-      }
+      const name = element.tags?.name;
+      if (name && name.length >= 4) realNames.add(name.toLowerCase());
     }
-    expect(realNames.size).toBeGreaterThan(50);
-    const text = JSON.stringify(pack).toLowerCase();
-    for (const name of realNames) expect(text.includes(`"${name}"`)).toBe(false);
-    const signs = pack.places.map((place) => placeName(place.kind, place.seed).toLowerCase());
-    for (const sign of signs) expect(realNames.has(sign)).toBe(false);
+    const named = pack.places.filter((place) => place.name);
+    expect(named.length).toBeGreaterThan(15);
+    for (const place of named) {
+      expect(place.real).toBe(1); // only real places carry a name
+      expect(place.name!.length).toBeLessThanOrEqual(40);
+    }
+    expect(named.some((place) => place.kind === 'apartments')).toBe(true); // e.g. a named housing complex
+    for (const place of pack.places.filter((p) => !p.name)) {
+      expect(realNames.has(signText(place).toLowerCase())).toBe(false); // invented names never copy a real one
+    }
   });
 
   it('stays inside the download budget (150 KB zipped)', () => {

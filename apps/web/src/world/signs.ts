@@ -1,18 +1,19 @@
 import * as THREE from 'three';
-import { PLACE_COLORS, UNITS_PER_METRE, placeName } from '@nukkad/shared';
+import { PLACE_COLORS, UNITS_PER_METRE, signText } from '@nukkad/shared';
 import type { PackPlace } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
 import type { TerrainGrid } from '@nukkad/worldgen';
 
 /**
  * Shop, school and office signboards. All names are painted once into one picture
- * (2 columns × 50 rows of 256 × 48 pixels ≈ 4.7 MB on the GPU) and all boards are one
- * merged mesh: 100 signs = 200 triangles = ONE draw call. The names are made up (legal rule).
+ * (2 columns × 60 rows of 256 × 48 pixels ≈ 5.6 MB on the GPU) and all boards are one
+ * merged mesh: 100 signs = 200 triangles = ONE draw call. Real places show their real name
+ * (plain text, never a logo); invented ones a made-up name.
  */
 const CELL_W = 256;
 const CELL_H = 48;
 const COLUMNS = 2;
-const ROWS = 50;
+const ROWS = 60;
 const ASPECT = CELL_W / CELL_H;
 
 function paintSign(c: CanvasRenderingContext2D, x: number, y: number, place: PackPlace): void {
@@ -21,7 +22,7 @@ function paintSign(c: CanvasRenderingContext2D, x: number, y: number, place: Pac
   c.strokeStyle = 'rgba(255,255,255,0.55)';
   c.lineWidth = 2;
   c.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
-  const name = placeName(place.kind, place.seed).toUpperCase();
+  const name = signText(place).toUpperCase();
   let size = 26;
   c.font = `800 ${size}px system-ui, -apple-system, Roboto, sans-serif`;
   while (c.measureText(name).width > CELL_W - 18 && size > 12) {

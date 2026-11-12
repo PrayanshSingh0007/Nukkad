@@ -20,6 +20,7 @@ const toMetres = (ring: number[]): number[] => ring.map((value) => value / UNITS
  * 3 shops on the ground floor · 4 school / civic · 5 industrial.
  */
 export function facadeStyle(building: PackBuilding): number {
+  if (building.material === 'glass') return 2;
   switch (building.use) {
     case 'mall':
     case 'office':
@@ -29,7 +30,10 @@ export function facadeStyle(building: PackBuilding): number {
     case 'school':
     case 'college':
     case 'clinic':
+    case 'worship':
       return 4;
+    case 'apartments':
+      return 1;
     case undefined:
       break;
     default:
@@ -64,7 +68,8 @@ export function buildingTriangleEstimate(building: PackBuilding): number {
     holes++;
   }
   const cap = points - 2 + 2 * holes;
-  return 2 * points + (building.minH ? 2 * cap : cap);
+  // Walls + roof (+ underside) + parapet (4 per outer edge; counted for far versions too, to be safe).
+  return 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length : 0);
 }
 
 /**
@@ -102,6 +107,45 @@ function addWalls(
     const d = mesh.addVertex(ax, yTop, az, nx, 0, nz, color, 0, floorTop, style);
     mesh.addTriangle(a, c, b);
     mesh.addTriangle(a, d, c);
+  }
+}
+
+/** Bengaluru terraces: a low wall around flat roofs you can walk on. */
+const PARAPET_M = 0.9;
+const PARAPET_KINDS = new Set(['house', 'apartments', 'generic', 'commercial', 'retail', 'civic']);
+
+/** Flat terraces of homes, flats, shops and offices — not glass towers, sheds or canopies. */
+export function hasParapet(building: PackBuilding): boolean {
+  return !building.minH && PARAPET_KINDS.has(building.kind) && building.material !== 'glass' && facadeStyle(building) !== 2;
+}
+
+/** A low wall around the roof edge, both faces, with no window data (so no windows on it). */
+function addParapet(mesh: MeshBuilder, ring: number[], y: number, color: Rgb): void {
+  const n = ring.length;
+  const top = y + PARAPET_M;
+  for (let i = 0; i < n; i += 2) {
+    const j = (i + 2) % n;
+    const ax = ring[i];
+    const az = ring[i + 1];
+    const bx = ring[j];
+    const bz = ring[j + 1];
+    const length = Math.hypot(bx - ax, bz - az);
+    if (length < 0.01) continue;
+    const nx = (bz - az) / length;
+    const nz = -(bx - ax) / length;
+    const a = mesh.addVertex(ax, y, az, nx, 0, nz, color, 0, 0, 0);
+    const b = mesh.addVertex(bx, y, bz, nx, 0, nz, color, 0, 0, 0);
+    const c = mesh.addVertex(bx, top, bz, nx, 0, nz, color, 0, 0, 0);
+    const d = mesh.addVertex(ax, top, az, nx, 0, nz, color, 0, 0, 0);
+    mesh.addTriangle(a, c, b);
+    mesh.addTriangle(a, d, c);
+    // Inner face (seen from the terrace).
+    const e = mesh.addVertex(ax, y, az, -nx, 0, -nz, color, 0, 0, 0);
+    const f = mesh.addVertex(bx, y, bz, -nx, 0, -nz, color, 0, 0, 0);
+    const g = mesh.addVertex(bx, top, bz, -nx, 0, -nz, color, 0, 0, 0);
+    const h = mesh.addVertex(ax, top, az, -nx, 0, -nz, color, 0, 0, 0);
+    mesh.addTriangle(e, f, g);
+    mesh.addTriangle(e, g, h);
   }
 }
 
@@ -150,4 +194,5 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   };
   addCap(top, true, roof);
   if (floats) addCap(bottom, false, wall);
+  if (!far && hasParapet(building)) addParapet(mesh, ring, top, wall);
 }

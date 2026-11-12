@@ -15,6 +15,7 @@ export type { ChunkData, ChunkLod } from './chunk/buildChunk.ts';
 export { meshBuffers } from './mesh/meshBuilder.ts';
 export type { MeshData } from './mesh/meshBuilder.ts';
 export { BENCH_STRIDE, LAMP_STRIDE, TREE_STRIDE } from './props/scatter.ts';
+export { TANK_STRIDE } from './props/roofTanks.ts';
 export type { PropSet } from './props/scatter.ts';
 export { TRAFFIC_ROADS, buildTrafficRoutes, buildWalkRoutes, trafficPose } from './traffic/routes.ts';
 export type { TrafficPose, TrafficRoute } from './traffic/routes.ts';

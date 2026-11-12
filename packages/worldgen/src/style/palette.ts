@@ -41,7 +41,26 @@ const ROOFS_GREY = linearList('#8d8f92 #9a958c #7f8689 #a39a8f #858a8c');
 const ROOFS_WARM = linearList('#b5694f #a8604a #b98060');
 
 /** Wall and roof colour of a building, picked from the palette by its map id. */
+const MATERIAL_WALLS: Partial<Record<NonNullable<PackBuilding['material']>, Rgb>> = {
+  brick: linear('#a5583f'),
+  stone: linear('#b8b0a2'),
+  concrete: linear('#b3b1ac'),
+  metal: linear('#a9b0b6'),
+  wood: linear('#8a6446'),
+};
+
 export function buildingColors(building: PackBuilding): { wall: Rgb; roof: Rgb } {
+  // Mapped colours and materials win over our palette.
+  const mappedWall = building.colour ? linear(building.colour) : building.material ? MATERIAL_WALLS[building.material] : undefined;
+  const mappedRoof = building.roofColour ? linear(building.roofColour) : undefined;
+  if (mappedWall || mappedRoof) {
+    const fallback = buildingColorsFromPalette(building);
+    return { wall: mappedWall ?? fallback.wall, roof: mappedRoof ?? fallback.roof };
+  }
+  return buildingColorsFromPalette(building);
+}
+
+function buildingColorsFromPalette(building: PackBuilding): { wall: Rgb; roof: Rgb } {
   const walls = WALLS[building.kind];
   const wall = walls[hash32(building.id, 1) % walls.length];
   const roofSeed = hash32(building.id, 2);

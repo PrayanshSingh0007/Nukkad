@@ -49,7 +49,8 @@ describe('terrain', () => {
 
 describe('building mesh', () => {
   const terrain = terrainFromPack(slope());
-  const box: PackBuilding = { id: 7, kind: 'house', h: 6.5, floors: 2, ring: [0, 0, 100, 0, 100, 80, 0, 80] };
+  // A shed has no terrace wall, so the counts below are walls + roof only.
+  const box: PackBuilding = { id: 7, kind: 'shed', h: 6.5, floors: 2, ring: [0, 0, 100, 0, 100, 80, 0, 80] };
 
   it('makes 2 triangles per wall plus the roof, all facing outwards', () => {
     const builder = new MeshBuilder(3);
@@ -87,6 +88,21 @@ describe('building mesh', () => {
     appendBuilding(builder, withYard, terrain);
     expect(builder.triangleCount).toBe(buildingTriangleEstimate(withYard));
     expect(builder.triangleCount).toBe(16 + 8);
+  });
+
+  it('puts a terrace wall around flat roofs of homes (both faces, no windows)', () => {
+    const house: PackBuilding = { ...box, kind: 'house' };
+    const builder = new MeshBuilder(3);
+    appendBuilding(builder, house, terrain);
+    expect(builder.triangleCount).toBe(10 + 16);
+    expect(buildingTriangleEstimate(house)).toBe(26);
+    const mesh = builder.finish() as MeshData;
+    const ys = Array.from({ length: mesh.positions.length / 3 }, (_, v) => mesh.positions[v * 3 + 1]);
+    expect(Math.max(...ys)).toBeCloseTo(heightAt(terrain, 0, 0) + 6.5 + 0.9);
+    const glass: PackBuilding = { ...house, material: 'glass' };
+    const plain = new MeshBuilder(3);
+    appendBuilding(plain, glass, terrain);
+    expect(plain.triangleCount).toBe(10); // glass towers have no terrace wall
   });
 
   it('gives floating parts an underside', () => {

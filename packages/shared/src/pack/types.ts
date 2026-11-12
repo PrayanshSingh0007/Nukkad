@@ -39,6 +39,11 @@ export interface PackBuilding {
   holes?: number[][];
   /** What the building is used for, when it is one of the area's places (shapes its front). */
   use?: PlaceKind;
+  /** Wall and roof colour as mapped (web colours like "#d8c8a8"), when volunteers tagged them. */
+  colour?: string;
+  roofColour?: string;
+  /** Mapped facade material. */
+  material?: 'glass' | 'brick' | 'concrete' | 'stone' | 'metal' | 'wood' | 'plaster';
 }
 
 export type LineKind =

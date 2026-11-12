@@ -1,10 +1,11 @@
 import { UNITS_PER_METRE, hash01, hash32 } from '@nukkad/shared';
+import { cleanPlaceName } from '@nukkad/shared';
 import type { PackBuilding, PackLine, PackPlace, PlaceKind } from '@nukkad/shared';
 import { distToSegment, pointInRing, ringCentroid, signedArea } from '../geom/polygon.ts';
 import type { OsmTags } from './osmTypes.ts';
 
-/** How many signs one area may have (the sign texture holds 105 names). */
-export const MAX_PLACES = 100;
+/** How many signs one area may have (the sign picture holds 120 names). */
+export const MAX_PLACES = 120;
 
 const SHOPS: Record<string, PlaceKind> = {
   supermarket: 'supermarket',
@@ -60,7 +61,27 @@ const BUILDINGS: Record<string, PlaceKind> = {
   office: 'office',
   hotel: 'hotel',
   hospital: 'clinic',
+  apartments: 'apartments',
+  residential: 'apartments',
+  temple: 'worship',
+  church: 'worship',
+  mosque: 'worship',
 };
+
+/** A place the map knows: its kind and (when it has one) its real name. */
+export interface KnownPlace {
+  kind: PlaceKind;
+  name?: string;
+}
+
+/** Map tags → a known place. Apartments and places of worship only count when they have a name. */
+export function knownPlace(tags: OsmTags): KnownPlace | null {
+  const kind = tags.amenity === 'place_of_worship' ? 'worship' : classifyPlace(tags);
+  if (!kind) return null;
+  const name = cleanPlaceName(tags['name:en'] ?? tags.name);
+  if ((kind === 'apartments' || kind === 'worship') && !name) return null;
+  return name ? { kind, name } : { kind };
+}
 
 /** Map tags → the kind of place. Only the KIND is kept; names and brands are never read. */
 export function classifyPlace(tags: OsmTags): PlaceKind | null {
@@ -108,14 +129,23 @@ interface Candidate {
   roadZ: number;
   kind?: PlaceKind;
   real?: boolean;
+  name?: string;
 }
 
 const BUSY_ROADS = new Set(['primary', 'secondary', 'tertiary']);
 
 export interface PointPlace {
   kind: PlaceKind;
+  name?: string;
   x: number;
   z: number;
+}
+
+/** A named housing complex (an area on the map, e.g. a gated society). */
+export interface NamedComplex {
+  name: string;
+  /** Outline in metres. */
+  ring: number[];
 }
 
 /**
@@ -127,10 +157,11 @@ export interface PointPlace {
  */
 export function buildPlaces(
   buildings: PackBuilding[],
-  tagged: ReadonlyMap<number, PlaceKind>,
+  tagged: ReadonlyMap<number, KnownPlace>,
   points: PointPlace[],
   lines: PackLine[],
   half: number,
+  complexes: NamedComplex[] = [],
 ): PackPlace[] {
   const streets = lines
     .filter((line) => line.kind !== 'rail' && line.kind !== 'river' && line.kind !== 'stream' && line.kind !== 'footway' && line.kind !== 'steps')
@@ -161,14 +192,14 @@ export function buildPlaces(
   const limit = half - 20;
   const candidates: Candidate[] = [];
   for (const building of buildings) {
-    if (building.minH || building.kind === 'shed' || building.kind === 'roof' || building.kind === 'religious') continue;
+    const known = tagged.get(building.id);
+    if (building.minH || building.kind === 'shed' || building.kind === 'roof' || (building.kind === 'religious' && !known)) continue;
     const ring = building.ring.map((v) => v / UNITS_PER_METRE);
     const [cx, cz] = ringCentroid(ring);
     if (Math.abs(cx) > limit || Math.abs(cz) > limit) continue;
     const [road, roadX, roadZ] = nearestStreet(cx, cz, false);
     const candidate: Candidate = { building, ring, cx, cz, area: Math.abs(signedArea(ring)), road, roadX, roadZ };
-    const known = tagged.get(building.id);
-    if (known) Object.assign(candidate, { kind: known, real: true });
+    if (known) Object.assign(candidate, { kind: known.kind, name: known.name, real: true });
     candidates.push(candidate);
   }
 
@@ -185,7 +216,35 @@ export function buildPlaces(
         }
       }
     }
-    if (target) Object.assign(target, { kind: point.kind, real: true });
+    if (target) Object.assign(target, { kind: point.kind, name: point.name, real: true });
+  }
+
+  // Named housing complexes ("Assetz East Point"): a free-standing gate board by the road,
+  // in front of the complex building closest to the road (even if that building has its own name).
+  const gates: PackPlace[] = [];
+  for (const complex of complexes) {
+    let best: Candidate | undefined;
+    for (const c of candidates) {
+      if (!pointInRing(c.cx, c.cz, complex.ring)) continue;
+      if (!best || c.road < best.road) best = c;
+    }
+    if (!best || best.road > 60) continue;
+    const dx = best.cx - best.roadX;
+    const dz = best.cz - best.roadZ;
+    const d = Math.hypot(dx, dz) || 1;
+    const x = best.roadX + (dx / d) * Math.min(4, d * 0.4);
+    const z = best.roadZ + (dz / d) * Math.min(4, d * 0.4);
+    gates.push({
+      kind: 'apartments',
+      x: Math.round(x * UNITS_PER_METRE),
+      z: Math.round(z * UNITS_PER_METRE),
+      y: 22, // a board on posts, 2.2 m up
+      face: Math.round((Math.atan2(-dx, -dz) * 180) / Math.PI), // looking at the road
+      w: Math.round(Math.min(7, 1.6 + complex.name.length * 0.28) * UNITS_PER_METRE),
+      seed: hash32(best.building.id, 85),
+      real: 1,
+      name: complex.name,
+    });
   }
 
   // Invented: every area gets a mall, a vehicle showroom and a supermarket if the map has none.
@@ -216,11 +275,13 @@ export function buildPlaces(
 
   // Real places first, then the big ones, then nearest to the centre — and cap the count.
   const chosen = candidates.filter((c) => c.kind);
-  const rank = (c: Candidate): number => (c.real ? 0 : c.kind === 'mall' || c.kind === 'showroom' || c.kind === 'supermarket' ? 1 : 2);
+  // Named real places and the three must-haves (mall, showroom, supermarket) always get a sign.
+  const mustHave = (c: Candidate): boolean => !c.real && (c.kind === 'mall' || c.kind === 'showroom' || c.kind === 'supermarket');
+  const rank = (c: Candidate): number => (mustHave(c) || (c.real && c.name) ? 0 : c.real ? 1 : 2);
   chosen.sort((a, b) => rank(a) - rank(b) || Math.hypot(a.cx, a.cz) - Math.hypot(b.cx, b.cz) || a.building.id - b.building.id);
 
-  const places: PackPlace[] = [];
-  for (const c of chosen.slice(0, MAX_PLACES)) {
+  const places: PackPlace[] = [...gates.slice(0, 20)];
+  for (const c of chosen.slice(0, MAX_PLACES - places.length)) {
     const sign = signSpot(c);
     if (!sign) continue;
     c.building.use = c.kind;
@@ -235,6 +296,7 @@ export function buildPlaces(
       w: Math.round(width * UNITS_PER_METRE),
       seed: hash32(c.building.id, 84),
       real: c.real ? 1 : 0,
+      ...(c.real && c.name ? { name: c.name } : {}),
     });
   }
   return places;
