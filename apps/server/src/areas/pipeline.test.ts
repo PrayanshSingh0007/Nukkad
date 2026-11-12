@@ -104,6 +104,8 @@ describe('test area: map → pack', () => {
       }
     }
     expect(pack.places.some((p) => p.name === 'Assetz East Point' && p.y > 40)).toBe(true); // name on the arch
+    // A school mapped only as a campus outline still gets its name on its main building.
+    expect(pack.places.some((p) => p.name === 'GEAR Innovative International School' && p.kind === 'school')).toBe(true);
   });
 
   it('stays inside the download budget (150 KB zipped)', () => {

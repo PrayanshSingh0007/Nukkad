@@ -9,7 +9,7 @@ import { assembleRings, isClosed } from './rings.ts';
 import { cleanPlaceName } from '@nukkad/shared';
 import { buildCompounds } from './compounds.ts';
 import { buildPlaces, knownPlace } from './places.ts';
-import type { KnownPlace, NamedComplex, PointPlace } from './places.ts';
+import type { Campus, KnownPlace, NamedComplex, PointPlace } from './places.ts';
 import { classifyArea, classifyLine } from './tags.ts';
 
 export interface BuildPackInput {
@@ -48,6 +48,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
   const placeOfBuilding = new Map<number, KnownPlace>();
   const placePoints: PointPlace[] = [];
   const complexes: NamedComplex[] = [];
+  const campuses: Campus[] = [];
   const notePlace = (id: number, tags: OsmTags): void => {
     const known = knownPlace(tags);
     if (known) placeOfBuilding.set(id, known);
@@ -56,6 +57,9 @@ export function buildPack(input: BuildPackInput): AreaPack {
   const noteComplex = (tags: OsmTags, ring: number[]): void => {
     const name = cleanPlaceName(tags['name:en'] ?? tags.name);
     if (name && tags.landuse === 'residential') complexes.push({ name, ring });
+    // A named school ground, hospital or mall site drawn as an outline (not a building).
+    const known = tags.amenity || tags.shop ? knownPlace(tags) : null;
+    if (known?.name && !isBuilding(tags.building)) campuses.push({ kind: known.kind, name: known.name, ring });
   };
 
   const addPoint = (kind: PointKind, x: number, z: number): void => {
@@ -149,8 +153,8 @@ export function buildPack(input: BuildPackInput): AreaPack {
         const draft = draftBuilding(id, tags, outer, holes, half);
         if (draft) outlines.push(draft);
         notePlace(id, tags);
-      } else if (kind) {
-        addArea(id, kind, outer, holes);
+      } else {
+        if (kind) addArea(id, kind, outer, holes);
         noteComplex(tags, outer);
       }
     });
@@ -177,7 +181,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
 
   const buildings = finishBuildings(outlines, parts);
   const compounds = buildCompounds(complexes, lines, buildings, half);
-  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes, compounds);
+  const places = buildPlaces(buildings, placeOfBuilding, placePoints, lines, half, complexes, compounds, campuses);
   const attribution = terrain.flat ? [OSM_ATTRIBUTION] : [OSM_ATTRIBUTION, ELEVATION_ATTRIBUTION];
   return {
     v: PACK_VERSION,

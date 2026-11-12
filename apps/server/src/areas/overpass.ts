@@ -30,6 +30,9 @@ export function overpassQuery(box: GeoBox): string {
   way["leisure"];
   relation["leisure"]["type"="multipolygon"];
   way["amenity"~"^(parking|grave_yard)$"];
+  way["amenity"~"^(school|kindergarten|college|university|hospital|clinic|place_of_worship|marketplace)$"]["name"];
+  relation["amenity"~"^(school|kindergarten|college|university|hospital|place_of_worship)$"]["type"="multipolygon"]["name"];
+  way["shop"~"^(mall|supermarket|department_store)$"]["name"];
   way["barrier"~"^(wall|fence|hedge)$"];
   node["natural"="tree"];
   node["highway"="street_lamp"];

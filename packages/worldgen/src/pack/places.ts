@@ -142,6 +142,14 @@ export interface PointPlace {
   z: number;
 }
 
+/** A named campus drawn as an outline, not a building: a school ground, hospital, mall site. */
+export interface Campus {
+  kind: PlaceKind;
+  name: string;
+  /** Outline in metres. */
+  ring: number[];
+}
+
 /** A named housing complex (an area on the map, e.g. a gated society). */
 export interface NamedComplex {
   name: string;
@@ -164,6 +172,7 @@ export function buildPlaces(
   half: number,
   complexes: NamedComplex[] = [],
   compounds: PackCompound[] = [],
+  campuses: Campus[] = [],
 ): PackPlace[] {
   const streets = lines
     .filter((line) => line.kind !== 'rail' && line.kind !== 'river' && line.kind !== 'stream' && line.kind !== 'footway' && line.kind !== 'steps')
@@ -219,6 +228,15 @@ export function buildPlaces(
       }
     }
     if (target) Object.assign(target, { kind: point.kind, name: point.name, real: true });
+  }
+
+  // Campuses ("GEAR Innovative International School" mapped as a school ground): the name goes
+  // on the biggest building inside — one without its own real name if there is one.
+  for (const campus of campuses) {
+    const inside = candidates.filter((c) => pointInRing(c.cx, c.cz, campus.ring));
+    const pick = (list: Candidate[]): Candidate | undefined => list.reduce<Candidate | undefined>((best, c) => (!best || c.area > best.area ? c : best), undefined);
+    const target = pick(inside.filter((c) => !c.real)) ?? pick(inside);
+    if (target) Object.assign(target, { kind: campus.kind, name: campus.name, real: true });
   }
 
   // Named housing complexes ("Assetz East Point"): a free-standing gate board by the road,
