@@ -4,7 +4,7 @@ import { makeRng } from './util/random.ts';
 
 describe('avatar look', () => {
   it('keeps valid choices', () => {
-    const look = { skin: 5, hair: 3, hairColor: 8, outfit: 2, color: 9 };
+    const look = { skin: 5, hair: 3, hairColor: 8, outfit: 2, color: 9, build: 1 };
     expect(sanitizeLook(look)).toEqual(look);
   });
 

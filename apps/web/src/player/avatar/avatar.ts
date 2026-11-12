@@ -3,6 +3,7 @@ import { OUTFIT_COLORS } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { ScooterModel } from '../scooter.ts';
 import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.ts';
+import { Person, loadPeople, peopleReady } from './people.ts';
 
 const STRIDE_M = 1.6; // metres walked per full leg cycle
 const FULL_SPEED = 4.5; // speed at which the swing is at its widest
@@ -63,8 +64,14 @@ export class Avatar {
   private nextBlink = 1 + Math.random() * 3;
   private blob: THREE.Mesh | null = null;
   private readonly scooter: ScooterModel;
+  /** The real 3D person (once its files have loaded); until then the built-in body shows. */
+  private person: Person | null = null;
+  private look: AvatarLook;
+  private disposed = false;
+  private opacity = 1;
 
   constructor(look: AvatarLook) {
+    this.look = look;
     // Soft sheen on skin, hair and cloth (players only; street crowds stay on the cheap material).
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, metalness: 0 });
     const skeleton = buildSkeleton();
@@ -92,6 +99,23 @@ export class Avatar {
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.03;
     this.object.add(shadow);
+
+    const assets = peopleReady();
+    if (assets) this.makePerson();
+    else
+      loadPeople()
+        .then(() => this.makePerson())
+        .catch(() => {}); // stays on the built-in body
+  }
+
+  private makePerson(): void {
+    const assets = peopleReady();
+    if (!assets || this.disposed) return;
+    this.person?.dispose();
+    this.person = new Person(assets, this.look);
+    this.person.setOpacity(this.opacity);
+    this.body.add(this.person.root);
+    this.mesh.visible = false;
   }
 
   /** The direction the avatar faces, radians (0 = towards -z). */
@@ -100,6 +124,13 @@ export class Avatar {
   }
 
   setLook(look: AvatarLook): void {
+    const old = this.look;
+    this.look = look;
+    if (this.person) {
+      // Build, hairstyle and light/dark skin picture are part of the model; colours are not.
+      if (old.build !== look.build || old.hair !== look.hair || old.skin >= 3 !== look.skin >= 3) this.makePerson();
+      else this.person.setLook(look);
+    }
     this.mesh.geometry.dispose();
     this.mesh.geometry = buildAvatarGeometry(look);
     this.scooter.setAccent(new THREE.Color(OUTFIT_COLORS[look.color]).getHex());
@@ -113,6 +144,8 @@ export class Avatar {
       this.material.needsUpdate = true;
     }
     this.material.opacity = opacity;
+    this.opacity = opacity;
+    this.person?.setOpacity(opacity);
   }
 
   update(dt: number, x: number, y: number, z: number, speedOrMotion: number | Motion, heading: number | null = null, grounded = true): void {
@@ -130,6 +163,7 @@ export class Avatar {
     this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);
+    this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null);
     // Blink every few seconds (a quick 0.12 s), sometimes twice.
     this.nextBlink -= dt;
     const closed = this.nextBlink < 0.12 && this.nextBlink > 0;
@@ -194,6 +228,8 @@ export class Avatar {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.person?.dispose();
     this.mesh.geometry.dispose();
     this.material.dispose();
     this.shadowMaterial.dispose();

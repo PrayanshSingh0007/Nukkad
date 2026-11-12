@@ -1,4 +1,4 @@
-import { HAIR_COLORS, HAIR_LABELS, HAIR_STYLES, OUTFITS, OUTFIT_COLORS, OUTFIT_LABELS, SKIN_TONES } from '@nukkad/shared';
+import { BUILDS, HAIR_COLORS, HAIR_LABELS, HAIR_STYLES, OUTFITS, OUTFIT_COLORS, OUTFIT_LABELS, SKIN_TONES } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 
 interface Props {
@@ -62,6 +62,7 @@ export function AvatarPanel({ look, onChange, onClose }: Props) {
           Done
         </button>
       </header>
+      <Choices label="Build" names={[...BUILDS]} value={look.build} onPick={set('build')} />
       <Swatches label="Skin" colors={SKIN_TONES} value={look.skin} onPick={set('skin')} />
       <Choices label="Hair" names={HAIR_STYLES.map((style) => HAIR_LABELS[style])} value={look.hair} onPick={set('hair')} />
       <Swatches label="Hair colour" colors={HAIR_COLORS} value={look.hairColor} onPick={set('hairColor')} />

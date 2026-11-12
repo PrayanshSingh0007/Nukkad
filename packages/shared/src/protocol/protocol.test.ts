@@ -58,7 +58,7 @@ describe('slow lane validation', () => {
 
   it('accepts a good join and drops unknown fields', () => {
     const join = parseClientMessage(JSON.stringify({ t: 'join', room: 'abcdefgh1234', name: ' Sam ', look: { skin: 1 }, extra: 'x', token: 'A'.repeat(24) }));
-    expect(join).toEqual({ t: 'join', room: 'abcdefgh1234', name: 'Sam', look: { skin: 1, hair: 0, hairColor: 0, outfit: 0, color: 5 }, token: 'A'.repeat(24) });
+    expect(join).toEqual({ t: 'join', room: 'abcdefgh1234', name: 'Sam', look: { skin: 1, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0 }, token: 'A'.repeat(24) });
   });
 
   it('accepts a travel request and cleans its place name', () => {

@@ -72,3 +72,12 @@ Reflections use three.js's built-in RoomEnvironment (MIT, part of three).
 ## Not used, on purpose
 
 Google Maps, Street View, any scraped imagery, real brand logos or shop signs, assets taken from other games.
+
+## People (3D characters and animations)
+
+| Asset | Author | Licence | Source | Used for |
+|---|---|---|---|---|
+| Universal Base Characters — free Standard pack (2 bodies, hairstyles, eyebrows) | Quaternius | CC0 1.0 | https://quaternius.itch.io/universal-base-characters | `apps/web/public/models/people/male.glb`, `female.glb`, `hair_*.glb`, `skin_*_dark.jpg` (resized by `tools/characters/build.mjs`) |
+| Universal Animation Library — free Standard pack | Quaternius | CC0 1.0 | https://quaternius.itch.io/universal-animation-library | `apps/web/public/models/people/anims.glb` (12 clips kept: idle, walk, jog, sprint, jump ×3, driving, sitting, talking, dance, interact; no combat clips) |
+
+Downloaded 2026-11-12 with the owner's OK, free tier (no payment). Clothes are painted on by our own shader (no outfit assets).

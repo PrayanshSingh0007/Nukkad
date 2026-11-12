@@ -22,7 +22,10 @@
     "stress": "node tools/stress/run.ts"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/node": "24.19.2",
+    "sharp": "^0.35.5",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   }

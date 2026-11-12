@@ -21,6 +21,8 @@ export const OUTFIT_COLORS = [
 ] as const;
 
 export const OUTFITS = ['tee', 'hoodie', 'kurta', 'jacket'] as const;
+/** Two body builds (open to everyone, any combination with anything else). */
+export const BUILDS = ['Build 1', 'Build 2'] as const;
 export const HAIR_STYLES = ['short', 'long', 'bun', 'curly', 'cap', 'none'] as const;
 
 export const OUTFIT_LABELS: Record<(typeof OUTFITS)[number], string> = { tee: 'Tee', hoodie: 'Hoodie', kurta: 'Kurta', jacket: 'Jacket' };
@@ -28,8 +30,8 @@ export const HAIR_LABELS: Record<(typeof HAIR_STYLES)[number], string> = {
   short: 'Short',
   long: 'Long',
   bun: 'Bun',
-  curly: 'Curly',
-  cap: 'Cap',
+  curly: 'Crop',
+  cap: 'Buzz',
   none: 'None',
 };
 
@@ -40,6 +42,8 @@ export interface AvatarLook {
   hairColor: number;
   outfit: number;
   color: number;
+  /** Index into BUILDS (older saved looks have none → 0). */
+  build: number;
 }
 
 const LIMITS: Record<keyof AvatarLook, number> = {
@@ -48,9 +52,10 @@ const LIMITS: Record<keyof AvatarLook, number> = {
   hairColor: HAIR_COLORS.length,
   outfit: OUTFITS.length,
   color: OUTFIT_COLORS.length,
+  build: BUILDS.length,
 };
 
-export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5 };
+export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0 };
 
 /** Turns anything (saved data, a network message) into a valid look. Bad fields fall back to the default. */
 export function sanitizeLook(value: unknown): AvatarLook {
@@ -72,5 +77,6 @@ export function randomLook(random: () => number): AvatarLook {
     hairColor: pick(5), // natural colours by default
     outfit: pick(OUTFITS.length),
     color: pick(OUTFIT_COLORS.length),
+    build: pick(BUILDS.length),
   };
 }

@@ -9,6 +9,14 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Real 3D people (2026-11-13) — owner: "Yes, find models"
+
+- Players and friends are now **Quaternius' CC0 Universal Base Characters** (two rigged bodies, ≈ 14k triangles, detailed faces, real hair models) moved by the **CC0 Universal Animation Library** (idle, walk, jog, sprint, jump, driving, sitting, talking, dance — matched to speed). Credits in CREDITS.md. The built-in body shows until the files load (≈ 2.4 MB in total, loaded after the world).
+- `tools/characters/build.mjs <folder with the unzipped packs>` rebuilds `apps/web/public/models/people/`: 1024 px skin/normal textures (JPEG), 512 px hair, only 12 clips with finger/translation/scale tracks removed (anims 174 KB).
+- The bodies come without clothes, so **clothes are painted on in a shader** (`people.ts`): each vertex knows its main bone and height → shirt (tee = elbow sleeves, others long), kurta down to the knees, trousers, shoes; cloth has no skin detail map and is rougher; a darker hem band at the waist. Skin: tones 0–2 use the light skin picture, 3–5 the dark one, each tinted. Hair colours tint the hair picture.
+- New neutral look option **Build 1 / Build 2** (anyone can pick either; old saved looks default to Build 1). Hair names now: Short, Long, Bun, Crop, Buzz, None (cap removed — no cap model).
+- Honest limits: painted clothes look skin-tight (no loose kurta/hoodie shapes); the free bodies are the athletic "Superhero" build only; on your own scooter the person just stands (no handlebar pose); **street pedestrians still use the old built-in bodies** (160 instanced people — real skinned models for crowds need GPU skinning instancing, a later job); not tested on a phone (14k-triangle skinned players should be fine for 8 players, unmeasured).
+
 ## Enterable buildings (2026-11-13) — owner: "make the apartments and buildings so that people can go inside"
 
 - **Every building has a front door** (1,819 in the test area): on the wall facing the nearest street (`packages/worldgen/src/buildings/doors.ts`), drawn on the facade (wooden door for homes/temples, wide glass door for shops). Walk up to it → **Go inside** button (or E). Inside, at the doormat → **Go outside**.
