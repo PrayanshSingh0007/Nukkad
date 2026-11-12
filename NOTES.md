@@ -20,6 +20,7 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - The bodies come without clothes, so **clothes are painted on in a shader** (`people.ts`): each vertex knows its main bone and height → shirt (tee = elbow sleeves, others long), kurta down to the knees, trousers, shoes; cloth has no skin detail map and is rougher; a darker hem band at the waist. Skin: tones 0–2 use the light skin picture, 3–5 the dark one, each tinted. Hair colours tint the hair picture.
 - New neutral look option **Build 1 / Build 2** (anyone can pick either; old saved looks default to Build 1). Hair names now: Short, Long, Bun, Crop, Buzz, None (cap removed — no cap model).
 - Honest limits: painted clothes look skin-tight (no loose kurta/hoodie shapes); the free bodies are the athletic "Superhero" build only; not tested on a phone (14k-triangle skinned players should be fine for 8 players, unmeasured).
+- On your own scooter the 3D person stands with both arms reaching to the handlebar (bones turned on top of the idle clip); on a friend's two-wheeler/auto they sit in the driving pose.
 - **Street people up close** (added same day): the nearest walkers within 28 m become full 3D people (pool of 4 on Medium, 8 on High, none on Low), with the same colours as their crowd version (build/hair may differ — small "pop" when they switch); they idle when they wait for you. Farther walkers stay the light instanced crowd.
 
 ## Enterable buildings (2026-11-13) — owner: "make the apartments and buildings so that people can go inside"

@@ -232,6 +232,8 @@ export class Person {
     uHood: { value: 0 },
   };
   private readonly hairColor = { value: new THREE.Color() };
+  /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
+  private readonly arms: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
 
   constructor(assets: Assets, look: AvatarLook) {
     const source = assets.bodies[look.build] ?? assets.bodies[0];
@@ -281,6 +283,11 @@ export class Person {
       });
     }
 
+    for (const side of ['l', 'r']) {
+      const upper = body.getObjectByName(`upperarm_${side}`) as THREE.Bone | undefined;
+      const lower = body.getObjectByName(`lowerarm_${side}`) as THREE.Bone | undefined;
+      if (upper && lower) this.arms.push({ upper, lower });
+    }
     this.mixer = new THREE.AnimationMixer(body);
     for (const [name, clipName] of Object.entries(ACTIONS) as [ActionName, string][]) {
       const clip = assets.clips.get(clipName);
@@ -328,6 +335,25 @@ export class Person {
     const clipSpeed = CLIP_SPEED[name];
     if (action) action.timeScale = clipSpeed ? Math.max(0.5, Math.min(1.6, speed / clipSpeed)) : 1;
     this.mixer.update(dt);
+    if (riding === 'stand') this.handlebarPose();
+  }
+
+  /** Standing on the scooter: both arms reach forward to the handlebar (on top of the idle clip). */
+  private handlebarPose(): void {
+    this.root.updateMatrixWorld(true);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
+    const turn = (bone: THREE.Bone, angle: number): void => {
+      const parent = bone.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
+      // The same turn about the body's right-hand axis, written in the parent bone's own axes.
+      const delta = new THREE.Quaternion().setFromAxisAngle(right, angle);
+      const local = parent.clone().invert().multiply(delta).multiply(parent);
+      bone.quaternion.premultiply(local);
+      bone.updateMatrixWorld(true);
+    };
+    for (const { upper, lower } of this.arms) {
+      turn(upper, 0.6);
+      turn(lower, 0.4);
+    }
   }
 
   setOpacity(opacity: number): void {
