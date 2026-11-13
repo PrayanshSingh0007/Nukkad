@@ -8,8 +8,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
  * shades like one soft round shape. Species are the ones you see in Bengaluru.
  */
 
-/** Atlas cells (3 across): 0 leaf cluster · 1 palm frond · 2 solid (trunks, inner blob). */
-const SOLID_UV: [number, number] = [0.5 / 3 + 2 / 3, 0.5];
+/** Atlas cells (4 across): 0 leaf cluster · 1 palm frond · 2 solid (trunks, inner blob) · 3 grass tuft. */
+const CELLS = 4;
+const SOLID_UV: [number, number] = [2.5 / CELLS, 0.5];
 
 let atlas: THREE.CanvasTexture | null = null;
 
@@ -18,7 +19,7 @@ export function leafAtlas(): THREE.CanvasTexture {
   if (atlas) return atlas;
   const S = 256;
   const canvas = document.createElement('canvas');
-  canvas.width = S * 3;
+  canvas.width = S * CELLS;
   canvas.height = S;
   const c = canvas.getContext('2d') as CanvasRenderingContext2D;
   let seed = 12345;
@@ -77,6 +78,20 @@ export function leafAtlas(): THREE.CanvasTexture {
   // Cell 2: solid.
   c.fillStyle = '#ffffff';
   c.fillRect(S * 2, 0, S, S);
+  // Cell 3: a tuft of grass blades growing up from the bottom edge.
+  for (let i = 0; i < 46; i++) {
+    const x = S * 3 + 20 + random() * (S - 40);
+    const tip = x + (random() - 0.5) * 70;
+    const height = S * (0.45 + random() * 0.5);
+    const light = 170 + random() * 85;
+    c.fillStyle = `rgb(${light * 0.92}, ${light}, ${light * 0.8})`;
+    c.beginPath();
+    c.moveTo(x - 5, S);
+    c.lineTo(tip, S - height);
+    c.lineTo(x + 5, S);
+    c.closePath();
+    c.fill();
+  }
 
   atlas = new THREE.CanvasTexture(canvas);
   atlas.colorSpace = THREE.SRGBColorSpace;
@@ -181,7 +196,7 @@ function canopy(spec: Canopy, seed: number): THREE.BufferGeometry {
     const color: [number, number, number] = [base[0] * light, base[1] * light, base[2] * light];
     const corner = (sx: number, sy: number): THREE.Vector3 => at.clone().add(ax.clone().multiplyScalar(sx * half)).add(ay.clone().multiplyScalar(sy * half));
     const u0 = 0.004;
-    const u1 = 1 / 3 - 0.004;
+    const u1 = 1 / CELLS - 0.004;
     const quad: [number, number, number, number][] = [
       [-1, -1, u0, 0],
       [1, -1, u1, 0],
@@ -264,7 +279,7 @@ function palm(cardsPerFrond: number): THREE.BufferGeometry {
       const normal = new THREE.Vector3(0, 1, 0).add(dir.clone().multiplyScalar(0.3)).normalize();
       const shade = 0.75 + 0.3 * (1 - t0);
       const color: [number, number, number] = [leaf[0] * shade, leaf[1] * shade, leaf[2] * shade];
-      const u = (t: number): number => 1 / 3 + 0.01 + t * (1 / 3 - 0.02);
+      const u = (t: number): number => 1 / CELLS + 0.01 + t * (1 / CELLS - 0.02);
       const a = p0.clone().add(side.clone().multiplyScalar(-width));
       const bb = p0.clone().add(side.clone().multiplyScalar(width));
       const cc = p1.clone().add(side.clone().multiplyScalar(width));
@@ -322,4 +337,26 @@ export function speciesOf(variant: number, chance: number): number {
   if (r < 0.83) return 5;
   if (r < 0.93) return 6;
   return 0;
+}
+
+/** One grass tuft: two crossed upright cards (4 triangles), drawn hundreds of times around the player. */
+export function createGrassTuft(): THREE.BufferGeometry {
+  const b: Builder = { positions: [], normals: [], colors: [], uvs: [] };
+  const up = new THREE.Vector3(0, 1, 0);
+  const u0 = 3 / CELLS + 0.01;
+  const u1 = 1 - 0.01;
+  for (const angle of [0.3, 0.3 + Math.PI / 2]) {
+    const dx = Math.cos(angle) * 0.42;
+    const dz = Math.sin(angle) * 0.42;
+    const corners: [number, number, number, number, number][] = [
+      [-dx, 0, -dz, u0, 0],
+      [dx, 0, dz, u1, 0],
+      [dx, 0.5, dz, u1, 1],
+      [-dx, 0, -dz, u0, 0],
+      [dx, 0.5, dz, u1, 1],
+      [-dx, 0.5, -dz, u0, 1],
+    ];
+    for (const [x, y, z, u, v] of corners) vertex(b, new THREE.Vector3(x, y, z), up, [y > 0 ? 1.1 : 0.75, y > 0 ? 1.1 : 0.75, y > 0 ? 1.1 : 0.75], u, v);
+  }
+  return finish(b);
 }

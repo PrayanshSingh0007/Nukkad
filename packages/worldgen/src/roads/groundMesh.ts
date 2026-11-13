@@ -10,7 +10,14 @@ export interface RibbonRun {
   ribbon: Ribbon;
   from: number;
   to: number;
+  /** The same road, wider: the strips between the two outlines are the footpaths. */
+  walk?: Ribbon;
 }
+
+/** Footpaths lie a little lower than every road, so a side street always covers them at its mouth. */
+const WALK_LIFT = 0.045;
+const WALK_COLOR = [0x8a, 0x86, 0x7e] as const;
+const MAIN_ROADS = new Set<LineKind>(['trunk', 'primary', 'secondary']);
 
 /** A small filled circle at the end of a road; it fills the notch where two roads meet at an angle. */
 export interface RoadDisc {
@@ -50,6 +57,35 @@ export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: Terr
     }
     prevLeft = left;
     prevRight = right;
+  }
+  if (run.walk && stride === 1) appendFootpaths(mesh, run, run.walk, terrain);
+}
+
+/**
+ * Footpaths: a paved strip on each side of the road. The shader reads (metres from the kerb,
+ * metres along, -1 or -2): -2 = a main road, whose kerb stones are painted yellow and black.
+ */
+function appendFootpaths(mesh: MeshBuilder, run: RibbonRun, walk: Ribbon, terrain: TerrainGrid): void {
+  const { ribbon, from, to } = run;
+  const flag = MAIN_ROADS.has(ribbon.kind) ? -2 : -1;
+  const width = walk.halfWidth - ribbon.halfWidth;
+  const add = (x: number, z: number, across: number, along: number): number => {
+    const [nx, ny, nz] = normalAt(terrain, x, z);
+    return mesh.addVertex(x, heightAt(terrain, x, z) + WALK_LIFT, z, nx, ny, nz, WALK_COLOR, across, along, flag);
+  };
+  for (const side of ['left', 'right'] as const) {
+    let prevInner = -1;
+    let prevOuter = -1;
+    for (let i = from; i <= to; i++) {
+      const inner = add(ribbon[side][i * 2], ribbon[side][i * 2 + 1], 0, ribbon.along[i]);
+      const outer = add(walk[side][i * 2], walk[side][i * 2 + 1], width, ribbon.along[i]);
+      if (i > from) {
+        mesh.addTriangleFacing(prevInner, inner, prevOuter, true);
+        mesh.addTriangleFacing(prevOuter, inner, outer, true);
+      }
+      prevInner = inner;
+      prevOuter = outer;
+    }
   }
 }
 

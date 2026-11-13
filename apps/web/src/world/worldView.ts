@@ -7,6 +7,7 @@ import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
+import { GrassView } from './grassView.ts';
 import { Signs } from './signs.ts';
 import { createSurfaceUniforms, loadSurfaces } from './surfaces.ts';
 
@@ -51,6 +52,8 @@ export class WorldView {
   private shadowTreesAt: [number, number] | null = null;
   private treeLimit = 0;
   private treePositions = new Float32Array(0);
+  /** Grass tufts around the player (Medium and High). */
+  private grass: GrassView | null = null;
   private treeVariants = new Uint8Array(0);
   private lampHeads: THREE.MeshBasicMaterial | null = null;
   private glow: THREE.InstancedMesh | null = null;
@@ -88,6 +91,10 @@ export class WorldView {
 
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
     this.addProps(ready.props, leafy);
+    if (leafy > 0) {
+      this.grass = new GrassView(this.materials.trees, this.terrain, ready.groundMap, this.halfSize, leafy === 2 ? 26 : 14);
+      this.group.add(this.grass.mesh);
+    }
     this.signs = new Signs(ready.places, this.terrain, options.anisotropy);
     if (this.signs.mesh) this.group.add(this.signs.mesh);
     this.setTreeLimit(options.maxTrees);
@@ -148,6 +155,7 @@ export class WorldView {
 
   /** Refills the shadow-casting trees when you have moved more than 10 m. */
   updateShadowTrees(x: number, z: number, range: number): void {
+    this.grass?.update(x, z);
     if (range <= 0) return;
     const at = this.shadowTreesAt;
     if (at && Math.hypot(at[0] - x, at[1] - z) < 10) return;

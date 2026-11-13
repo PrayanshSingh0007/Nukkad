@@ -39,6 +39,10 @@ export interface PreparedWorld {
   doors: Door[];
 }
 
+/** Roads with a footpath on each side, and how wide it is. */
+const PAVED = new Set(['trunk', 'primary', 'secondary', 'tertiary', 'residential']);
+const FOOTPATH_M = 1.6;
+
 /** Road ends get a filling disc only when the road is at least this wide. */
 const MIN_DISC_WIDTH_M = 3;
 
@@ -82,6 +86,10 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
       line.w,
     );
     if (!ribbon) continue;
+    // Proper roads get a footpath on both sides (the same line, 3.2 m wider).
+    const paved = PAVED.has(line.kind) && line.w >= 5;
+    const wide = paved ? buildRibbon(line.kind, line.pts.map((value) => value / UNITS_PER_METRE), line.w + FOOTPATH_M * 2) : null;
+    const walk = wide && wide.count === ribbon.count ? wide : undefined;
     const midpoint = (i: number): [number, number] => [
       (ribbon.left[i * 2] + ribbon.right[i * 2]) / 2,
       (ribbon.left[i * 2 + 1] + ribbon.right[i * 2 + 1]) / 2,
@@ -95,7 +103,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
       if (run && bucket === runBucket) {
         run.to = i + 1;
       } else {
-        run = { ribbon, from: i, to: i + 1 };
+        run = walk ? { ribbon, from: i, to: i + 1, walk } : { ribbon, from: i, to: i + 1 };
         runBucket = bucket;
         bucket.runs.push(run);
       }

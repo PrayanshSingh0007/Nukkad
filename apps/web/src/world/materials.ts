@@ -242,8 +242,27 @@ const ROAD_GLSL = /* glsl */ `
     float grit = nkNoise(vNkWorld.xz * 1.7) * 0.6 + nkNoise(vNkWorld.xz * 7.0) * 0.4;
     diffuseColor.rgb *= 0.9 + 0.18 * grit;
   }
+  if (vRoad.z < -0.5) {
+    // Footpath: interlocking pavers, and a kerb stone along the road (yellow-black on main roads).
+    float fwp = fwidth(vRoad.x) + 0.001;
+    vec2 pv = vec2(vRoad.x / 0.4, vRoad.y / 0.4);
+    pv.y += 0.5 * step(1.0, mod(floor(pv.x), 2.0));
+    vec2 pf = abs(fract(pv) - 0.5);
+    float near = 1.0 - smoothstep(0.1, 0.5, fwidth(pv.x) + fwidth(pv.y));
+    float joint = smoothstep(0.43, 0.5, max(pf.x, pf.y)) * near;
+    vec3 paver = vec3(0.5, 0.48, 0.45) * (0.88 + 0.24 * nkHash(floor(pv)) * near);
+    paver = mix(paver, paver * vec3(1.1, 0.92, 0.85), step(0.7, nkHash(floor(pv) + 3.0)) * near * 0.6); // a few red pavers
+    paver *= 1.0 - 0.45 * joint;
+    paver *= 0.85 + 0.25 * nkNoise(vNkWorld.xz * 0.9); // stains
+    float kerb = 1.0 - smoothstep(0.22, 0.22 + fwp, vRoad.x);
+    vec3 kerbCol = vec3(0.62, 0.61, 0.58);
+    if (vRoad.z < -1.5) kerbCol = mix(vec3(0.78, 0.6, 0.08), vec3(0.06), step(0.5, fract(vRoad.y / 1.8)));
+    diffuseColor.rgb = mix(paver, kerbCol, kerb);
+  }
   if (vRoad.z > 0.0) {
     float across = abs(vRoad.x);
+    // Tyre tracks: asphalt polished a little darker where wheels run.
+    diffuseColor.rgb *= 1.0 - 0.07 * (1.0 - smoothstep(0.3, 0.9, abs(across - vRoad.z * 0.5)));
     float fw = fwidth(vRoad.x) + 0.001;
     float centre = (1.0 - smoothstep(0.07, 0.07 + fw, across)) * step(0.5, fract(vRoad.y / 6.0));
     float edge = smoothstep(vRoad.z - 0.42 - fw, vRoad.z - 0.42, across) * (1.0 - smoothstep(vRoad.z - 0.3, vRoad.z - 0.3 + fw, across));
@@ -288,7 +307,7 @@ function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): 
          }`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-roads-2';
+  material.customProgramCacheKey = () => 'nukkad-roads-3';
 }
 
 /** Breaks up the flat ground colour with soft blotches and fine grain. */
@@ -298,17 +317,27 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
+       vec3 nkBase = diffuseColor.rgb;
+       float nkGrass = smoothstep(0.015, 0.09, nkBase.g - max(nkBase.r, nkBase.b) * 1.03);
        float blotch = nkNoise(vNkWorld.xz * 0.08) * 0.6 + nkNoise(vNkWorld.xz * 0.6) * 0.4;
        diffuseColor.rgb *= 0.88 + 0.18 * blotch;
        if (uTexOn > 0.5) {
-         vec3 soil = texture2D(uSoil, vNkWorld.xz / 6.0).rgb / uSoilAvg;
-         diffuseColor.rgb *= mix(vec3(1.0), vec3(dot(soil, vec3(0.333))), 0.6);
+         // Fine grain close up plus a big soft pattern, so the photo never shows as a repeating tile.
+         float fineT = dot(texture2D(uSoil, vNkWorld.xz / 2.1).rgb / uSoilAvg, vec3(0.333));
+         float wideT = dot(texture2D(uSoil, vNkWorld.zx / 19.0 + 0.37).rgb / uSoilAvg, vec3(0.333));
+         float grain = mix(1.0, fineT, 0.38) * mix(1.0, wideT, 0.3);
+         diffuseColor.rgb *= mix(grain, 1.0, nkGrass * 0.7);
        } else {
          diffuseColor.rgb *= 0.94 + 0.08 * nkNoise(vNkWorld.xz * 4.0);
-       }`,
+       }
+       // Lawns and parks: streaky blades, lighter and yellower patches.
+       float blades = nkNoise(vNkWorld.xz * vec2(36.0, 6.0)) * 0.5 + nkNoise(vNkWorld.zx * vec2(39.0, 8.0)) * 0.5;
+       float patchy = nkNoise(vNkWorld.xz * 0.3 + 11.0);
+       vec3 lawn = nkBase * mix(vec3(0.72, 0.9, 0.6), vec3(1.12, 1.08, 0.78), patchy) * (0.78 + 0.44 * blades);
+       diffuseColor.rgb = mix(diffuseColor.rgb, lawn, nkGrass);`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-2';
+  material.customProgramCacheKey = () => 'nukkad-ground-3';
 }
 
 /** Moving ripples and a sun glint on lakes and pools. */
