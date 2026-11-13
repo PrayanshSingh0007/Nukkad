@@ -5,7 +5,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
+import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
@@ -340,6 +340,50 @@ export class Game {
       }
     }
     return best;
+  }
+
+  private mapPicture: HTMLCanvasElement | null = null;
+
+  /** Everything the on-screen map needs, or null before the world is ready. */
+  mapView(): {
+    picture: HTMLCanvasElement;
+    half: number;
+    x: number;
+    z: number;
+    yaw: number;
+    facing: number;
+    driving: boolean;
+    inside: boolean;
+    friends: { x: number; z: number; name: string }[];
+    places: { x: number; z: number; color: string }[];
+  } | null {
+    const ready = this.ready;
+    const player = this.player;
+    if (!ready || !player) return null;
+    if (!this.mapPicture) {
+      const { size, pixels } = ready.miniMap;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const c = canvas.getContext('2d') as CanvasRenderingContext2D;
+      const image = c.createImageData(size, size);
+      image.data.set(pixels);
+      c.putImageData(image, 0, 0);
+      this.mapPicture = canvas;
+    }
+    const inside = this.interior;
+    return {
+      picture: this.mapPicture,
+      half: ready.info.halfSize,
+      x: inside ? inside.door.x : player.x,
+      z: inside ? inside.door.z : player.z,
+      yaw: this.rig.yaw,
+      facing: player.vehicle ? player.heading : player.avatar.facing,
+      driving: player.vehicle !== null,
+      inside: inside !== null,
+      friends: this.remotes.positions(),
+      places: ready.places.filter((p) => p.real === 1 && p.name).map((p) => ({ x: p.x / 10, z: p.z / 10, color: PLACE_COLORS[p.kind] })),
+    };
   }
 
   /** The action button / E key: get in or out of a vehicle, go into or out of a building. */

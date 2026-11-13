@@ -1,6 +1,6 @@
 import { PACK_VERSION, decodePack } from '@nukkad/shared';
 import type { WirePack } from '@nukkad/shared';
-import { GROUND_MAP_SIZE, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { GROUND_MAP_SIZE, MINI_MAP_SIZE, paintMiniMap, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkLod, PreparedWorld } from '@nukkad/worldgen';
 import type { FromWorker, ToWorker } from './protocol.ts';
 
@@ -42,6 +42,7 @@ async function load(url: string): Promise<void> {
   world = prepareWorld(pack);
   const terrain = buildTerrainMesh(world.terrain);
   const pixels = paintGroundMap(pack, GROUND_MAP_SIZE);
+  const miniMap = paintMiniMap(pack, MINI_MAP_SIZE);
   const water = buildWaterMesh(pack, world.originalTerrain);
   // The worker keeps its own copies of the terrain and props for later chunk builds.
   const heights = world.terrain.heights.slice();
@@ -78,6 +79,7 @@ async function load(url: string): Promise<void> {
       terrain,
       terrainHeights: { size: world.terrain.size, cell: world.terrain.cell, half: world.terrain.half, base: world.terrain.base, heights },
       groundMap: { size: GROUND_MAP_SIZE, pixels },
+      miniMap: { size: MINI_MAP_SIZE, pixels: miniMap },
       water,
       props,
       places: pack.places,
@@ -92,6 +94,7 @@ async function load(url: string): Promise<void> {
       terrain.indices.buffer,
       heights.buffer,
       pixels.buffer,
+      miniMap.buffer,
       props.trees.buffer,
       props.lamps.buffer,
       props.benches.buffer,

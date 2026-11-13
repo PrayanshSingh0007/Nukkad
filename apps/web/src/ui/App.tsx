@@ -5,6 +5,7 @@ import { saveLook } from '../player/avatar/lookStore.ts';
 import { AvatarPanel } from './AvatarPanel.tsx';
 import { PlacesPanel } from './PlacesPanel.tsx';
 import { Speedometer } from './Speedometer.tsx';
+import { MiniMap } from './MiniMap.tsx';
 import { setAutojoin } from './api.ts';
 
 interface Props {
@@ -104,6 +105,7 @@ export function App({ game, initialLook, roomId }: Props) {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
+      {status.phase === 'playing' && !panelOpen && <MiniMap game={game} />}
       {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
       {status.phase === 'playing' && !panelOpen && driveLabel && (
         <button type="button" className="driveButton" onClick={() => game.toggleDrive()}>

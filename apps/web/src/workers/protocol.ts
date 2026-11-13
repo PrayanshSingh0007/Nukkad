@@ -41,6 +41,8 @@ export interface ReadyMessage {
   terrain: TerrainMesh;
   terrainHeights: TerrainHeights;
   groundMap: { size: number; pixels: Uint8Array };
+  /** The on-screen map picture (north at the top). */
+  miniMap: { size: number; pixels: Uint8Array };
   water: MeshData | null;
   props: PropSet;
   places: PackPlace[];

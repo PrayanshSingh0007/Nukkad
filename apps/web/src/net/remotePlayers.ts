@@ -162,6 +162,13 @@ export class RemotePlayers {
     }
   }
 
+  /** Where friends are drawn now (for the on-screen map). */
+  positions(): { x: number; z: number; name: string }[] {
+    const out: { x: number; z: number; name: string }[] = [];
+    for (const remote of this.players.values()) if (remote.shown && remote.avatar.object.visible) out.push({ x: remote.shown.x, z: remote.shown.z, name: remote.info.name });
+    return out;
+  }
+
   dispose(): void {
     for (const slot of [...this.players.keys()]) this.remove(slot);
   }

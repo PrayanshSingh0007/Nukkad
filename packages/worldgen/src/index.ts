@@ -6,6 +6,7 @@ export type { ElevationSampler } from './terrain/heightGrid.ts';
 export { buildTerrainMesh, heightAt, normalAt } from './terrain/grid.ts';
 export type { TerrainGrid, TerrainMesh } from './terrain/grid.ts';
 export { GROUND_MAP_SIZE, paintGroundMap } from './areas/groundMap.ts';
+export { MINI_MAP_SIZE, paintMiniMap } from './areas/miniMap.ts';
 export { buildWaterMesh } from './areas/water.ts';
 export { prepareWorld } from './chunk/prepare.ts';
 export type { Door, InteriorKind } from './buildings/doors.ts';

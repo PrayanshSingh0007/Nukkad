@@ -578,3 +578,19 @@ button {
   touch-action: none;
   user-select: none;
 }
+
+.miniMap {
+  position: fixed;
+  left: calc(12px + env(safe-area-inset-left));
+  top: calc(52px + env(safe-area-inset-top));
+  border-radius: 50%;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .miniMap {
+    width: 120px !important;
+    height: 120px !important;
+  }
+}
