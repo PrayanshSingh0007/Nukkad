@@ -563,3 +563,18 @@ button {
   font-weight: 700;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
+
+.hornButton {
+  position: fixed;
+  right: calc(22px + env(safe-area-inset-right));
+  bottom: calc(128px + env(safe-area-inset-bottom));
+  width: 68px;
+  height: 44px;
+  border-radius: 22px;
+  border: none;
+  background: rgba(20, 24, 31, 0.78);
+  color: #fff;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+}

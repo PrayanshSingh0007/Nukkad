@@ -207,4 +207,40 @@ export function appendDoor(mesh: MeshBuilder, door: Door): void {
   panel(0.06, 0, top, half, door.wide ? GLASS : WOOD); // door
   if (door.wide) panel(0.07, 0, top, 0.03, STEEL); // the line between the two glass leaves
   else panel(0.075, 1.0, 1.1, 0.05, HANDLE, half * 0.7); // handle
+  if (AWNING_KINDS.has(door.kind)) appendAwning(mesh, door, nx, nz, ux, uz, y);
+}
+
+const AWNING_KINDS = new Set<InteriorKind>(['shop', 'food', 'supermarket']);
+const AWNING_COLORS = ['#c0392b', '#1f6f8b', '#2e8b57', '#d98e04', '#7d3c98', '#b03a2e', '#1a5276', '#af601a'].map(linear);
+
+/** A cloth awning sloping out over a shop's front: seen from above and below, with closed ends. */
+function appendAwning(mesh: MeshBuilder, door: Door, nx: number, nz: number, ux: number, uz: number, y: number): void {
+  const half = Math.min(2.6, Math.max(1.5, door.w * 0.3));
+  const reach = 1.25;
+  const yWall = y + 2.62;
+  const yEdge = y + 2.2;
+  const color = AWNING_COLORS[Math.abs(door.id) % AWNING_COLORS.length];
+  const dark: [number, number, number] = [Math.round(color[0] * 0.6), Math.round(color[1] * 0.6), Math.round(color[2] * 0.6)];
+  const at = (su: number, out: number, height: number): [number, number, number] => [door.x + ux * su * half + nx * (0.05 + out), height, door.z + uz * su * half + nz * (0.05 + out)];
+  const corners = [at(-1, 0, yWall), at(1, 0, yWall), at(1, reach, yEdge), at(-1, reach, yEdge)];
+  // Slope normal: up and outward.
+  const slope = Math.hypot(reach, yWall - yEdge);
+  const sx = (nx * (yWall - yEdge)) / slope;
+  const sy = reach / slope;
+  const sz = (nz * (yWall - yEdge)) / slope;
+  const top = corners.map(([px, py, pz]) => mesh.addVertex(px, py, pz, sx, sy, sz, color, 0, 0, 0));
+  mesh.addTriangleFacing(top[0], top[1], top[2], true);
+  mesh.addTriangleFacing(top[0], top[2], top[3], true);
+  const under = corners.map(([px, py, pz]) => mesh.addVertex(px, py - 0.02, pz, -sx, -sy, -sz, dark, 0, 0, 0));
+  mesh.addTriangleFacing(under[0], under[1], under[2], false);
+  mesh.addTriangleFacing(under[0], under[2], under[3], false);
+  // The hanging front edge (valance).
+  const v0 = at(-1, reach, yEdge);
+  const v1 = at(1, reach, yEdge);
+  const a = mesh.addVertex(v0[0], yEdge - 0.22, v0[2], nx, 0, nz, dark, 0, 0, 0);
+  const b = mesh.addVertex(v1[0], yEdge - 0.22, v1[2], nx, 0, nz, dark, 0, 0, 0);
+  const c = mesh.addVertex(v1[0], yEdge, v1[2], nx, 0, nz, color, 0, 0, 0);
+  const d = mesh.addVertex(v0[0], yEdge, v0[2], nx, 0, nz, color, 0, 0, 0);
+  mesh.addTriangle(a, b, c);
+  mesh.addTriangle(a, c, d);
 }

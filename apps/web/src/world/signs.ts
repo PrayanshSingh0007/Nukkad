@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLACE_COLORS, UNITS_PER_METRE, signText } from '@nukkad/shared';
+import { PLACE_COLORS, PLACE_KANNADA, UNITS_PER_METRE, signText } from '@nukkad/shared';
 import type { PackPlace } from '@nukkad/shared';
 import { heightAt } from '@nukkad/worldgen';
 import type { TerrainGrid } from '@nukkad/worldgen';
@@ -22,17 +22,21 @@ function paintSign(c: CanvasRenderingContext2D, x: number, y: number, place: Pac
   c.strokeStyle = 'rgba(255,255,255,0.55)';
   c.lineWidth = 2;
   c.strokeRect(x + 3, y + 3, CELL_W - 6, CELL_H - 6);
+  // Kannada first (what the place is), then the name — the way boards are in Bengaluru.
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(255,255,255,0.92)';
+  c.font = `700 14px "Noto Sans Kannada", "Kannada Sangam MN", "Tunga", system-ui, sans-serif`;
+  c.fillText(PLACE_KANNADA[place.kind], x + CELL_W / 2, y + 13);
   const name = signText(place).toUpperCase();
-  let size = 26;
+  let size = 21;
   c.font = `800 ${size}px system-ui, -apple-system, Roboto, sans-serif`;
-  while (c.measureText(name).width > CELL_W - 18 && size > 12) {
+  while (c.measureText(name).width > CELL_W - 18 && size > 11) {
     size -= 1;
     c.font = `800 ${size}px system-ui, -apple-system, Roboto, sans-serif`;
   }
   c.fillStyle = '#ffffff';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText(name, x + CELL_W / 2, y + CELL_H / 2 + 1);
+  c.fillText(name, x + CELL_W / 2, y + 32);
 }
 
 export class Signs {

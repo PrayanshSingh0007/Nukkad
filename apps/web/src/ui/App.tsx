@@ -148,6 +148,17 @@ export function App({ game, initialLook, roomId }: Props) {
       {status.phase === 'playing' && !panelOpen && riding && (
         <button
           type="button"
+          className="hornButton"
+          onPointerDown={() => game.setHorn(true)}
+          onPointerUp={() => game.setHorn(false)}
+          onPointerLeave={() => game.setHorn(false)}
+        >
+          Horn
+        </button>
+      )}
+      {status.phase === 'playing' && !panelOpen && riding && (
+        <button
+          type="button"
           className="driftButton"
           onPointerDown={() => game.setHandbrake(true)}
           onPointerUp={() => game.setHandbrake(false)}

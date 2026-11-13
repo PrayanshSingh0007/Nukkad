@@ -31,6 +31,34 @@ export const PLACE_KINDS = [
 ] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
+/**
+ * What each kind of place is called in Kannada. Boards in Bengaluru carry Kannada first;
+ * ours show this word above the name (a plain description, never a brand).
+ */
+export const PLACE_KANNADA: Record<PlaceKind, string> = {
+  supermarket: 'ಸೂಪರ್ ಮಾರ್ಕೆಟ್',
+  grocery: 'ದಿನಸಿ ಅಂಗಡಿ',
+  food: 'ಹೋಟೆಲ್',
+  cafe: 'ಕಾಫಿ',
+  bakery: 'ಬೇಕರಿ',
+  pharmacy: 'ಔಷಧಾಲಯ',
+  clinic: 'ಕ್ಲಿನಿಕ್',
+  salon: 'ಸಲೂನ್',
+  clothes: 'ಬಟ್ಟೆ ಅಂಗಡಿ',
+  mobile: 'ಮೊಬೈಲ್',
+  bank: 'ಬ್ಯಾಂಕ್',
+  gym: 'ಜಿಮ್',
+  school: 'ಶಾಲೆ',
+  college: 'ಕಾಲೇಜು',
+  office: 'ಕಚೇರಿ',
+  hotel: 'ಲಾಡ್ಜ್',
+  mall: 'ಮಾಲ್',
+  showroom: 'ಶೋರೂಮ್',
+  shop: 'ಅಂಗಡಿ',
+  apartments: 'ಅಪಾರ್ಟ್‌ಮೆಂಟ್',
+  worship: 'ಪ್ರಾರ್ಥನಾ ಮಂದಿರ',
+};
+
 export interface PackPlace {
   kind: PlaceKind;
   /** Where the sign hangs, decimetres. */

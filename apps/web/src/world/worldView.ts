@@ -8,6 +8,7 @@ import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
+import { buildPetals, buildWires } from './streetDressing.ts';
 import { Signs } from './signs.ts';
 import { createSurfaceUniforms, loadSurfaces } from './surfaces.ts';
 
@@ -92,6 +93,11 @@ export class WorldView {
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
     this.addProps(ready.props, leafy);
     if (leafy > 0) {
+      // Street dressing: overhead wires between the poles, petals under flowering trees.
+      const wires = buildWires(ready.props.lamps);
+      if (wires) this.group.add(wires);
+      const petals = buildPetals(ready.props.trees, this.treeVariants, options.maxTrees);
+      if (petals) this.group.add(petals);
       this.grass = new GrassView(this.materials.trees, this.terrain, ready.groundMap, this.halfSize, leafy === 2 ? 26 : 14);
       this.group.add(this.grass.mesh);
     }

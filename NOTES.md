@@ -9,6 +9,16 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Street life details (2026-11-13) — ideas from looking at benglooru.com, all our own work
+
+The owner asked to use that game's graphics. We did NOT copy or download anything from it (their art, logo, character, missions and "Scene" meter are theirs). We only took the general idea that small street details make a place feel like Bengaluru, and built our own:
+- **Overhead wires** (`streetDressing.ts`): three sagging strands between each street-lamp pole and its two nearest poles (9–42 m), one draw call. Wires can cut a corner over a building — not checked.
+- **Petal carpets** under gulmohar (red), tabebuia (pink) and bougainvillea (magenta): one instanced flat mesh for the whole area.
+- **Shop awnings**: a sloping cloth canopy with a valance over the fronts of shops, restaurants and supermarkets (in the chunk building mesh, 6 triangles each, 8 seeded colours).
+- **Kannada on name boards**: every board shows the Kannada word for the kind of place (ಅಂಗಡಿ, ಹೋಟೆಲ್, ಶಾಲೆ …, `PLACE_KANNADA`) above the name. Only 9 of 118 named places in the test area have a real `name:kn` in OpenStreetMap, so real Kannada names are not used yet. The owner should check the words — written by Claude, not by a Kannada speaker.
+- **Sound, made in code** (`audio/sound.ts`, Web Audio, no files): horn on H / the Horn button (three voices: scooter & auto, car, bus) and an engine hum that follows speed (a soft whine for your own scooter). Only you hear it — not sent to friends. Starts after the first tap or key press (browser rule). Not listened to by Claude (no speakers here): only checked that the audio graph runs and the horn gain rises.
+- Wires, petals, awnings appear on Medium and High (wires/petals) or everywhere (awnings, Kannada).
+
 ## Graphics pass (2026-11-13) — owner: "make everything more clear and beautiful"
 
 All made in code or from assets we already had — nothing new was downloaded.

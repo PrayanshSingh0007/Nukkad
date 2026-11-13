@@ -39,6 +39,7 @@ import type { ParkedVehicle } from '../world/streetLifeView.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
 import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
+import { Sound } from '../audio/sound.ts';
 import type { GameScene } from './scene.ts';
 
 export interface GameStatus {
@@ -133,6 +134,7 @@ export class Game {
   onDriveHint: ((label: string | null) => void) | null = null;
   private driving: ParkedVehicle | null = null;
   /** Front doors by 10 m grid cell, the door you are standing at, and the building you are inside. */
+  private readonly sound = new Sound();
   private doorGrid = new Map<string, Door[]>();
   private doorNear: Door | null = null;
   private interior: Interior | null = null;
@@ -180,10 +182,16 @@ export class Game {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'INPUT') return;
       if (event.code === 'KeyR') this.toggleRide();
+      this.sound.unlock();
+      if (event.code === 'KeyH' && !event.repeat) this.setHorn(true);
       if (event.code === 'KeyE' || event.code === 'KeyF') this.toggleDrive();
       const emote = ({ Digit1: 'wave', Digit2: 'dance', Digit3: 'sit', Digit4: 'talk' } as Record<string, Emote>)[event.code];
       if (emote) this.doEmote(emote);
     });
+    window.addEventListener('keyup', (event) => {
+      if (event.code === 'KeyH') this.setHorn(false);
+    });
+    window.addEventListener('pointerdown', () => this.sound.unlock());
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
   }
@@ -384,6 +392,17 @@ export class Game {
     this.driveMesh = mesh;
     this.view3d.scene.add(mesh);
     this.onRiding?.(true);
+  }
+
+  /** The horn (H key or the Horn button), on anything you ride or drive. Only you hear it for now. */
+  setHorn(on: boolean): void {
+    const vehicle = this.player?.vehicle;
+    this.sound.unlock();
+    if (!on || !vehicle) {
+      this.sound.horn(false);
+      return;
+    }
+    this.sound.horn(true, vehicle.code === 7 ? 'heavy' : vehicle.leans || vehicle.code === 5 ? 'scooter' : 'car');
   }
 
   /** The on-screen Drift button (handbrake). */
@@ -661,6 +680,8 @@ export class Game {
         this.driveMesh.rotation.set(0, player.heading, player.lean);
       }
       this.updateDriveHint();
+      const riding = player.vehicle;
+      this.sound.engine(riding ? Math.abs(player.rideSpeed) / riding.maxSpeed : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine');
       this.speedClock += dt;
       if (this.speedClock > 0.1) {
         this.speedClock = 0;
