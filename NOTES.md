@@ -9,6 +9,18 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Graphics pass (2026-11-13) — owner: "make everything more clear and beautiful"
+
+All made in code or from assets we already had — nothing new was downloaded.
+- **Buildings** (`materials.ts`, facade shader v5, zero extra triangles): every window has a frame, sill and sunshade; behind the glass a small room is ray-traced ("interior mapping": back wall, side walls, floor, ceiling, furniture blocks) so rooms shift as you walk past; curtains, office blinds, school grills; apartments get balcony columns (railing, door); shops get lit interiors with shelves, roller shutters (some down) and a coloured sign band; glass towers mirror the sky; sun glints on panes; rain streaks, slab lines, grime; lit rooms at night.
+- **Roofs**: a stair room on terraces of buildings ≥ 2 floors, a bigger lift room on large blocks (+10 triangles each). **Paints**: brighter Bengaluru house colours added to the palettes.
+- **Trees** (`treeModels.ts`): leaf-card canopies with an inner blob, branches, a leaf atlas painted on a canvas (leaf cluster, palm frond, solid, grass tuft); species: rain tree, ashoka, neem, gulmohar (orange), tabebuia (pink), coconut palm, bush, bougainvillea — picked from the map's tree variant + the tree's own random number. Medium = 60 % of the cards. Low keeps the old 28-triangle trees. Leaf shadows use a cut-out depth material.
+- **Ground**: footpaths (1.6 m paved strips both sides of trunk/primary/secondary/tertiary/residential roads ≥ 5 m, near chunks only) with interlocking pavers and kerb stones, yellow-black on main roads; finer two-scale ground grain; lawns shaded with blades and patches; red-earth and damp patches on bare ground; **grass tufts** around the player on lawns (`grassView.ts`, radius 26 m High / 14 m Medium, one draw call); soft shade where buildings meet the ground (blurred footprint mask in the ground map's alpha channel).
+- **Sky and light**: drifting clouds; soft shadow filtering; on High a film-style grade (contrast, colour, warm lights/cool shadows, vignette) after bloom; water mirrors the sky and glitters; nights are moonlit blue instead of near-black.
+- Measured in the hidden browser pane at the Assetz gate: **Low ≈ 95k triangles / 35 draw calls, Medium ≈ 283k / 78**. Frame rate could NOT be measured here (the pane throttles frames) and nothing was tested on a phone — Medium may be too heavy for a mid-range Android; if so, lower Medium's tree cards or grass radius first.
+- Honest: this is a big step up, but still a stylised look, not photoreal AAA. Buildings are still extruded outlines (no real balconies/roof shapes), far (LOD1) buildings have no windows, and characters' clothes are painted on.
+- Declined (owner asked 2026-11-13): scraping/cloning another game's graphics (benglooru.com) — against the project's own rules (no ripped or scraped assets) and copyright. Taking ideas from it is fine.
+
 ## Emotes (2026-11-13)
 
 - **Emote** button (or keys 1–4): Wave (2.6 s), Dance, Sit, Talk — friends see it (flags bits 4–7 carry the emote when not riding; no protocol change). Sit works only near a seat: street benches outside; sofas, chairs, school/mall benches, hotel sofas inside. Moving ends any emote; moving while seated stands you up.
