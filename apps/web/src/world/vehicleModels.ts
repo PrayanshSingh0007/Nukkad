@@ -199,54 +199,122 @@ const SUV: CarShape = {
   windows: [[1.1, 1.12], [0.57, 1.63], [-1.82, 1.67], [-2.18, 1.42], [-2.2, 1.12]],
 };
 
-/** The classic green-and-yellow Bengaluru auto-rickshaw (no operator markings). */
+/**
+ * The classic green-and-yellow Bengaluru auto-rickshaw (no operator markings):
+ * rounded green tub, yellow canvas roof with black edging, driver's cab with a windscreen,
+ * headlamp on the nose, mudguard over the front wheel, passenger bench, rolled side curtains,
+ * spare wheel on the back, meter box, mirrors.
+ */
 function autoRickshaw(): THREE.BufferGeometry {
   const p = new Parts();
-  const green = 0x2f8f3a;
-  const yellow = 0xf0c22c;
-  const tub = polygon([[1.35, 0.3], [1.38, 0.7], [1.12, 1.1], [0.9, 1.14], [0.75, 0.7], [-1.2, 0.68], [-1.25, 0.3]]);
-  p.add(sideExtrude(tub, 1.32, 0.06), green, MATTE);
-  // Canopy: an arched roof running front to back, plus the rear cover.
+  const green = 0x2a8a3a;
+  const greenDark = 0x1f6b2c;
+  const yellow = 0xf2c230;
+  const black = 0x1b1c1e;
+  // Lower body: rounded green tub with the nose sloping up to the cab.
+  const tub = polygon([[1.42, 0.32], [1.47, 0.62], [1.36, 0.9], [1.12, 1.08], [0.92, 1.1], [0.8, 0.74], [-1.15, 0.72], [-1.28, 0.58], [-1.28, 0.32]]);
+  p.add(sideExtrude(tub, 1.34, 0.08), green, PAINT);
+  p.box([1.38, 0.08, 2.6], greenDark, MATTE, [0, 0.33, 0.05], 0.03); // skirt line
+  p.box([1.38, 0.05, 1.95], 0xe8e2cf, MATTE, [0, 0.74, 0.25], 0.02); // chrome-ish side strip
+  // Yellow canvas roof: an arch front to back, black edging, black rear cover with a little window.
   const arch = new THREE.Shape();
-  arch.moveTo(-0.7, 0);
-  arch.lineTo(-0.7, 0.18);
-  arch.quadraticCurveTo(0, 0.42, 0.7, 0.18);
-  arch.lineTo(0.7, 0);
-  arch.lineTo(0.64, 0);
-  arch.lineTo(0.64, 0.14);
-  arch.quadraticCurveTo(0, 0.35, -0.64, 0.14);
-  arch.lineTo(-0.64, 0);
+  arch.moveTo(-0.72, 0);
+  arch.lineTo(-0.72, 0.16);
+  arch.quadraticCurveTo(0, 0.48, 0.72, 0.16);
+  arch.lineTo(0.72, 0);
+  arch.lineTo(0.66, 0);
+  arch.lineTo(0.66, 0.13);
+  arch.quadraticCurveTo(0, 0.4, -0.66, 0.13);
+  arch.lineTo(-0.66, 0);
   arch.closePath();
-  p.add(new THREE.ExtrudeGeometry(arch, { depth: 2.0, bevelEnabled: false, curveSegments: 6 }), yellow, MATTE, [0, 1.52, -0.9]);
-  p.box([1.36, 1.05, 0.06], yellow, MATTE, [0, 1.2, 1.1], 0.03);
-  p.box([1.36, 0.06, 0.06], 0x1d1d1f, MATTE, [0, 1.52, -0.9], 0.02);
-  for (const x of [-0.66, 0.66]) {
-    p.add(new THREE.CylinderGeometry(0.022, 0.022, 0.86, 8), 0x1d1d1f, MATTE, [x, 1.1, -0.86]);
-    p.box([0.04, 0.32, 0.75], yellow, MATTE, [x, 1.5, 0.7], 0.02);
+  p.add(new THREE.ExtrudeGeometry(arch, { depth: 2.1, bevelEnabled: false, curveSegments: 8 }), yellow, MATTE, [0, 1.56, -0.95]);
+  p.add(new THREE.ExtrudeGeometry(arch, { depth: 0.08, bevelEnabled: false, curveSegments: 8 }), black, MATTE, [0, 1.555, -0.98]);
+  p.add(new THREE.ExtrudeGeometry(arch, { depth: 0.08, bevelEnabled: false, curveSegments: 8 }), black, MATTE, [0, 1.555, 1.1]);
+  p.box([1.42, 0.9, 0.05], black, MATTE, [0, 1.15, 1.13], 0.03);
+  p.box([0.7, 0.26, 0.02], GLASS, GLOSS, [0, 1.35, 1.16], 0.01);
+  // Rolled-up side curtains under the roof edge.
+  for (const x of [-0.7, 0.7]) p.add(new THREE.CylinderGeometry(0.045, 0.045, 1.5, 8), black, MATTE, [x, 1.58, 0.25], [Math.PI / 2, 0, 0]);
+  // Cab: windscreen in a frame, roof posts, wiper.
+  p.box([1.08, 0.62, 0.035], GLASS, GLOSS, [0, 1.33, -0.92], 0.02, [0.18, 0, 0]);
+  p.box([1.14, 0.05, 0.06], black, MATTE, [0, 1.63, -0.97], 0.02);
+  p.box([0.03, 0.4, 0.02], black, MATTE, [0.18, 1.33, -0.955], 0.01, [0.18, 0, 0.5]);
+  for (const x of [-0.68, 0.68]) {
+    p.add(new THREE.CylinderGeometry(0.024, 0.024, 0.92, 8), black, MATTE, [x, 1.12, -0.9]);
+    p.add(new THREE.CylinderGeometry(0.022, 0.022, 0.88, 8), black, MATTE, [x, 1.14, 1.05]);
+    // Mirrors on stalks.
+    p.add(new THREE.CylinderGeometry(0.01, 0.01, 0.2, 6), black, MATTE, [x * 1.08, 1.2, -1.0], [0, 0, x > 0 ? -0.8 : 0.8]);
+    p.box([0.1, 0.07, 0.02], GLASS, GLOSS, [x * 1.2, 1.28, -1.0], 0.01);
   }
-  p.box([1.02, 0.55, 0.04], GLASS, GLOSS, [0, 1.28, -0.88], 0.02, [0.2, 0, 0]);
-  p.box([1.2, 0.18, 0.5], 0x202022, MATTE, [0, 0.8, 0.55], 0.05);
-  p.box([1.2, 0.5, 0.12], 0x202022, MATTE, [0, 1.05, 0.85], 0.05);
-  p.box([0.42, 0.12, 0.32], 0x202022, MATTE, [0, 0.88, -0.38], 0.04);
-  p.add(new THREE.CylinderGeometry(0.018, 0.018, 0.62, 8), RIM, GLOSS, [0, 1.05, -0.62], [0, 0, Math.PI / 2]);
-  p.box([0.16, 0.12, 0.06], HEAD, GLOSS, [0, 0.98, -1.3], 0.03);
-  p.wheel(0.07, -1.02, 0.23, 0.14);
-  p.wheel(-0.6, 0.72, 0.23, 0.14);
-  p.wheel(0.6, 0.72, 0.23, 0.14);
+  // Nose: headlamp, indicators, a black bumper, a blank plate.
+  p.add(new THREE.CylinderGeometry(0.09, 0.1, 0.06, 14), HEAD, GLOSS, [0, 0.98, -1.44], [Math.PI / 2, 0, 0]);
+  p.add(new THREE.CylinderGeometry(0.115, 0.115, 0.04, 14), RIM, GLOSS, [0, 0.98, -1.42], [Math.PI / 2, 0, 0]);
+  for (const x of [-0.2, 0.2]) p.box([0.07, 0.05, 0.04], 0xf2a12a, GLOSS, [x, 0.84, -1.44], 0.01);
+  p.box([0.34, 0.12, 0.02], PLATE, MATTE, [0, 0.6, -1.49], 0.01);
+  p.box([1.0, 0.07, 0.08], black, MATTE, [0, 0.38, -1.46], 0.02);
+  // Front wheel with its mudguard and fork.
+  p.add(new THREE.CylinderGeometry(0.29, 0.29, 0.2, 14, 1, true, 0, Math.PI), green, PAINT, [0, 0.26, -1.05], [0, 0, Math.PI / 2]);
+  p.add(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 6), RIM, GLOSS, [0.1, 0.5, -1.05]);
+  // Inside: driver's seat, handlebar with grips, meter box; passenger bench and backrest.
+  p.box([0.5, 0.12, 0.36], 0x2a2a2c, MATTE, [0, 0.88, -0.36], 0.05);
+  p.add(new THREE.CylinderGeometry(0.018, 0.018, 0.66, 8), RIM, GLOSS, [0, 1.06, -0.62], [0, 0, Math.PI / 2]);
+  for (const x of [-0.34, 0.34]) p.add(new THREE.CylinderGeometry(0.025, 0.025, 0.1, 8), black, MATTE, [x, 1.06, -0.62], [0, 0, Math.PI / 2]);
+  p.box([0.16, 0.12, 0.08], 0x111214, GLOSS, [0.42, 1.18, -0.8], 0.02); // meter
+  p.box([1.24, 0.16, 0.55], 0x23395b, MATTE, [0, 0.82, 0.55], 0.06); // bench (blue rexine)
+  p.box([1.24, 0.55, 0.12], 0x23395b, MATTE, [0, 1.08, 0.86], 0.05);
+  p.add(new THREE.CylinderGeometry(0.016, 0.016, 1.2, 8), RIM, GLOSS, [0, 1.42, 0.2], [0, 0, Math.PI / 2]); // grab rail
+  // Back: tail lamps, the spare wheel, the engine cover underneath.
+  for (const x of [-0.52, 0.52]) p.box([0.1, 0.08, 0.04], TAIL, GLOSS, [x, 0.62, 1.31], 0.02);
+  p.add(new THREE.CylinderGeometry(0.23, 0.23, 0.12, 14), TYRE, MATTE, [0, 0.78, 1.33], [Math.PI / 2, 0, 0]);
+  p.add(new THREE.CylinderGeometry(0.14, 0.14, 0.13, 10), RIM, GLOSS, [0, 0.78, 1.33], [Math.PI / 2, 0, 0]);
+  p.box([0.9, 0.22, 0.5], 0x2c2d30, MATTE, [0, 0.3, 0.95], 0.04);
+  p.wheel(0, -1.05, 0.23, 0.14);
+  p.wheel(-0.62, 0.72, 0.23, 0.14);
+  p.wheel(0.62, 0.72, 0.23, 0.14);
   return p.finish();
 }
 
+/**
+ * A step-through scooter, the most common two-wheeler in Bengaluru: front apron and leg
+ * shield, flat floorboard, long padded seat, curved rear body with side panels, headlamp in
+ * the handlebar cowl, mirrors, mudguard, grab rail, exhaust, number plates (blank).
+ */
 function twoWheeler(): THREE.BufferGeometry {
   const p = new Parts();
-  const body = polygon([[-0.82, 0.48], [-0.75, 0.78], [-0.2, 0.82], [0.0, 0.62], [0.32, 0.36], [0.5, 0.42], [0.62, 0.98], [0.5, 1.02], [0.36, 0.62], [0.12, 0.42], [-0.1, 0.36], [-0.6, 0.36]]);
-  p.add(sideExtrude(body, 0.42, 0.06), WHITE, PAINT);
-  p.add(sideExtrude(polygon([[-0.75, 0.8], [-0.7, 0.9], [-0.05, 0.9], [-0.02, 0.8]]), 0.32, 0.03), 0x1e1e20, MATTE);
-  p.add(new THREE.CylinderGeometry(0.022, 0.022, 0.66, 8), TRIM, MATTE, [0, 1.06, -0.55], [0, 0, Math.PI / 2]);
-  p.box([0.22, 0.12, 0.12], WHITE, PAINT, [0, 1.04, -0.58], 0.04);
-  p.box([0.12, 0.07, 0.04], HEAD, GLOSS, [0, 1.0, -0.66], 0.02);
-  p.box([0.14, 0.05, 0.04], TAIL, GLOSS, [0, 0.74, 0.82], 0.02);
-  p.wheel(0.0, -0.62, 0.25, 0.1);
-  p.wheel(0.0, 0.58, 0.25, 0.11);
+  const black = 0x1b1c1e;
+  // Rear body (paint), side profile: from the floorboard up and back over the rear wheel.
+  const rear = polygon([[0.08, 0.36], [0.14, 0.62], [-0.1, 0.78], [-0.62, 0.8], [-0.86, 0.66], [-0.9, 0.5], [-0.7, 0.4], [-0.3, 0.36]]);
+  p.add(sideExtrude(rear, 0.38, 0.07), WHITE, PAINT);
+  // Front apron and leg shield, rising to the steering column.
+  const apron = polygon([[0.34, 0.3], [0.5, 0.36], [0.62, 0.86], [0.56, 0.98], [0.44, 0.96], [0.32, 0.6], [0.24, 0.32]]);
+  p.add(sideExtrude(apron, 0.4, 0.06), WHITE, PAINT);
+  p.box([0.3, 0.42, 0.04], black, MATTE, [0, 0.62, -0.31], 0.02, [-0.25, 0, 0]); // inner leg shield
+  // Floorboard with rubber mat.
+  p.box([0.34, 0.05, 0.5], 0x2a2b2e, MATTE, [0, 0.33, -0.08], 0.02);
+  // Seat: long, padded, with a lip.
+  const seat = polygon([[0.12, 0.8], [0.16, 0.88], [-0.15, 0.93], [-0.66, 0.91], [-0.74, 0.84], [-0.66, 0.8]]);
+  p.add(sideExtrude(seat, 0.3, 0.05), 0x232325, MATTE);
+  // Handlebar cowl with the headlamp, the bar and grips, mirrors.
+  p.box([0.5, 0.12, 0.16], WHITE, PAINT, [0, 1.06, -0.56], 0.05);
+  p.box([0.16, 0.08, 0.03], HEAD, GLOSS, [0, 1.06, -0.645], 0.02);
+  p.add(new THREE.CylinderGeometry(0.016, 0.016, 0.7, 8), RIM, GLOSS, [0, 1.08, -0.52], [0, 0, Math.PI / 2]);
+  for (const x of [-0.32, 0.32]) {
+    p.add(new THREE.CylinderGeometry(0.022, 0.022, 0.11, 8), black, MATTE, [x, 1.08, -0.52], [0, 0, Math.PI / 2]);
+    p.add(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), black, MATTE, [x * 0.8, 1.2, -0.52], [0, 0, x > 0 ? -0.35 : 0.35]);
+    p.box([0.08, 0.06, 0.015], GLASS, GLOSS, [x * 0.92, 1.31, -0.52], 0.01);
+    p.box([0.05, 0.03, 0.03], 0xf2a12a, GLOSS, [x * 0.55, 1.03, -0.64], 0.01); // indicators
+  }
+  // Front: fork, mudguard, plate.
+  for (const x of [-0.06, 0.06]) p.add(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6), RIM, GLOSS, [x, 0.5, -0.6], [0.2, 0, 0]);
+  p.add(new THREE.CylinderGeometry(0.28, 0.28, 0.13, 14, 1, true, Math.PI * 0.15, Math.PI * 0.8), WHITE, PAINT, [0, 0.26, -0.62], [0, 0, Math.PI / 2]);
+  p.box([0.16, 0.1, 0.01], PLATE, MATTE, [0, 0.72, -0.6], 0.005);
+  // Back: tail lamp, grab rail, plate, exhaust, kickstand.
+  p.box([0.18, 0.06, 0.05], TAIL, GLOSS, [0, 0.72, 0.88], 0.02);
+  p.box([0.18, 0.1, 0.01], PLATE, MATTE, [0, 0.55, 0.92], 0.005);
+  p.add(new THREE.TorusGeometry(0.14, 0.012, 6, 12, Math.PI), black, MATTE, [0, 0.9, 0.6], [Math.PI / 2, 0, 0]);
+  p.add(new THREE.CylinderGeometry(0.04, 0.045, 0.42, 10), 0x6b6f75, GLOSS, [0.17, 0.3, 0.42], [Math.PI / 2, 0, 0]);
+  p.add(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6), black, MATTE, [-0.14, 0.14, 0.02], [0, 0, 0.5]);
+  p.wheel(0.0, -0.62, 0.24, 0.1);
+  p.wheel(0.0, 0.58, 0.24, 0.11);
   return p.finish();
 }
 

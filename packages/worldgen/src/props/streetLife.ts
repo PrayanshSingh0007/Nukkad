@@ -8,8 +8,8 @@ import type { Occupancy } from './occupancy.ts';
  * Parked vehicles, street-food stalls and bus stops — what makes a Bengaluru street feel
  * busy. Seeded, so everyone sees the same street. (Moving traffic is roadmap step L5.)
  */
-export const VEHICLE = { hatchback: 0, sedan: 1, suv: 2, auto: 3, twoWheeler: 4, bus: 5 } as const;
-export const VEHICLE_KINDS = ['hatchback', 'sedan', 'suv', 'auto', 'two_wheeler', 'bus'] as const;
+export const VEHICLE = { hatchback: 0, sedan: 1, suv: 2, auto: 3, twoWheeler: 4, bus: 5, taxi: 6, van: 7, ambulance: 8, truck: 9, delivery: 10 } as const;
+export const VEHICLE_KINDS = ['hatchback', 'sedan', 'suv', 'auto', 'two_wheeler', 'bus', 'taxi', 'van', 'ambulance', 'truck', 'delivery'] as const;
 /** Footprint half-sizes (sideways, lengthways) in metres, for collisions. */
 export const VEHICLE_HALF: [number, number][] = [
   [0.82, 1.9],
@@ -18,8 +18,13 @@ export const VEHICLE_HALF: [number, number][] = [
   [0.7, 1.35],
   [0.38, 0.95],
   [1.28, 5.6],
+  [0.88, 2.15],
+  [0.9, 2.15],
+  [1.0, 2.6],
+  [1.05, 2.5],
+  [1.05, 2.6],
 ];
-export const VEHICLE_HEIGHT = [1.5, 1.45, 1.75, 1.75, 1.1, 3.2];
+export const VEHICLE_HEIGHT = [1.5, 1.45, 1.75, 1.75, 1.1, 3.2, 1.6, 1.6, 2.3, 1.85, 3.0];
 
 /** Per vehicle: x, y, z, rotation, kind, colour variant (0–7). */
 export const VEHICLE_STRIDE = 6;
@@ -40,11 +45,16 @@ const STOP_SPACING_M = 320;
 
 /** Kerbside parking mix, roughly like a Bengaluru side street: lots of two-wheelers. */
 function pickParked(roll: number): number {
-  if (roll < 0.42) return VEHICLE.twoWheeler;
-  if (roll < 0.6) return VEHICLE.hatchback;
-  if (roll < 0.72) return VEHICLE.sedan;
-  if (roll < 0.84) return VEHICLE.suv;
-  return VEHICLE.auto;
+  if (roll < 0.4) return VEHICLE.twoWheeler;
+  if (roll < 0.55) return VEHICLE.hatchback;
+  if (roll < 0.65) return VEHICLE.sedan;
+  if (roll < 0.74) return VEHICLE.suv;
+  if (roll < 0.83) return VEHICLE.auto;
+  if (roll < 0.88) return VEHICLE.taxi;
+  if (roll < 0.93) return VEHICLE.van;
+  if (roll < 0.96) return VEHICLE.delivery;
+  if (roll < 0.985) return VEHICLE.truck;
+  return VEHICLE.ambulance;
 }
 
 /** Calls `visit` at seeded gaps along a line with the direction of travel; skips the ends (junctions). */

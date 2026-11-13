@@ -9,6 +9,13 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Map and vehicles (2026-11-13) — owner: "make it look like a premium game" (not a clone)
+
+- **Mini-map** (`ui/MiniMap.tsx`, picture painted in the worker by `worldgen/areas/miniMap.ts`): round GPS-style map top-left, turns with the camera, zooms out while driving; roads by importance (main roads orange/yellow), buildings, parks, water; named places as coloured dots, friends as blue dots (on the rim when far), you as an arrow (yellow when inside a building). Redrawn ~15×/s. Phone size 120 px.
+- **Five more vehicles** from the Kenney Car Kit we already had (CC0, in CREDITS): taxi, van, ambulance, truck, delivery tempo — parked, in traffic and drivable (codes 8–12; flags still fit in 4 bits). Big vehicles get the heavy horn. Kenney's models are cartoony low-poly; they match our cars, not real Indian makes.
+- **Auto-rickshaw and scooter rebuilt in code** with much more detail (see vehicleModels.ts).
+- Not done: fire engine/police (left out on purpose for now), sirens, vehicle-specific engine sounds, interiors of vehicles.
+
 ## Street life details (2026-11-13) — ideas from looking at benglooru.com, all our own work
 
 The owner asked to use that game's graphics. We did NOT copy or download anything from it (their art, logo, character, missions and "Scene" meter are theirs). We only took the general idea that small street details make a place feel like Bengaluru, and built our own:

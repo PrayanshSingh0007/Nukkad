@@ -101,7 +101,7 @@ export class TrafficView {
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z), rotation, one));
-      if (this.paintable(mesh.material as THREE.Material) && VEHICLE_KINDS[route.kind] !== 'auto' && VEHICLE_KINDS[route.kind] !== 'bus') {
+      if (this.paintable(mesh.material as THREE.Material) && !['auto', 'bus', 'taxi', 'ambulance'].includes(VEHICLE_KINDS[route.kind])) {
         mesh.setColorAt(i, PAINTS[route.variant % PAINTS.length]);
       }
       counts.set(route.kind, i + 1);

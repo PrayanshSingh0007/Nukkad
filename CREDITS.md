@@ -58,7 +58,7 @@ Photo-scanned textures from **Poly Haven** (https://polyhaven.com), licence **CC
 
 ## 3D models (CC0)
 
-**Car Kit 3.1** by **Kenney** (https://kenney.nl/assets/car-kit), licence **CC0**: hatchback-sports,
+**Car Kit 3.1** by **Kenney** (https://kenney.nl/assets/car-kit), licence **CC0**: taxi, van, ambulance, truck, delivery (added 2026-11-13), hatchback-sports,
 sedan, sedan-sports, suv, suv-luxury and their shared colour texture, in
 `apps/web/public/models/kenney/` (Kenney's License.txt is included there).
 

@@ -58,6 +58,11 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
   hatchback: { files: ['hatchback-sports'], width: 1.7 },
   sedan: { files: ['sedan', 'sedan-sports'], width: 1.78 },
   suv: { files: ['suv', 'suv-luxury'], width: 1.88 },
+  taxi: { files: ['taxi'], width: 1.75 },
+  van: { files: ['van'], width: 1.8 },
+  ambulance: { files: ['ambulance'], width: 2.0 },
+  truck: { files: ['truck'], width: 2.1 },
+  delivery: { files: ['delivery'], width: 2.1 },
 };
 const SOLID_RADIUS = 30;
 

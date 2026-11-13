@@ -446,7 +446,7 @@ export class Game {
       this.sound.horn(false);
       return;
     }
-    this.sound.horn(true, vehicle.code === 7 ? 'heavy' : vehicle.leans || vehicle.code === 5 ? 'scooter' : 'car');
+    this.sound.horn(true, [7, 10, 11, 12].includes(vehicle.code) ? 'heavy' : vehicle.leans || vehicle.code === 5 ? 'scooter' : 'car');
   }
 
   /** The on-screen Drift button (handbrake). */
