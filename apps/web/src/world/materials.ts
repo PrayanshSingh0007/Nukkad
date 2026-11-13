@@ -61,44 +61,175 @@ const BUILDING_PHOTO_GLSL = /* glsl */ `
 `;
 
 /**
- * Facades. Each building vertex carries (window column, floor, style); the shader draws
- * a pane in every cell, shaped by the style:
- * 0 house · 1 apartments (slab edges) · 2 glass office · 3 shopfront on the ground floor ·
- * 4 school/civic (colour band) · 5 industrial (high strip windows).
- * `fwidth` fades windows out far away so they never shimmer.
+ * Facades. Each building vertex carries (window column, floor, style); the shader builds the
+ * whole front from that, with no extra triangles:
+ * 0 house · 1 apartments · 2 glass office · 3 shops on the ground floor · 4 school/civic · 5 industrial.
+ *
+ * - Every opening has a frame, a sill and a sunshade (chajja) that throws a shadow on the glass.
+ * - "Interior mapping": behind each pane a little room is ray-traced (back wall, side walls,
+ *   floor, ceiling, furniture blocks), so rooms shift as you walk past — real depth for free.
+ * - Curtains, lit rooms at night, sky reflected in the glass (stronger at flat angles).
+ * - Apartments get balcony columns (railing, open air, a door at the back); shops get lit
+ *   interiors, roller shutters and a coloured sign band; offices a reflective curtain wall.
+ * - Walls: slab lines, rain streaks under sills, grime near the ground.
+ * `fwidth` fades fine detail out far away so nothing shimmers.
  */
+const FACADE_PARS_GLSL = /* glsl */ `
+  float nkRect(vec2 p, vec4 b, vec2 fw) {
+    vec2 lo = smoothstep(b.xy - fw, b.xy + fw, p);
+    vec2 hi = 1.0 - smoothstep(b.zw - fw, b.zw + fw, p);
+    return lo.x * lo.y * hi.x * hi.y;
+  }
+  float nkH(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  vec3 nkPalette(float t) { // soft wall-paint / cloth colours
+    return 0.62 + 0.3 * cos(6.2832 * (t + vec3(0.0, 0.33, 0.67)));
+  }
+`;
+
 const FACADE_GLSL = /* glsl */ `
-  float nkGlow = 0.0;
+  vec3 nkEmit = vec3(0.0);
   if (vWin.z > 0.5) { // 0 = no facade data (far buildings, roofs)
     int style = int(vWin.z + 0.5) - 1;
     vec2 fw = fwidth(vWin.xy);
     vec2 cell = fract(vWin.xy);
-    float fade = 1.0 - smoothstep(0.12, 0.45, max(fw.x, fw.y));
-    vec4 box = vec4(0.25, 0.32, 0.75, 0.80); // x0, y0, x1, y1 of the pane inside its cell
-    vec3 glass = vec3(0.05, 0.075, 0.1);
-    float groundFloor = step(vWin.y, 1.0) * step(0.0, vWin.y);
-    if (style == 1) box = vec4(0.18, 0.28, 0.62, 0.82);
-    else if (style == 2) { box = vec4(0.04, 0.1, 0.96, 0.94); glass = vec3(0.18, 0.3, 0.38); }
-    else if (style == 4) box = vec4(0.15, 0.3, 0.85, 0.74);
-    else if (style == 5) box = vec4(0.1, 0.72, 0.9, 0.88);
-    if (style == 3 && groundFloor > 0.5) { box = vec4(0.05, 0.04, 0.95, 0.78); glass = vec3(0.16, 0.2, 0.22); }
-    vec2 lo = smoothstep(box.xy - fw, box.xy + fw, cell);
-    vec2 hi = 1.0 - smoothstep(box.zw - fw, box.zw + fw, cell);
-    float pane = lo.x * lo.y * hi.x * hi.y * fade;
+    float span = max(fw.x, fw.y);
+    float fade = 1.0 - smoothstep(0.12, 0.45, span);   // openings disappear far away
+    float fine = 1.0 - smoothstep(0.02, 0.1, span);    // frames, bars, streaks only up close
     vec2 id = floor(vWin.xy) + vColor.rg * 91.0;
-    float tone = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
-    // Glass looks a bit like it reflects the sky: lighter towards the top of each pane.
-    vec3 sky = glass + vec3(0.06, 0.09, 0.12) * smoothstep(box.y, box.w, cell.y) + tone * 0.04;
-    // Shops pull a grey shutter down on some fronts.
-    if (style == 3 && groundFloor > 0.5 && tone > 0.55) sky = vec3(0.45, 0.46, 0.47) * (0.85 + 0.15 * step(0.5, fract(cell.y * 12.0)));
-    diffuseColor.rgb = mix(diffuseColor.rgb, sky, pane * 0.92);
-    // Slab edges on apartments and a coloured band on schools, both darker/lighter lines per floor.
-    if (style == 1) diffuseColor.rgb *= 1.0 - 0.18 * (1.0 - smoothstep(0.0, 0.07 + fw.y, cell.y)) * fade;
-    if (style == 4) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.3, 0.2), smoothstep(0.86 - fw.y, 0.88 + fw.y, cell.y) * fade);
-    // Grime: walls get a little darker near the ground.
-    diffuseColor.rgb *= 0.82 + 0.18 * smoothstep(-0.2, 0.4, vWin.y);
-    float lit = step(style == 2 ? 0.62 : 0.6, fract(tone * 7.13 + id.x * 0.37));
-    nkGlow = pane * lit * uNight;
+    float tone = nkH(id);
+    float tone2 = nkH(id + 17.31);
+    float colTone = nkH(vec2(id.x, 3.7));
+    float groundFloor = step(vWin.y, 1.0) * step(0.0, vWin.y);
+    float above = step(0.0, vWin.y);
+    vec3 wall = diffuseColor.rgb;
+
+    // ---- What kind of opening is in this cell? 0 window · 1 balcony · 2 shop · 3 curtain wall · 4 strip window
+    int kind = 0;
+    vec4 box = vec4(0.27, 0.30, 0.73, 0.80); // x0, y0, x1, y1 of the opening inside its cell
+    float depth = 3.4;                        // metres of room behind it
+    if (style == 1) {
+      box = vec4(0.2, 0.27, 0.66, 0.82);
+      if (colTone > 0.62) { kind = 1; box = vec4(0.07, 0.05, 0.93, 0.86); depth = 1.5; }
+    } else if (style == 2) { kind = 3; box = vec4(0.03, 0.08, 0.97, 0.95); depth = 6.0; }
+    else if (style == 4) box = vec4(0.14, 0.3, 0.86, 0.76);
+    else if (style == 5) { kind = 4; box = vec4(0.08, 0.7, 0.92, 0.9); }
+    if (style == 3 && groundFloor > 0.5) { kind = 2; box = vec4(0.05, 0.03, 0.95, 0.76); depth = 5.0; }
+
+    // ---- The wall itself.
+    // Slab line at every floor, a little darker; shops get a painted sign band above the front.
+    float slab = (1.0 - smoothstep(0.0, 0.05 + fw.y, cell.y)) * fade * above;
+    if (style != 2) wall *= 1.0 - 0.16 * slab;
+    if (style == 4) wall = mix(wall, vec3(0.62, 0.3, 0.2), smoothstep(0.86 - fw.y, 0.88 + fw.y, cell.y) * fade);
+    if (kind == 2) {
+      float band = nkRect(cell, vec4(0.0, 0.8, 1.0, 0.985), fw) * fade;
+      vec3 sign = nkPalette(colTone * 3.1) * vec3(0.75, 0.7, 0.7);
+      wall = mix(wall, sign, band * 0.9);
+      wall = mix(wall, sign * 1.5, band * nkRect(cell, vec4(0.12, 0.855, 0.88, 0.93), fw) * 0.35); // lighter name plate
+    }
+    // Rain streaks: under sills and down the wall, only close up.
+    float streak = nkNoise(vec2(vWin.x * 11.0 + vColor.r * 40.0, vWin.y * 0.7)) * nkNoise(vec2(vWin.x * 3.1, vWin.y * 2.3 + 5.0));
+    float underSill = step(cell.y, box.y) * step(box.x - 0.05, cell.x) * step(cell.x, box.z + 0.05);
+    wall *= 1.0 - (0.1 + 0.22 * underSill) * streak * fine * above * (style == 2 ? 0.0 : 1.0);
+    // Grime near the ground.
+    wall *= 0.8 + 0.2 * smoothstep(-0.2, 0.45, vWin.y);
+
+    // ---- The opening: frame, sill, sunshade.
+    float open = nkRect(cell, box, fw) * fade * above;
+    vec2 ft = (kind == 3 ? vec2(0.012, 0.014) : vec2(0.03, 0.028)) + fw * 0.5;
+    vec4 inner = vec4(box.xy + ft, box.zw - ft);
+    float glassMask = nkRect(cell, inner, fw) * fade * above;
+    vec3 frame = (style == 0 || style == 1 || style == 4) && tone2 > 0.35 ? vec3(0.82, 0.8, 0.76) : vec3(0.12, 0.13, 0.14);
+    if (kind == 1) frame = wall * 0.7;
+    if (kind == 0 || kind == 4) {
+      float sill = nkRect(cell, vec4(box.x - 0.035, box.y - 0.04, box.z + 0.035, box.y), fw) * fine;
+      float shade = nkRect(cell, vec4(box.x - 0.05, box.w, box.z + 0.05, box.w + 0.045), fw) * fine;
+      wall = mix(wall, wall * 1.22 + 0.03, max(sill, shade) * 0.9);
+      wall *= 1.0 - 0.3 * nkRect(cell, vec4(box.x - 0.035, box.y - 0.075, box.z + 0.035, box.y - 0.04), fw) * fine; // shadow under the sill
+    }
+
+    // ---- Behind the glass: a ray-traced box room.
+    vec3 V = normalize(vNkWorld - cameraPosition);
+    vec3 nrm = normalize(vNkNormal);
+    vec3 T = vec3(-nrm.z, 0.0, nrm.x);
+    float facing = max(0.02, -dot(V, nrm));
+    vec3 rd = vec3(dot(V, T) / 2.6, V.y / 3.1, facing / depth);
+    vec3 tA = (step(0.0, rd) - vec3(cell, 0.0)) / (rd + vec3(1e-5));
+    float tHit = min(tA.x, min(tA.y, tA.z));
+    vec3 hit = vec3(cell, 0.0) + rd * tHit;
+    vec3 paint = mix(vec3(0.86, 0.82, 0.74), nkPalette(tone2 * 5.0), 0.3);
+    vec3 room;
+    if (tHit == tA.z) { // back wall
+      room = paint;
+      if (kind == 2) { // shop shelves full of goods
+        vec2 g = floor(hit.xy * vec2(13.0, 5.0));
+        float shelf = step(0.12, fract(hit.y * 5.0));
+        room = mix(vec3(0.3), nkPalette(nkH(g + id) * 3.0), shelf * step(hit.y, 0.82));
+      } else if (kind == 1) { // balcony: a door and the wall of the flat
+        room = wall * 1.05;
+        room = mix(room, vec3(0.1, 0.13, 0.16), nkRect(hit.xy, vec4(0.3, 0.02, 0.62, 0.8), vec2(0.004)));
+      } else {
+        room = mix(room, paint * 0.5, nkRect(hit.xy, vec4(0.08, 0.0, 0.4, 0.62), vec2(0.004)) * step(0.4, tone));      // wardrobe / shelf
+        room = mix(room, nkPalette(tone * 9.0) * 0.8, nkRect(hit.xy, vec4(0.56, 0.45, 0.82, 0.68), vec2(0.004)));     // picture
+      }
+    } else if (tHit == tA.y) { // ceiling or floor
+      room = hit.y > 0.5 ? vec3(0.9, 0.9, 0.88) : (kind == 1 ? vec3(0.62, 0.58, 0.52) : vec3(0.36, 0.3, 0.25));
+      if (kind == 3 && hit.y > 0.5) room = mix(room, vec3(1.6), step(0.8, fract(hit.z * 3.0)) * step(0.3, fract(hit.x * 2.0))); // ceiling lights
+    } else room = paint * 0.8; // side walls
+    room *= mix(1.0, 0.5, clamp(hit.z, 0.0, 1.0));
+
+    // Curtains just behind the glass (homes), blinds from the top (offices), grill bars (schools).
+    float u = (cell.x - inner.x) / (inner.z - inner.x);
+    float v = (cell.y - inner.y) / (inner.w - inner.y);
+    float cloth = 0.0;
+    vec3 clothCol = mix(vec3(0.78, 0.76, 0.72), nkPalette(tone * 4.0 + 0.2), 0.4);
+    if (kind == 0 && style != 5) {
+      float cl = step(0.25, tone2) * (0.1 + 0.3 * tone);
+      cloth = max(1.0 - smoothstep(cl - 0.01, cl + 0.01, u), smoothstep(1.0 - cl * 0.8 - 0.01, 1.0 - cl * 0.8 + 0.01, u));
+      clothCol *= 0.82 + 0.18 * sin(u * 70.0);
+    } else if (kind == 3) {
+      cloth = step(1.0 - 0.6 * tone * step(0.5, tone2), v);
+      clothCol = vec3(0.78, 0.78, 0.74) * (0.9 + 0.1 * step(0.5, fract(v * 40.0)));
+    }
+    // Shops: a roller shutter, fully or half down.
+    float shutter = 0.0;
+    if (kind == 2) shutter = tone > 0.72 ? 1.0 : (tone > 0.58 ? step(0.5, v) : 0.0);
+    vec3 shutterCol = vec3(0.5, 0.51, 0.52) * (0.82 + 0.18 * step(0.5, fract(cell.y * 26.0)));
+
+    // How bright the room is: daylight spill, or the lamp at night.
+    float lit = step(kind == 3 ? 0.55 : (kind == 2 ? 0.25 : 0.52), fract(tone * 7.13 + id.x * 0.37));
+    float day = 1.0 - uNight;
+    float inLight = kind == 1 ? 0.8 : (kind == 2 ? 0.75 : 0.4);
+    vec3 lamp = kind == 3 ? vec3(0.85, 0.93, 1.0) : (kind == 2 ? vec3(1.0, 0.95, 0.85) : vec3(1.0, 0.78, 0.5));
+    vec3 inside = mix(room, clothCol, cloth);
+    inside = mix(inside, shutterCol, shutter);
+    // Sky in the glass: more at flat angles; balconies have no glass.
+    vec3 R = reflect(V, nrm);
+    vec3 skyRef = mix(vec3(0.62, 0.7, 0.78), vec3(0.2, 0.36, 0.66), clamp(R.y * 1.4, 0.0, 1.0)) * (0.07 + 0.93 * day);
+    float fres = kind == 1 ? 0.0 : mix(kind == 3 ? 0.42 : 0.16, 1.0, pow(1.0 - facing, 3.0));
+    fres *= 1.0 - shutter;
+    vec3 glass = mix(inside * inLight, skyRef, fres);
+    // Shadow of the sunshade on the top of the pane (daytime).
+    if (kind == 0) glass *= 1.0 - 0.45 * smoothstep(0.78, 0.9, v) * day;
+    // Balcony railing at the front: bars you can see through, or a solid low wall.
+    if (kind == 1) {
+      float rail = step(v, 0.34);
+      float bars = max(step(0.72, fract(cell.x * 15.0)), step(0.3, v) * step(v, 0.34));
+      float solid = step(0.5, tone2);
+      vec3 railCol = mix(vec3(0.16, 0.17, 0.18), wall * 0.92, solid);
+      glass = mix(glass, railCol, rail * mix(bars * fine + (1.0 - fine) * 0.4, 1.0, solid));
+    }
+    // Window bars: a centre mullion on homes, a grid on offices, a grill on schools.
+    float bar = 0.0;
+    if (kind == 0) bar = (1.0 - smoothstep(0.012, 0.012 + fw.x, abs(u - 0.5))) * fine;
+    if (kind == 3) bar = max(1.0 - smoothstep(0.01, 0.01 + fw.x, abs(u - 0.5)), 1.0 - smoothstep(0.012, 0.012 + fw.y, abs(v - 0.32))) * fine;
+    if (style == 4) bar = max(bar, step(0.82, fract(v * 7.0)) * fine * 0.8);
+    glass = mix(glass, frame, bar * (1.0 - shutter));
+
+    diffuseColor.rgb = mix(wall, frame, open);
+    diffuseColor.rgb = mix(diffuseColor.rgb, glass, glassMask);
+    // At night lit rooms shine by themselves (the sun is gone).
+    vec3 glow = mix(room, clothCol * 0.75, cloth) * lamp * (1.0 - shutter) * (1.0 - bar);
+    nkEmit = glow * glassMask * lit * uNight * (kind == 1 ? 0.35 : 0.8) * (1.0 - fres * 0.6);
   }
 `;
 
@@ -131,11 +262,11 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWin;\nuniform float uNight;')
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\n${FACADE_PARS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\n${FACADE_GLSL}`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.74, 0.42) * nkGlow * 0.55;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-3';
+  material.customProgramCacheKey = () => 'nukkad-facades-4';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {
