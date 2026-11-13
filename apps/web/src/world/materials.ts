@@ -13,6 +13,8 @@ export interface WorldMaterials {
   night: { value: number };
   /** Seconds, for water and wind. */
   time: { value: number };
+  /** Where the light comes from (sun by day, moon at night), for glints on glass and water. */
+  lightDir: { value: THREE.Vector3 };
   terrain: THREE.MeshLambertMaterial;
   buildings: THREE.MeshLambertMaterial;
   ground: THREE.MeshLambertMaterial;
@@ -230,6 +232,9 @@ const FACADE_GLSL = /* glsl */ `
     // At night lit rooms shine by themselves (the sun is gone).
     vec3 glow = mix(room, clothCol * 0.75, cloth) * lamp * (1.0 - shutter) * (1.0 - bar);
     nkEmit = glow * glassMask * lit * uNight * (kind == 1 ? 0.35 : 0.8) * (1.0 - fres * 0.6);
+    // The sun flashing off panes that face it.
+    float glint = pow(max(dot(R, uLightDir), 0.0), 90.0) * day * (kind == 1 ? 0.0 : 1.0) * (1.0 - shutter);
+    nkEmit += vec3(1.0, 0.93, 0.8) * glint * glassMask * 2.2;
   }
 `;
 
@@ -273,19 +278,20 @@ const ROAD_GLSL = /* glsl */ `
   }
 `;
 
-function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms): void {
+function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms, lightDir: { value: THREE.Vector3 }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = night;
+    shader.uniforms.uLightDir = lightDir;
     addWorldPosition(shader, surfaces);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\n${FACADE_PARS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\nuniform vec3 uLightDir;\n${FACADE_PARS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-4';
+  material.customProgramCacheKey = () => 'nukkad-facades-5';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {
@@ -348,25 +354,38 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
   material.customProgramCacheKey = () => 'nukkad-ground-5';
 }
 
-/** Moving ripples and a sun glint on lakes and pools. */
-function waterRipples(material: THREE.MeshLambertMaterial, time: { value: number }, night: { value: number }): void {
+/** Lakes and pools: moving ripples, the sky mirrored at flat angles, and sun glitter. */
+function waterRipples(material: THREE.MeshLambertMaterial, time: { value: number }, night: { value: number }, lightDir: { value: THREE.Vector3 }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
     shader.uniforms.uNight = night;
+    shader.uniforms.uLightDir = lightDir;
     addWorldPosition(shader);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uNight;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uNight;\nuniform vec3 uLightDir;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
          vec2 p = vNkWorld.xz;
-         float wave = nkNoise(p * 0.35 + vec2(uTime * 0.25, uTime * 0.17)) * 0.6 + nkNoise(p * 1.3 - vec2(uTime * 0.4, -uTime * 0.3)) * 0.4;
-         diffuseColor.rgb *= 0.86 + 0.28 * wave;
-         float nkGlint = pow(smoothstep(0.55, 0.95, wave), 3.0) * (1.0 - uNight);`,
+         vec2 q1 = p * 0.35 + vec2(uTime * 0.25, uTime * 0.17);
+         vec2 q2 = p * 1.3 - vec2(uTime * 0.4, -uTime * 0.3);
+         float wave = nkNoise(q1) * 0.6 + nkNoise(q2) * 0.4;
+         // A wavy surface normal from the slope of the ripples.
+         float e = 0.35;
+         float wx = (nkNoise(q1 + vec2(e, 0.0)) - nkNoise(q1)) * 0.6 + (nkNoise(q2 + vec2(e, 0.0)) - nkNoise(q2)) * 0.4;
+         float wz = (nkNoise(q1 + vec2(0.0, e)) - nkNoise(q1)) * 0.6 + (nkNoise(q2 + vec2(0.0, e)) - nkNoise(q2)) * 0.4;
+         vec3 wn = normalize(vec3(-wx * 1.6, 1.0, -wz * 1.6));
+         vec3 wv = normalize(vNkWorld - cameraPosition);
+         vec3 wr = reflect(wv, wn);
+         float day = 1.0 - uNight;
+         vec3 mirror = mix(vec3(0.7, 0.78, 0.86), vec3(0.22, 0.4, 0.72), clamp(wr.y * 1.5, 0.0, 1.0)) * (0.06 + 0.94 * day);
+         float fres = 0.08 + 0.92 * pow(1.0 - max(0.0, -dot(wv, wn)), 4.0);
+         diffuseColor.rgb = mix(diffuseColor.rgb * (0.8 + 0.25 * wave), mirror, fres * 0.85);
+         float nkGlint = pow(max(dot(wr, uLightDir), 0.0), 140.0) * (0.25 + 0.75 * day);`,
       )
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.9, 0.95, 1.0) * nkGlint * 0.35;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.95, 0.85) * nkGlint * 2.5;');
   };
-  material.customProgramCacheKey = () => 'nukkad-water-1';
+  material.customProgramCacheKey = () => 'nukkad-water-2';
 }
 
 /** Tree tops sway gently; each tree moves a little differently. Leaf cards also flutter. */
@@ -400,19 +419,20 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }): voi
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
   const night = { value: 0 };
   const time = { value: 0 };
+  const lightDir = { value: new THREE.Vector3(0.4, 0.8, 0.3) };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   groundDetail(terrain, surfaces);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) facades(buildings, night, surfaces);
+  if (windows) facades(buildings, night, surfaces, lightDir);
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces);
   const water = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  waterRipples(water, time, night);
+  waterRipples(water, time, night, lightDir);
   const props = new THREE.MeshLambertMaterial({ vertexColors: true });
   const trees = leaves
     ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
     : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time);
-  return { night, time, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
+  return { night, time, lightDir, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }

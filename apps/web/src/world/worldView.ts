@@ -346,6 +346,11 @@ export class WorldView {
     this.materials.time.value = (this.materials.time.value + dt) % 3600;
   }
 
+  /** The direction the sun (or moon) shines from, for glints on glass and water. */
+  setLightDir(dir: THREE.Vector3): void {
+    this.materials.lightDir.value.copy(dir);
+  }
+
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
   setNight(night: number): void {
     this.materials.night.value = night;

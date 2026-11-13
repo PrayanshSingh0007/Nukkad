@@ -721,6 +721,7 @@ export class Game {
       this.view3d.ambient.intensity = 2.6;
     }
     world?.setNight(this.atmosphere.night);
+    world?.setLightDir(this.atmosphere.lightDir);
     this.streetLife?.setNight(this.atmosphere.night);
     world?.update(dt);
     if (player) {
