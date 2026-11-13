@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
@@ -54,6 +55,30 @@ export interface GameOptions {
   quality: QualityLevel;
   qualitySource: QualitySource;
 }
+
+/**
+ * The finishing pass on High, like a film grade: a touch more contrast and colour, warm
+ * highlights and cool shadows, and slightly darker corners (vignette). Works on the HDR
+ * picture before tone mapping.
+ */
+const GRADE_SHADER = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D(tDiffuse, vUv);
+      vec3 c = texel.rgb;
+      float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(luma), c, 1.12);                                   // colour
+      c = mix(c, c * c * (3.0 - 2.0 * min(c, vec3(1.0))), 0.12);       // gentle contrast below white
+      c *= mix(vec3(0.96, 0.99, 1.05), vec3(1.04, 1.0, 0.95), smoothstep(0.05, 0.8, luma)); // cool shadows, warm lights
+      vec2 q = vUv - 0.5;
+      c *= 1.0 - dot(q, q) * 0.38;                                     // vignette
+      gl_FragColor = vec4(max(c, vec3(0.0)), texel.a);
+    }`,
+};
 
 const COLLIDER_RADIUS = 1; // colliders for the 3 × 3 chunks around the player
 const EDGE_MARGIN_M = 100; // the playable square ends this far inside the area
@@ -127,7 +152,7 @@ export class Game {
     this.rig = new CameraRig(this.view3d.camera);
     this.remotes = new RemotePlayers(this.view3d.scene);
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
-    this.view3d.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.view3d.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.view3d.scene.add(this.view3d.sun.target);
     // Soft studio light for reflections on car paint and glass only. Built once, ~1 MB on the GPU.
     const pmrem = new THREE.PMREMGenerator(this.view3d.renderer);
@@ -560,6 +585,7 @@ export class Game {
     const composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 1.25));
+    composer.addPass(new ShaderPass(GRADE_SHADER));
     composer.addPass(new OutputPass());
     this.composer = composer;
     this.appliedPixelRatio = 0; // sizes are set on the next frame

@@ -77,6 +77,37 @@ export function paintGroundMap(pack: AreaPack, size: number = GROUND_MAP_SIZE): 
     }
   }
 
+  // Soft shade where buildings meet the ground: fill every footprint into a mask, blur it,
+  // and keep it in the alpha channel (255 = open ground, lower = close to a wall).
+  const mask = new Uint8Array(size * size * 4);
+  for (const building of pack.buildings) {
+    if (building.minH) continue;
+    fillPolygon(mask, size, [toPixels(building.ring), ...(building.holes ?? []).map(toPixels)], [255, 255, 255]);
+  }
+  const R = 3;
+  const a = new Float32Array(size * size);
+  const b = new Float32Array(size * size);
+  for (let k = 0; k < size * size; k++) a[k] = mask[k * 4] / 255;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let row = 0; row < size; row++) {
+      let sum = 0;
+      for (let col = -R; col <= R; col++) sum += a[row * size + Math.min(size - 1, Math.max(0, col))];
+      for (let col = 0; col < size; col++) {
+        b[row * size + col] = sum / (2 * R + 1);
+        sum += a[row * size + Math.min(size - 1, col + R + 1)] - a[row * size + Math.max(0, col - R)];
+      }
+    }
+    for (let col = 0; col < size; col++) {
+      let sum = 0;
+      for (let row = -R; row <= R; row++) sum += b[Math.min(size - 1, Math.max(0, row)) * size + col];
+      for (let row = 0; row < size; row++) {
+        a[row * size + col] = sum / (2 * R + 1);
+        sum += b[Math.min(size - 1, row + R + 1) * size + col] - b[Math.max(0, row - R) * size + col];
+      }
+    }
+  }
+  for (let k = 0; k < size * size; k++) pixels[k * 4 + 3] = Math.round(255 * (1 - Math.min(1, a[k] * 1.5) * 0.6));
+
   for (let k = 0; k < size * size; k++) {
     const factor = 1 + (hash32(k, 11) / 4294967296 - 0.5) * 2 * NOISE;
     const o = k * 4;

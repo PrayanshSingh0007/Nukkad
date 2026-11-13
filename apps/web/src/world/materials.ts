@@ -317,6 +317,8 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
+       float nkShade = diffuseColor.a; // baked: darker close to buildings
+       diffuseColor.a = 1.0;
        vec3 nkBase = diffuseColor.rgb;
        float nkGrass = smoothstep(0.015, 0.09, nkBase.g - max(nkBase.r, nkBase.b) * 1.03);
        float blotch = nkNoise(vNkWorld.xz * 0.08) * 0.6 + nkNoise(vNkWorld.xz * 0.6) * 0.4;
@@ -334,10 +336,11 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
        float blades = nkNoise(vNkWorld.xz * vec2(36.0, 6.0)) * 0.5 + nkNoise(vNkWorld.zx * vec2(39.0, 8.0)) * 0.5;
        float patchy = nkNoise(vNkWorld.xz * 0.3 + 11.0);
        vec3 lawn = nkBase * mix(vec3(0.72, 0.9, 0.6), vec3(1.12, 1.08, 0.78), patchy) * (0.78 + 0.44 * blades);
-       diffuseColor.rgb = mix(diffuseColor.rgb, lawn, nkGrass);`,
+       diffuseColor.rgb = mix(diffuseColor.rgb, lawn, nkGrass);
+       diffuseColor.rgb *= nkShade;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-3';
+  material.customProgramCacheKey = () => 'nukkad-ground-4';
 }
 
 /** Moving ripples and a sun glint on lakes and pools. */
