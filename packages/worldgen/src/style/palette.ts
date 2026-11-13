@@ -25,8 +25,8 @@ export function linear(hex: string): Rgb {
 const linearList = (hexes: string): Rgb[] => hexes.split(' ').map(linear);
 
 const WALLS: Record<BuildingKind, Rgb[]> = {
-  house: linearList('#e8d8c0 #f0e2c8 #d9c4a5 #e6cdb0 #cfd8d0 #e9d3c7 #f2e6d0 #d8dfe6 #e3c9b4 #dcd3bf'),
-  apartments: linearList('#d9d2c5 #c9d3d6 #e0d6c3 #cfc7ba #d6cbd0 #e6dccb'),
+  house: linearList('#e8d8c0 #f0e2c8 #d9c4a5 #e6cdb0 #cfd8d0 #e9d3c7 #f2e6d0 #d8dfe6 #e3c9b4 #dcd3bf #f0d38a #e9b9a0 #b9d4c0 #a9c6dc #e6c3d0 #d9e0a8 #f2c27a #c8b8dc #9fcfc4 #f1e0b0'),
+  apartments: linearList('#d9d2c5 #c9d3d6 #e0d6c3 #cfc7ba #d6cbd0 #e6dccb #e8cfa8 #c4d6c8 #e2c8b8 #cdd8e6'),
   commercial: linearList('#b9c7d0 #c8cfd4 #aebcc6 #d0d3d6 #bfc9c4'),
   retail: linearList('#e2c9a6 #d9b991 #e8d6b8 #dcc7b0'),
   industrial: linearList('#b7b9b5 #a9afb3 #c2bfb6'),
@@ -34,11 +34,11 @@ const WALLS: Record<BuildingKind, Rgb[]> = {
   religious: linearList('#f2ead8 #ecdcc0'),
   shed: linearList('#b5aa9a #a7a59e #bdb3a2'),
   roof: linearList('#9aa0a3 #a8a39a'),
-  generic: linearList('#e8d8c0 #d9d2c5 #e0d6c3 #cfd8d0 #e6cdb0 #d6cbd0 #dcd3bf #e9d3c7'),
+  generic: linearList('#e8d8c0 #d9d2c5 #e0d6c3 #cfd8d0 #e6cdb0 #d6cbd0 #dcd3bf #e9d3c7 #f0d38a #e9b9a0 #b9d4c0 #a9c6dc #d9e0a8 #f2c27a'),
 };
 
 const ROOFS_GREY = linearList('#8d8f92 #9a958c #7f8689 #a39a8f #858a8c');
-const ROOFS_WARM = linearList('#b5694f #a8604a #b98060');
+const ROOFS_WARM = linearList('#b5694f #a8604a #b98060 #c0714f');
 
 /** Wall and roof colour of a building, picked from the palette by its map id. */
 const MATERIAL_WALLS: Partial<Record<NonNullable<PackBuilding['material']>, Rgb>> = {
@@ -98,11 +98,11 @@ export const LINE_STYLES: Record<LineKind, LineStyle> = {
 };
 
 /** Colour of bare ground where the map says nothing. */
-export const GROUND_BASE = srgb('#a8a595');
+export const GROUND_BASE = srgb('#b09c84');
 
 /** Ground kinds in painting order: later entries are painted over earlier ones. */
 export const GROUND_PAINT: [AreaKind, Rgb][] = [
-  ['residential', srgb('#b3ad9b')],
+  ['residential', srgb('#b5a48d')],
   ['commercial', srgb('#b5b0a8')],
   ['industrial', srgb('#a9a7a2')],
   ['dirt', srgb('#9b8565')],

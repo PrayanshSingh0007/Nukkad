@@ -337,10 +337,15 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
        float patchy = nkNoise(vNkWorld.xz * 0.3 + 11.0);
        vec3 lawn = nkBase * mix(vec3(0.72, 0.9, 0.6), vec3(1.12, 1.08, 0.78), patchy) * (0.78 + 0.44 * blades);
        diffuseColor.rgb = mix(diffuseColor.rgb, lawn, nkGrass);
+       // Bare ground: patches of red earth, and darker damp soil.
+       float nkBare = (1.0 - nkGrass) * step(nkBase.b, nkBase.r) * step(abs(nkBase.r - nkBase.g), 0.12);
+       float earth = smoothstep(0.52, 0.75, nkNoise(vNkWorld.xz * 0.045 + 7.0) * 0.7 + nkNoise(vNkWorld.xz * 0.21) * 0.3);
+       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.14, 0.84, 0.68), earth * nkBare * 0.75);
+       diffuseColor.rgb *= 1.0 - 0.16 * smoothstep(0.6, 0.85, nkNoise(vNkWorld.xz * 0.11 + 31.0)) * nkBare;
        diffuseColor.rgb *= nkShade;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-4';
+  material.customProgramCacheKey = () => 'nukkad-ground-5';
 }
 
 /** Moving ripples and a sun glint on lakes and pools. */

@@ -1,7 +1,7 @@
 import earcut from 'earcut';
 import { UNITS_PER_METRE } from '@nukkad/shared';
 import type { PackBuilding } from '@nukkad/shared';
-import { simplifyRing } from '../geom/polygon.ts';
+import { pointInRing, ringCentroid, signedArea, simplifyRing } from '../geom/polygon.ts';
 import type { MeshBuilder, Rgb } from '../mesh/meshBuilder.ts';
 import { buildingColors } from '../style/palette.ts';
 import { heightAt } from '../terrain/grid.ts';
@@ -69,7 +69,7 @@ export function buildingTriangleEstimate(building: PackBuilding): number {
   }
   const cap = points - 2 + 2 * holes;
   // Walls + roof (+ underside) + parapet (4 per outer edge; counted for far versions too, to be safe).
-  return 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length : 0);
+  return 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length + 10 : 0);
 }
 
 /**
@@ -149,6 +149,68 @@ function addParapet(mesh: MeshBuilder, ring: number[], y: number, color: Rgb): v
   }
 }
 
+/**
+ * The little room on the terrace where the stairs come up (and, on big blocks, the lift room).
+ * A box near the middle of the roof, lined up with the longest wall; skipped if it does not fit.
+ */
+function addRoofRoom(mesh: MeshBuilder, building: PackBuilding, ring: number[], y: number, color: Rgb): void {
+  const area = Math.abs(signedArea(ring));
+  if (area < 45 || building.floors < 2) return;
+  const big = area > 350;
+  const w = big ? 5.5 : 2.8;
+  const d = big ? 4 : 2.6;
+  const h = big ? 3.2 : 2.5;
+  let longest = 0;
+  let ux = 1;
+  let uz = 0;
+  for (let i = 0; i < ring.length; i += 2) {
+    const j = (i + 2) % ring.length;
+    const length = Math.hypot(ring[j] - ring[i], ring[j + 1] - ring[i + 1]);
+    if (length > longest) {
+      longest = length;
+      ux = (ring[j] - ring[i]) / length;
+      uz = (ring[j + 1] - ring[i + 1]) / length;
+    }
+  }
+  const [cx, cz] = ringCentroid(ring);
+  // A seeded nudge off the exact middle, so a row of houses is not all the same.
+  const shift = ((building.id % 7) - 3) * 0.35;
+  const x = cx + ux * shift;
+  const z = cz + uz * shift;
+  const corner = (su: number, sv: number): [number, number] => [x + ux * su * w * 0.5 - uz * sv * d * 0.5, z + uz * su * w * 0.5 + ux * sv * d * 0.5];
+  const corners = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+  if (!corners.every(([px, pz]) => pointInRing(px, pz, ring))) return;
+  const shade: Rgb = [Math.round(color[0] * 0.9), Math.round(color[1] * 0.9), Math.round(color[2] * 0.9)];
+  for (let i = 0; i < 4; i++) {
+    const [ax, az] = corners[i];
+    const [bx, bz] = corners[(i + 1) % 4];
+    const length = Math.hypot(bx - ax, bz - az);
+    // With normal (dz, -dx) the order a, c, b faces outward — if that points into the box, flip both.
+    let nx = (bz - az) / length;
+    let nz = -(bx - ax) / length;
+    const inward = ((ax + bx) / 2 - x) * nx + ((az + bz) / 2 - z) * nz < 0;
+    if (inward) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const a = mesh.addVertex(ax, y, az, nx, 0, nz, shade, 0, 0, 0);
+    const b = mesh.addVertex(bx, y, bz, nx, 0, nz, shade, 0, 0, 0);
+    const c = mesh.addVertex(bx, y + h, bz, nx, 0, nz, shade, 0, 0, 0);
+    const e = mesh.addVertex(ax, y + h, az, nx, 0, nz, shade, 0, 0, 0);
+    if (inward) {
+      mesh.addTriangle(a, b, c);
+      mesh.addTriangle(a, c, e);
+    } else {
+      mesh.addTriangle(a, c, b);
+      mesh.addTriangle(a, e, c);
+    }
+  }
+  const first = mesh.vertexCount;
+  for (const [px, pz] of corners) mesh.addVertex(px, y + h, pz, 0, 1, 0, shade, -1, -1, -1);
+  mesh.addTriangleFacing(first, first + 1, first + 2, true);
+  mesh.addTriangleFacing(first, first + 2, first + 3, true);
+}
+
 /** Outline tolerance for far (LOD1) buildings, metres. */
 const FAR_SIMPLIFY_M = 1.5;
 
@@ -194,5 +256,8 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   };
   addCap(top, true, roof);
   if (floats) addCap(bottom, false, wall);
-  if (!far && hasParapet(building)) addParapet(mesh, ring, top, wall);
+  if (!far && hasParapet(building)) {
+    addParapet(mesh, ring, top, wall);
+    addRoofRoom(mesh, building, ring, top, wall);
+  }
 }

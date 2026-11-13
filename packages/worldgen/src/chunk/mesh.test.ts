@@ -94,11 +94,11 @@ describe('building mesh', () => {
     const house: PackBuilding = { ...box, kind: 'house' };
     const builder = new MeshBuilder(3);
     appendBuilding(builder, house, terrain);
-    expect(builder.triangleCount).toBe(10 + 16);
-    expect(buildingTriangleEstimate(house)).toBe(26);
+    expect(builder.triangleCount).toBe(10 + 16 + 10); // + the stair room on the terrace
+    expect(buildingTriangleEstimate(house)).toBe(36);
     const mesh = builder.finish() as MeshData;
     const ys = Array.from({ length: mesh.positions.length / 3 }, (_, v) => mesh.positions[v * 3 + 1]);
-    expect(Math.max(...ys)).toBeCloseTo(heightAt(terrain, 0, 0) + 6.5 + 0.9);
+    expect(Math.max(...ys)).toBeCloseTo(heightAt(terrain, 0, 0) + 6.5 + 2.5); // top of the stair room
     const glass: PackBuilding = { ...house, material: 'glass' };
     const plain = new MeshBuilder(3);
     appendBuilding(plain, glass, terrain);
