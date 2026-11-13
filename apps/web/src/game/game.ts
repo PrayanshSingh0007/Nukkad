@@ -453,6 +453,7 @@ export class Game {
       this.world = new WorldView(ready, {
         maxTrees: settings.maxTrees,
         windows: true,
+        leafyTrees: this.level === 'high' ? 2 : this.level === 'medium' ? 1 : 0,
         photoSurfaces: settings.photo,
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });

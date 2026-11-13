@@ -6,6 +6,7 @@ import type { ReadyMessage } from '../workers/protocol.ts';
 import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
+import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { Signs } from './signs.ts';
 import { createSurfaceUniforms, loadSurfaces } from './surfaces.ts';
 
@@ -20,6 +21,8 @@ export interface WorldViewOptions {
   photoSurfaces?: boolean;
   /** Sharper ground texture at flat angles; 1 = off. */
   anisotropy: number;
+  /** 0 = simple low-poly trees (Low) · 1 = leafy (Medium) · 2 = leafy, full detail (High). */
+  leafyTrees?: 0 | 1 | 2;
 }
 
 /** `extraName` = what the shader calls the extra numbers (aWin for buildings, aRoad for roads). */
@@ -69,7 +72,8 @@ export class WorldView {
     this.groundMap.anisotropy = options.anisotropy;
     this.groundMap.needsUpdate = true;
     const surfaces = createSurfaceUniforms();
-    this.materials = createMaterials(this.groundMap, options.windows, surfaces);
+    const leafy = options.leafyTrees ?? 0;
+    this.materials = createMaterials(this.groundMap, options.windows, surfaces, leafy > 0 ? leafAtlas() : null);
     if (options.photoSurfaces) void loadSurfaces(surfaces, options.anisotropy);
 
     const terrainGeometry = new THREE.BufferGeometry();
@@ -83,7 +87,7 @@ export class WorldView {
     this.group.add(ground);
 
     if (ready.water) this.group.add(new THREE.Mesh(meshToGeometry(ready.water), this.materials.water));
-    this.addProps(ready.props);
+    this.addProps(ready.props, leafy);
     this.signs = new Signs(ready.places, this.terrain, options.anisotropy);
     if (this.signs.mesh) this.group.add(this.signs.mesh);
     this.setTreeLimit(options.maxTrees);
@@ -131,7 +135,7 @@ export class WorldView {
 
   /** Draws only the first `limit` trees (the list is shuffled, so they stay evenly spread). */
   setTreeLimit(limit: number): void {
-    const counts = [0, 0, 0];
+    const counts = new Array<number>(this.treeMeshes.length).fill(0);
     const shown = Math.min(limit, this.treeVariants.length);
     for (let t = 0; t < shown; t++) counts[this.treeVariants[t]]++;
     this.treeMeshes.forEach((mesh, variant) => {
@@ -149,8 +153,8 @@ export class WorldView {
     if (at && Math.hypot(at[0] - x, at[1] - z) < 10) return;
     this.shadowTreesAt = [x, z];
     const reach = range + 15;
-    const filled = [0, 0, 0];
-    const seen = [0, 0, 0];
+    const filled = new Array<number>(this.treeMeshes.length).fill(0);
+    const seen = new Array<number>(this.treeMeshes.length).fill(0);
     const matrix = new THREE.Matrix4();
     for (let t = 0; t < this.treeLimit; t++) {
       const variant = this.treeVariants[t];
@@ -194,8 +198,11 @@ export class WorldView {
   }
 
   /** One instanced mesh per model: hundreds of copies, one draw call each. */
-  private addProps(props: PropSet): void {
+  private addProps(props: PropSet, leafy: 0 | 1 | 2): void {
     const models = createPropModels();
+    const treeModels = leafy > 0 ? createLeafyTrees(leafy as 1 | 2) : models.trees;
+    // Leaf cards have see-through gaps: their shadows need the same cut-outs.
+    const leafShadow = leafy > 0 ? new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafAtlas(), alphaTest: 0.4, side: THREE.DoubleSide }) : null;
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
@@ -222,12 +229,13 @@ export class WorldView {
       this.treePositions[t * 2] = props.trees[t * TREE_STRIDE];
       this.treePositions[t * 2 + 1] = props.trees[t * TREE_STRIDE + 2];
     }
-    const perVariant = [0, 0, 0];
+    const perVariant = new Array<number>(treeModels.length).fill(0);
     for (let t = 0; t < treeCount; t++) {
-      this.treeVariants[t] = props.trees[t * TREE_STRIDE + 5];
+      const mapped = props.trees[t * TREE_STRIDE + 5];
+      this.treeVariants[t] = leafy > 0 ? speciesOf(mapped, props.trees[t * TREE_STRIDE + 6]) : mapped;
       perVariant[this.treeVariants[t]]++;
     }
-    models.trees.forEach((geometry, variant) => {
+    treeModels.forEach((geometry, variant) => {
       this.treeMeshes[variant] = null;
       if (perVariant[variant] === 0) return;
       const mesh = new THREE.InstancedMesh(geometry, this.materials.trees, perVariant[variant]);
@@ -237,12 +245,13 @@ export class WorldView {
       shadow.castShadow = true;
       shadow.frustumCulled = false;
       shadow.layers.set(1); // the main camera never draws layer 1, the sun's shadow pass does
+      if (leafShadow) shadow.customDepthMaterial = leafShadow;
       this.shadowTrees[variant] = shadow;
       this.group.add(shadow);
       let index = 0;
       for (let t = 0; t < treeCount; t++) {
         const o = t * TREE_STRIDE;
-        if (props.trees[o + 5] !== variant) continue;
+        if (this.treeVariants[t] !== variant) continue;
         place(mesh, index, props.trees, o, props.trees[o + 3], props.trees[o + 4]);
         // Small seeded colour differences so a row of trees is not one flat green.
         const shade = props.trees[o + 6];

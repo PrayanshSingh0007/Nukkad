@@ -332,10 +332,16 @@ function waterRipples(material: THREE.MeshLambertMaterial, time: { value: number
   material.customProgramCacheKey = () => 'nukkad-water-1';
 }
 
-/** Tree tops sway gently; each tree moves a little differently. */
+/** Tree tops sway gently; each tree moves a little differently. Leaf cards also flutter. */
 function wind(material: THREE.MeshLambertMaterial, time: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
+    // Leaf cards are seen from both sides but must shade as part of one round crown:
+    // undo the "flip the normal on the back face" that double-sided materials do.
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <normal_fragment_begin>',
+      '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n  normal *= faceDirection;\n#endif',
+    );
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;').replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
@@ -346,13 +352,15 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }): voi
        #endif
        float bend = max(0.0, transformed.y - 1.4);
        transformed.x += sin(uTime * 1.6 + phase) * 0.045 * bend;
-       transformed.z += cos(uTime * 1.3 + phase * 1.7) * 0.03 * bend;`,
+       transformed.z += cos(uTime * 1.3 + phase * 1.7) * 0.03 * bend;
+       float flutter = step(1.6, transformed.y) * 0.035;
+       transformed.y += sin(uTime * 3.1 + position.x * 4.0 + position.z * 3.0 + phase) * flutter;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-wind-1';
+  material.customProgramCacheKey = () => 'nukkad-wind-2';
 }
 
-export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms): WorldMaterials {
+export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
   const night = { value: 0 };
   const time = { value: 0 };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
@@ -365,7 +373,9 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const water = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   waterRipples(water, time, night);
   const props = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const trees = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const trees = leaves
+    ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
+    : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time);
   return { night, time, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }
