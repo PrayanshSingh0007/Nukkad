@@ -23,6 +23,8 @@ export interface BuildPackInput {
 const MIN_AREA_M2 = 8;
 const TREE_ROW_STEP_M = 8;
 const NOT_ROADS = new Set(['rail', 'river', 'stream']);
+/** Roads whose names go on the map screen. */
+const NAMED_ROADS = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential', 'living']);
 
 const isBuilding = (value: string | undefined): boolean => value !== undefined && value !== 'no';
 const notNull = (point: OsmLatLon | null): point is OsmLatLon => point !== null;
@@ -84,7 +86,11 @@ export function buildPack(input: BuildPackInput): AreaPack {
       }
       if (quantized.length >= 4) {
         const bridge = tags.bridge !== undefined && tags.bridge !== 'no' && !NOT_ROADS.has(line.kind);
-        lines.push(bridge ? { id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized, b: 1 } : { id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized });
+        const packed: PackLine = { id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized };
+        if (bridge) packed.b = 1;
+        const streetName = NAMED_ROADS.has(line.kind) ? cleanPlaceName(tags['name:en'] ?? tags.name) : undefined;
+        if (streetName) packed.n = streetName;
+        lines.push(packed);
       }
     }
   };

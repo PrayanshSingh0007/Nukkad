@@ -355,7 +355,8 @@ export class Game {
     driving: boolean;
     inside: boolean;
     friends: { x: number; z: number; name: string }[];
-    places: { x: number; z: number; color: string }[];
+    places: { x: number; z: number; color: string; name: string }[];
+    streets: { name: string; x: number; z: number; angle: number; major: boolean }[];
   } | null {
     const ready = this.ready;
     const player = this.player;
@@ -382,7 +383,8 @@ export class Game {
       driving: player.vehicle !== null,
       inside: inside !== null,
       friends: this.remotes.positions(),
-      places: ready.places.filter((p) => p.real === 1 && p.name).map((p) => ({ x: p.x / 10, z: p.z / 10, color: PLACE_COLORS[p.kind] })),
+      places: ready.places.filter((p) => p.real === 1 && p.name).map((p) => ({ x: p.x / 10, z: p.z / 10, color: PLACE_COLORS[p.kind], name: p.name as string })),
+      streets: ready.miniMap.streets,
     };
   }
 

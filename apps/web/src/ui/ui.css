@@ -585,7 +585,7 @@ button {
   top: calc(52px + env(safe-area-inset-top));
   border-radius: 50%;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
+  cursor: pointer;
 }
 
 @media (max-width: 600px) {
@@ -593,4 +593,48 @@ button {
     width: 120px !important;
     height: 120px !important;
   }
+}
+
+.bigMap {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: #161a21;
+}
+
+.bigMap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+
+.bigMapBar {
+  position: absolute;
+  right: calc(14px + env(safe-area-inset-right));
+  top: calc(14px + env(safe-area-inset-top));
+  display: flex;
+  gap: 8px;
+}
+
+.bigMapBar button {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 22px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.bigMapCredit {
+  position: absolute;
+  left: 12px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
 }

@@ -8,7 +8,7 @@ const SIZE = 168;
  * you look, zooms out while you drive, and shows friends (blue), named places (coloured dots)
  * and you (the white arrow). North is marked on the rim.
  */
-export function MiniMap({ game }: { game: Game }) {
+export function MiniMap({ game, onOpen }: { game: Game; onOpen: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -112,5 +112,5 @@ export function MiniMap({ game }: { game: Game }) {
     return () => clearInterval(timer);
   }, [game]);
 
-  return <canvas ref={canvas} className="miniMap" style={{ width: SIZE, height: SIZE }} aria-label="Map" />;
+  return <canvas ref={canvas} className="miniMap" style={{ width: SIZE, height: SIZE }} aria-label="Map — tap to open" onClick={onOpen} />;
 }

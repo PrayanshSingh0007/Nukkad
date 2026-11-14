@@ -6,6 +6,7 @@ import { AvatarPanel } from './AvatarPanel.tsx';
 import { PlacesPanel } from './PlacesPanel.tsx';
 import { Speedometer } from './Speedometer.tsx';
 import { MiniMap } from './MiniMap.tsx';
+import { BigMap } from './BigMap.tsx';
 import { setAutojoin } from './api.ts';
 
 interface Props {
@@ -39,6 +40,14 @@ export function App({ game, initialLook, roomId }: Props) {
   const [driveLabel, setDriveLabel] = useState<string | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  useEffect(() => {
+    const key = (event: KeyboardEvent): void => {
+      if (event.code === 'KeyM' && (event.target as HTMLElement | null)?.tagName !== 'INPUT') setMapOpen((open) => !open);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
   const [speed, setSpeed] = useState<{ v: number; max: number; label: string } | null>(null);
   const [toast, setToast] = useState('');
   const [status, setStatus] = useState<GameStatus>({ phase: 'loading', message: 'Starting…' });
@@ -105,7 +114,8 @@ export function App({ game, initialLook, roomId }: Props) {
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
-      {status.phase === 'playing' && !panelOpen && <MiniMap game={game} />}
+      {status.phase === 'playing' && !panelOpen && !mapOpen && <MiniMap game={game} onOpen={() => setMapOpen(true)} />}
+      {status.phase === 'playing' && mapOpen && <BigMap game={game} onClose={() => setMapOpen(false)} />}
       {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
       {status.phase === 'playing' && !panelOpen && driveLabel && (
         <button type="button" className="driveButton" onClick={() => game.toggleDrive()}>

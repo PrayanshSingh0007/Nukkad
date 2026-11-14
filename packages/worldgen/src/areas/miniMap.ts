@@ -58,6 +58,44 @@ function thickLine(pixels: Uint8Array, size: number, ax: number, ay: number, bx:
   }
 }
 
+/** One label per street name: at the middle of its longest piece, with the road's direction. */
+export interface StreetLabel {
+  name: string;
+  x: number;
+  z: number;
+  angle: number;
+  major: boolean;
+}
+
+export function streetLabels(pack: AreaPack): StreetLabel[] {
+  const best = new Map<string, { length: number; label: StreetLabel }>();
+  for (const line of pack.lines) {
+    if (!line.n) continue;
+    const p = line.pts.map((v) => v / UNITS_PER_METRE);
+    let length = 0;
+    for (let i = 2; i < p.length; i += 2) length += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+    const old = best.get(line.n);
+    if (old && old.length >= length) continue;
+    // Walk to the middle.
+    let walked = 0;
+    let label: StreetLabel = { name: line.n, x: p[0], z: p[1], angle: 0, major: ['motorway', 'trunk', 'primary', 'secondary'].includes(line.kind) };
+    for (let i = 2; i < p.length; i += 2) {
+      const seg = Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+      if (walked + seg >= length / 2) {
+        const t = (length / 2 - walked) / (seg || 1);
+        let angle = Math.atan2(p[i + 1] - p[i - 1], p[i] - p[i - 2]);
+        if (angle > Math.PI / 2) angle -= Math.PI;
+        if (angle < -Math.PI / 2) angle += Math.PI;
+        label = { ...label, x: p[i - 2] + (p[i] - p[i - 2]) * t, z: p[i - 1] + (p[i + 1] - p[i - 1]) * t, angle };
+        break;
+      }
+      walked += seg;
+    }
+    best.set(line.n, { length, label });
+  }
+  return [...best.values()].filter((b) => b.length > 60).map((b) => b.label);
+}
+
 export function paintMiniMap(pack: AreaPack, size: number = MINI_MAP_SIZE): Uint8Array {
   const pixels = new Uint8Array(size * size * 4);
   for (let o = 0; o < pixels.length; o += 4) {

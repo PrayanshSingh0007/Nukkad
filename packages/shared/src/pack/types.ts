@@ -73,6 +73,8 @@ export interface PackLine {
   pts: number[];
   /** 1 = a bridge or flyover (drawn raised on pillars). */
   b?: 1;
+  /** Street name from the map (car roads only), for the map screen. */
+  n?: string;
 }
 
 export type AreaKind =

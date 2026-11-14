@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Roads, flyovers, full map (2026-11-14)
+
+- **Flyovers and bridges** from OpenStreetMap `bridge=*` (pack flag `b`, PACK_VERSION 13): the road deck rides up on smooth ramps (6.5 m clearance on bridges > 120 m, a small lift on short ones), with a concrete slab, crash barriers with a yellow stripe, and round pillars with flared caps every 24 m (`worldgen/roads/flyover.ts`, in the chunk building mesh → solid). You can walk/drive onto them (the deck is in the road collider mesh). Verified at Silk Board (23 bridges, the double-decker shows as stacked decks). The Bellandur test area has no bridges.
+  Limits: traffic and walkers on a flyover route still move at ground level (they drive under it); OSM "layer" is ignored, so the double-decker's levels come only from each way's own ramp profile; ramps can clip where a bridge way is short; no footpaths on decks.
+- **Road wear** (road shader): tar patches, potholes with dark floors and crumbling rims, manhole covers every ~45 m, painted yellow-black speed-breakers on small roads (paint only — no bump yet).
+- **Full-screen map** (tap the small map or press M): north up, drag to pan, + / − zoom, "Me" recentres; **real street names** from the map (`name:en`/`name`, car roads only, one label per name on its longest piece; small streets show from zoom 1.8), named places (names from zoom 2.4), friends with names, you.
+- Realistic Indian vehicles: searched; found only paid, "royalty-free" or AI-generated models — none CC0/CC-BY, so nothing was added.
+- Building shapes already use the exact OpenStreetMap outlines; OSM has no data on balconies, roof shapes or facade detail for Bengaluru, so "perfect" real designs are not possible from open data.
+
 ## Map and vehicles (2026-11-13) — owner: "make it look like a premium game" (not a clone)
 
 - **Mini-map** (`ui/MiniMap.tsx`, picture painted in the worker by `worldgen/areas/miniMap.ts`): round GPS-style map top-left, turns with the camera, zooms out while driving; roads by importance (main roads orange/yellow), buildings, parks, water; named places as coloured dots, friends as blue dots (on the rim when far), you as an arrow (yellow when inside a building). Redrawn ~15×/s. Phone size 120 px.
