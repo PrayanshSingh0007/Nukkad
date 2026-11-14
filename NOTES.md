@@ -14,7 +14,8 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - **Real cloth layers** (`player/avatar/garments.ts`): the shirt/kurta top and trousers are their own skinned meshes cut from the body (by region + height), seams welded, smoothed (Laplacian, rims kept) so muscles and abs vanish, then pushed 1–3 cm off the skin. Shared per build + outfit. Hoodie/jacket stand off more (looser); tee has short sleeves.
 - **Kurta skirt**: a flared cloth cone from the waist to the knees riding on the pelvis bone (double-sided). Legs can poke through on wide steps — no cloth simulation.
 - **Normal proportions**: chest (spine_03 ×0.88) and middle (spine_02 ×0.94) scaled down with the head and arms scaled back, shoulders 14 % closer — no more bodybuilder V-shape.
-- **Natural stance**: the library's idle stands wide-legged; thighs are turned in a little while standing/talking.
+- **Natural stance**: the library's idle stands wide-legged with the arms held out ("ready" pose); while standing/talking the thighs are turned in a little and the upper arms are brought down to the sides (0.3 rad). The arm direction was checked in a live test (the opposite turn pushed the arms out); the final look was NOT seen in the game — the browser script tool was blocked and the hidden pane would not finish loading. Owner: please check on screen.
+- Owner asked to copy benglooru.com's character style: declined (their characters are their own work); fixed our own pose instead.
 - Changing outfit now rebuilds the person (the cloth shape depends on it). Painted clothes stay under the layers in case anything pokes through.
 - Not done: loose sleeves, collars, shoes as separate models, real fabric texture.
 

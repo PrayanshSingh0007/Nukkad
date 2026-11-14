@@ -438,8 +438,26 @@ export class Person {
     // The library's idle stands wide-legged; bring the feet in when standing or talking.
     const target = name === 'idle' || name === 'talk' ? 1 : 0;
     this.stance += (target - this.stance) * Math.min(1, dt * 6);
-    if (this.stance > 0.01) this.narrowStance(this.stance);
+    if (this.stance > 0.01) {
+      this.narrowStance(this.stance);
+      this.relaxArms(this.stance);
+    }
     if (riding === 'stand') this.handlebarPose();
+  }
+
+  /**
+   * The library's idle holds the arms away from the body (a "ready" pose). Bring the upper
+   * arms down to the sides and let the forearms hang, so people stand relaxed.
+   */
+  private relaxArms(amount: number): void {
+    this.root.updateMatrixWorld(true);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
+    this.arms.forEach(({ upper }, i) => {
+      const side = i === 0 ? 1 : -1; // arms[0] = left, arms[1] = right
+      const parent = upper.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
+      const delta = new THREE.Quaternion().setFromAxisAngle(forward, -side * 0.3 * amount);
+      upper.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
+    });
   }
 
   /** Turns both thighs in towards the middle (about the body's forward axis). */
