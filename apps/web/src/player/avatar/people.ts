@@ -243,8 +243,9 @@ export class Person {
   private readonly hairColor = { value: new THREE.Color() };
   /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
   private readonly arms: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
-  private readonly thighs: { bone: THREE.Object3D; side: number }[] = [];
   private stance = 0;
+  /** The model's own straight standing pose (legs, hips, spine), kept to stand upright when idle. */
+  private readonly rest: { bone: THREE.Object3D; quaternion: THREE.Quaternion; position: THREE.Vector3 | null; weight: number }[] = [];
 
   constructor(assets: Assets, look: AvatarLook) {
     const source = assets.bodies[look.build] ?? assets.bodies[0];
@@ -318,12 +319,32 @@ export class Person {
       const lower = body.getObjectByName(`lowerarm_${side}`) as THREE.Bone | undefined;
       if (upper && lower) this.arms.push({ upper, lower });
     }
-    for (const [side, sign] of [
-      ['l', 1],
-      ['r', -1],
+    // Remember the straight pose before any animation touches the bones.
+    for (const [name, weight] of [
+      ['pelvis', 1],
+      ['thigh_l', 1],
+      ['thigh_r', 1],
+      ['calf_l', 1],
+      ['calf_r', 1],
+      ['foot_l', 1],
+      ['foot_r', 1],
+      ['ball_l', 1],
+      ['ball_r', 1],
+      ['spine_01', 0.85],
+      ['spine_02', 0.85],
+      ['spine_03', 0.85],
+      ['neck_01', 0.6],
+      ['clavicle_l', 1],
+      ['clavicle_r', 1],
+      ['upperarm_l', 1],
+      ['upperarm_r', 1],
+      ['lowerarm_l', 0.9],
+      ['lowerarm_r', 0.9],
+      ['hand_l', 0.8],
+      ['hand_r', 0.8],
     ] as const) {
-      const thigh = body.getObjectByName(`thigh_${side}`);
-      if (thigh) this.thighs.push({ bone: thigh, side: sign });
+      const bone = body.getObjectByName(name);
+      if (bone) this.rest.push({ bone, quaternion: bone.quaternion.clone(), position: name === 'pelvis' ? bone.position.clone() : null, weight });
     }
     this.mixer = new THREE.AnimationMixer(body);
     for (const [name, clipName] of Object.entries(ACTIONS) as [ActionName, string][]) {
@@ -439,7 +460,12 @@ export class Person {
     const target = name === 'idle' || name === 'talk' ? 1 : 0;
     this.stance += (target - this.stance) * Math.min(1, dt * 6);
     if (this.stance > 0.01) {
-      this.narrowStance(this.stance);
+      // Stand straight: both feet side by side, hips level, back upright (the library's idle
+      // puts one leg forward). The arms and a little breathing stay from the animation.
+      for (const { bone, quaternion, position, weight } of this.rest) {
+        bone.quaternion.slerp(quaternion, this.stance * weight);
+        if (position) bone.position.lerp(position, this.stance);
+      }
       this.relaxArms(this.stance);
     }
     if (riding === 'stand') this.handlebarPose();
@@ -455,20 +481,9 @@ export class Person {
     this.arms.forEach(({ upper }, i) => {
       const side = i === 0 ? 1 : -1; // arms[0] = left, arms[1] = right
       const parent = upper.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
-      const delta = new THREE.Quaternion().setFromAxisAngle(forward, -side * 0.3 * amount);
+      const delta = new THREE.Quaternion().setFromAxisAngle(forward, -side * 1.32 * amount);
       upper.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
     });
-  }
-
-  /** Turns both thighs in towards the middle (about the body's forward axis). */
-  private narrowStance(amount: number): void {
-    this.root.updateMatrixWorld(true);
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
-    for (const { bone, side } of this.thighs) {
-      const parent = bone.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
-      const delta = new THREE.Quaternion().setFromAxisAngle(forward, -side * 0.09 * amount);
-      bone.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
-    }
   }
 
   /** Standing on the scooter: both arms reach forward to the handlebar (on top of the idle clip). */
