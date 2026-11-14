@@ -16,6 +16,8 @@ interface Lane {
   x: number;
   z: number;
   heading: number;
+  /** Height of the vehicle's wheels (ground, or the flyover deck). */
+  y: number;
 }
 
 /**
@@ -33,7 +35,7 @@ export class TrafficView {
   private radius = 120;
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paintable: (material: THREE.Material) => boolean) {
-    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, z: 0, heading: 0 }));
+    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0 }));
     this.terrain = terrain;
     this.models = models;
     this.paintable = paintable;
@@ -68,7 +70,7 @@ export class TrafficView {
    * Moves everything to `seconds` on the shared clock. (px, pz) is you: traffic waits for you.
    * Returns solid boxes for the vehicles closest to you.
    */
-  update(dt: number, seconds: number, px: number, pz: number): SolidBox[] {
+  update(dt: number, seconds: number, px: number, pz: number, py = Number.NaN): SolidBox[] {
     const counts = new Map<number, number>();
     const matrix = new THREE.Matrix4();
     const rotation = new THREE.Quaternion();
@@ -85,13 +87,16 @@ export class TrafficView {
       const fz = -Math.cos(pose.heading);
       const ahead = (px - pose.x) * fx + (pz - pose.z) * fz;
       const side = Math.abs((px - pose.x) * -fz + (pz - pose.z) * fx);
-      if (ahead > 0 && ahead < STOP_AHEAD_M && side < 1.8) {
+      const wheels = heightAt(this.terrain, pose.x, pose.z) + (pose.rise > 0.05 ? pose.rise + 0.1 : 0);
+      const sameLevel = Number.isNaN(py) || Math.abs(py - wheels) < 3; // not for someone under a flyover
+      if (ahead > 0 && ahead < STOP_AHEAD_M && side < 1.8 && sameLevel) {
         lane.delay += route.speed * dt;
         pose = trafficPose(route, seconds * route.speed - lane.delay);
       }
       lane.x = pose.x;
       lane.z = pose.z;
       lane.heading = pose.heading;
+      lane.y = heightAt(this.terrain, pose.x, pose.z) + (pose.rise > 0.05 ? pose.rise + 0.1 : 0);
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
@@ -100,7 +105,7 @@ export class TrafficView {
       const i = counts.get(route.kind) ?? 0;
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
-      mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z), rotation, one));
+      mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, lane.y, pose.z), rotation, one));
       if (this.paintable(mesh.material as THREE.Material) && !['auto', 'bus', 'taxi', 'ambulance'].includes(VEHICLE_KINDS[route.kind])) {
         mesh.setColorAt(i, PAINTS[route.variant % PAINTS.length]);
       }
@@ -116,7 +121,7 @@ export class TrafficView {
     return near.slice(0, SOLID_COUNT).map(({ lane }) => {
       const [hw, hl] = VEHICLE_HALF[lane.route.kind];
       const hy = VEHICLE_HEIGHT[lane.route.kind] / 2;
-      return { x: lane.x, y: heightAt(this.terrain, lane.x, lane.z) + hy, z: lane.z, hx: hw, hy, hz: hl, rotation: lane.heading };
+      return { x: lane.x, y: lane.y + hy, z: lane.z, hx: hw, hy, hz: hl, rotation: lane.heading };
     });
   }
 

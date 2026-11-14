@@ -1,5 +1,6 @@
 import { UNITS_PER_METRE, hash32, makeRng } from '@nukkad/shared';
-import type { AreaPack, LineKind } from '@nukkad/shared';
+import type { AreaPack, LineKind, PackLine } from '@nukkad/shared';
+import { bridgeRise } from '../roads/ribbon.ts';
 
 /**
  * Moving traffic. Each vehicle drives a long seeded route along the main roads and back,
@@ -14,6 +15,8 @@ export interface TrafficRoute {
   pts: Float32Array;
   /** Distance from the start to each point. */
   dist: Float32Array;
+  /** Height above the ground at each point: > 0 on bridges and flyovers. */
+  rise: Float32Array;
   length: number;
   /** How far left of the centre line the lane is, metres. */
   lane: number;
@@ -28,6 +31,8 @@ export interface TrafficRoute {
 export interface TrafficPose {
   x: number;
   z: number;
+  /** Metres above the ground (on a flyover). */
+  rise: number;
   /** Facing angle (avatar convention: 0 = towards -z). */
   heading: number;
 }
@@ -55,7 +60,7 @@ interface Edge {
 
 /** What kind of routes to build: which roads, how far off the centre, how fast, which vehicle. */
 interface RouteRules {
-  roads: (kind: LineKind, width: number) => boolean;
+  roads: (line: PackLine) => boolean;
   lane: (width: number, random: () => number) => number;
   speed: (kind: LineKind, vehicle: number, random: () => number) => number;
   kind: (random: () => number) => number;
@@ -64,7 +69,7 @@ interface RouteRules {
 }
 
 const DRIVING: RouteRules = {
-  roads: (kind, width) => TRAFFIC_ROADS.has(kind) && width >= 6,
+  roads: (line) => TRAFFIC_ROADS.has(line.kind) && line.w >= 6,
   lane: (width) => Math.min(width / 4 + 0.3, 2.6),
   speed: (kind, vehicle, random) => (SPEED[kind] ?? 9) * (vehicle === 5 ? 0.75 : 0.85 + random() * 0.3),
   kind: (random) => pickKind(random()),
@@ -76,7 +81,7 @@ const NO_WALKING = new Set<LineKind>(['motorway', 'trunk', 'rail', 'river', 'str
 
 /** People: on both sides of almost any street, just beyond the road edge. `kind` = which look (0–7). */
 const WALKING: RouteRules = {
-  roads: (kind) => !NO_WALKING.has(kind),
+  roads: (line) => !NO_WALKING.has(line.kind) && !line.b, // flyover decks have no footpath
   lane: (width, random) => (width / 2 + 0.8) * (random() < 0.5 ? 1 : -1),
   speed: (_kind, _look, random) => 1.1 + random() * 0.5,
   kind: (random) => Math.floor(random() * 8),
@@ -96,11 +101,13 @@ export function buildWalkRoutes(pack: AreaPack, count: number): TrafficRoute[] {
 
 /** Roads are linked where their points touch (shared OSM nodes). */
 function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficRoute[] {
-  const lines = pack.lines.filter((line) => rules.roads(line.kind, line.w));
+  const lines = pack.lines.filter((line) => rules.roads(line));
   if (lines.length === 0) return [];
   // Graph: node = a point shared by any road, edges = consecutive points of a line.
   const nodes = new Map<string, number>();
   const coords: number[] = [];
+  /** How high each point sits on its bridge (0 off bridges; bridge ends are 0 too). */
+  const nodeRise: number[] = [];
   const adjacency: Edge[][] = [];
   const nodeOf = (x: number, z: number): number => {
     const key = `${x},${z}`;
@@ -110,10 +117,21 @@ function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficR
       nodes.set(key, id);
       coords.push(x / UNITS_PER_METRE, z / UNITS_PER_METRE);
       adjacency.push([]);
+      nodeRise.push(0);
     }
     return id;
   };
   lines.forEach((line, index) => {
+    if (line.b) {
+      // The same ramp profile as the drawn deck (see bridgeRise), measured along this line.
+      const along = new Float32Array(line.pts.length / 2);
+      for (let i = 1; i < along.length; i++) along[i] = along[i - 1] + Math.hypot(line.pts[i * 2] - line.pts[i * 2 - 2], line.pts[i * 2 + 1] - line.pts[i * 2 - 1]) / UNITS_PER_METRE;
+      const rise = bridgeRise(along);
+      for (let i = 0; i < along.length; i++) {
+        const id = nodeOf(line.pts[i * 2], line.pts[i * 2 + 1]);
+        nodeRise[id] = Math.max(nodeRise[id], rise[i]);
+      }
+    }
     for (let i = 0; i + 3 < line.pts.length; i += 2) {
       const a = nodeOf(line.pts[i], line.pts[i + 1]);
       const b = nodeOf(line.pts[i + 2], line.pts[i + 3]);
@@ -147,7 +165,9 @@ function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficR
     if (length < rules.minLength) continue;
     const pts = new Float32Array(path.length * 2);
     const dist = new Float32Array(path.length);
+    const rise = new Float32Array(path.length);
     path.forEach((id, i) => {
+      rise[i] = nodeRise[id];
       pts[i * 2] = coords[id * 2];
       pts[i * 2 + 1] = coords[id * 2 + 1];
       if (i > 0) dist[i] = dist[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]);
@@ -157,6 +177,7 @@ function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficR
     routes.push({
       pts,
       dist,
+      rise,
       length,
       lane: rules.lane(line.w, random),
       speed: rules.speed(line.kind, kind, random),
@@ -201,6 +222,7 @@ export function trafficPose(route: TrafficRoute, travelled: number): TrafficPose
   return {
     x: ax + (bx - ax) * k + dz * route.lane,
     z: az + (bz - az) * k - dx * route.lane,
+    rise: route.rise[lo] + (route.rise[hi] - route.rise[lo]) * k,
     heading: Math.atan2(-dx, -dz),
   };
 }

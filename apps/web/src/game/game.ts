@@ -799,7 +799,7 @@ export class Game {
         // The room's shared clock (ms since the server started) keeps everyone's traffic in step.
         const clock = this.remotes.clock;
         const seconds = (clock.ready ? clock.renderTime(now) : Date.now()) / 1000;
-        this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z));
+        this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z, player.y));
         this.walkers?.update(dt, seconds, player.x, player.z);
       }
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
