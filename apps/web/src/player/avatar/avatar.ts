@@ -130,7 +130,7 @@ export class Avatar {
     this.look = look;
     if (this.person) {
       // Build, hairstyle and light/dark skin picture are part of the model; colours are not.
-      if (old.build !== look.build || old.hair !== look.hair || old.skin >= 3 !== look.skin >= 3) this.makePerson();
+      if (old.build !== look.build || old.hair !== look.hair || old.outfit !== look.outfit || old.skin >= 3 !== look.skin >= 3) this.makePerson();
       else this.person.setLook(look);
     }
     this.mesh.geometry.dispose();

@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HAIR_COLORS, HAIR_STYLES, OUTFITS, OUTFIT_COLORS, SKIN_TONES } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
+import { garmentGeometry } from './garments.ts';
+import type { GarmentSpec } from './garments.ts';
 
 /**
  * Real 3D people: Quaternius' CC0 "Universal Base Characters" (two rigged bodies, real hair
@@ -107,13 +109,20 @@ function prepareBody(scene: THREE.Group): void {
     const heights = new Float32Array(count);
     let minY = Infinity;
     let maxY = -Infinity;
+    const posed = new THREE.Box3();
     for (let i = 0; i < count; i++) {
       mesh.applyBoneTransform(i, v.fromBufferAttribute(geometry.getAttribute('position'), i));
       v.applyMatrix4(mesh.matrixWorld);
+      posed.expandByPoint(v);
       heights[i] = v.y;
       minY = Math.min(minY, v.y);
       maxY = Math.max(maxY, v.y);
     }
+    // How many metres one geometry unit is, once the person is scaled to 1.75 m (for the clothes).
+    geometry.computeBoundingBox();
+    const geometrySize = (geometry.boundingBox as THREE.Box3).getSize(new THREE.Vector3()).length();
+    const worldSize = posed.getSize(new THREE.Vector3()).length();
+    mesh.userData.metresPerUnit = (worldSize / Math.max(1e-6, geometrySize)) * (1.75 / Math.max(1e-6, maxY - minY));
     const region = new Float32Array(count * 2);
     for (let i = 0; i < count; i++) {
       let best = 0;
@@ -234,6 +243,8 @@ export class Person {
   private readonly hairColor = { value: new THREE.Color() };
   /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
   private readonly arms: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
+  private readonly thighs: { bone: THREE.Object3D; side: number }[] = [];
+  private stance = 0;
 
   constructor(assets: Assets, look: AvatarLook) {
     const source = assets.bodies[look.build] ?? assets.bodies[0];
@@ -283,10 +294,36 @@ export class Person {
       });
     }
 
+    // The free bodies are "superhero" builds; make them ordinary: a smaller chest and
+    // narrower shoulders, while the head and arms keep their size (the bones under the chest
+    // inherit its scale, so they are scaled back up).
+    const bone = (name: string): THREE.Object3D | undefined => body.getObjectByName(name);
+    const chest = 0.88;
+    const middle = 0.94;
+    bone('spine_02')?.scale.setScalar(middle);
+    bone('spine_03')?.scale.setScalar(chest);
+    bone('neck_01')?.scale.setScalar(1 / (chest * middle));
+    for (const side of ['l', 'r']) {
+      const clavicle = bone(`clavicle_${side}`);
+      if (clavicle) {
+        clavicle.position.multiplyScalar(0.86); // shoulders closer together
+        clavicle.scale.setScalar(0.97 / (chest * middle));
+      }
+    }
+
+    if (bodyMesh) this.dress(bodyMesh, body, look);
+
     for (const side of ['l', 'r']) {
       const upper = body.getObjectByName(`upperarm_${side}`) as THREE.Bone | undefined;
       const lower = body.getObjectByName(`lowerarm_${side}`) as THREE.Bone | undefined;
       if (upper && lower) this.arms.push({ upper, lower });
+    }
+    for (const [side, sign] of [
+      ['l', 1],
+      ['r', -1],
+    ] as const) {
+      const thigh = body.getObjectByName(`thigh_${side}`);
+      if (thigh) this.thighs.push({ bone: thigh, side: sign });
     }
     this.mixer = new THREE.AnimationMixer(body);
     for (const [name, clipName] of Object.entries(ACTIONS) as [ActionName, string][]) {
@@ -297,12 +334,73 @@ export class Person {
     this.play('idle', 0);
   }
 
+  private readonly shirt = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 });
+  private readonly pants = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
+
+  /** Real cloth layers over the body, and a loose skirt for the kurta. */
+  private dress(bodyMesh: THREE.SkinnedMesh, body: THREE.Group, look: AvatarLook): void {
+    const outfit = OUTFITS[look.outfit] ?? 'tee';
+    const metres = (bodyMesh.userData.metresPerUnit as number | undefined) ?? 0.01;
+    const key = `build${look.build}`;
+    const top: GarmentSpec =
+      outfit === 'tee'
+        ? { part: 'top', sleeves: false, offset: 0.012, smooth: 10 }
+        : outfit === 'hoodie'
+          ? { part: 'top', sleeves: true, offset: 0.032, smooth: 18 }
+          : outfit === 'jacket'
+            ? { part: 'top', sleeves: true, offset: 0.026, smooth: 14 }
+            : { part: 'longTop', sleeves: true, offset: 0.016, smooth: 14 };
+    const pieces: [GarmentSpec, THREE.MeshStandardMaterial][] = [
+      [top, this.shirt],
+      [{ part: 'pants', sleeves: false, offset: 0.011, smooth: 8 }, this.pants],
+    ];
+    for (const [spec, material] of pieces) {
+      const geometry = garmentGeometry(bodyMesh.geometry, spec, metres, key);
+      if (!geometry) continue;
+      const mesh = new THREE.SkinnedMesh(geometry, material);
+      mesh.bind(bodyMesh.skeleton, bodyMesh.bindMatrix);
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      bodyMesh.parent?.add(mesh);
+    }
+    this.materials.push(this.shirt, this.pants);
+    if (outfit !== 'kurta') return;
+    // The kurta's lower half flares out from the hips to the knees, riding on the pelvis.
+    const pelvis = body.getObjectByName('pelvis');
+    if (!pelvis) return;
+    body.updateMatrixWorld(true);
+    const at = new THREE.Vector3().setFromMatrixPosition(pelvis.matrixWorld);
+    const profile = [
+      [0.18, 1.0],
+      [0.215, 0.9],
+      [0.255, 0.74],
+      [0.31, 0.52],
+    ].map(([r, y]) => new THREE.Vector2(r, y));
+    const skirt = new THREE.LatheGeometry(profile, 24);
+    skirt.scale(1, 1, 1.0);
+    skirt.translate(at.x, 0, at.z);
+    skirt.applyMatrix4(pelvis.matrixWorld.clone().invert());
+    const cloth = this.shirt.clone();
+    cloth.side = THREE.DoubleSide;
+    this.skirtMaterial = cloth;
+    this.materials.push(cloth);
+    const mesh = new THREE.Mesh(skirt, cloth);
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    pelvis.add(mesh);
+  }
+
+  private skirtMaterial: THREE.MeshStandardMaterial | null = null;
+
   /** Colours only (body build, skin picture and hairstyle need a new Person). */
   setLook(look: AvatarLook): void {
     const outfit = OUTFITS[look.outfit] ?? 'tee';
     const u = this.uniforms;
     u.uShirt.value.set(OUTFIT_COLORS[look.color]).convertSRGBToLinear();
     u.uPants.value.set(PANTS[outfit]).convertSRGBToLinear();
+    this.shirt.color.copy(u.uShirt.value);
+    this.pants.color.copy(u.uPants.value);
+    this.skirtMaterial?.color.copy(u.uShirt.value);
     u.uSleeve.value = outfit === 'tee' ? 0 : 1;
     u.uLong.value = outfit === 'kurta' ? 1 : 0;
     u.uHood.value = outfit === 'hoodie' ? 1 : 0;
@@ -337,7 +435,22 @@ export class Person {
     const clipSpeed = CLIP_SPEED[name];
     if (action) action.timeScale = clipSpeed ? Math.max(0.5, Math.min(1.6, speed / clipSpeed)) : 1;
     this.mixer.update(dt);
+    // The library's idle stands wide-legged; bring the feet in when standing or talking.
+    const target = name === 'idle' || name === 'talk' ? 1 : 0;
+    this.stance += (target - this.stance) * Math.min(1, dt * 6);
+    if (this.stance > 0.01) this.narrowStance(this.stance);
     if (riding === 'stand') this.handlebarPose();
+  }
+
+  /** Turns both thighs in towards the middle (about the body's forward axis). */
+  private narrowStance(amount: number): void {
+    this.root.updateMatrixWorld(true);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
+    for (const { bone, side } of this.thighs) {
+      const parent = bone.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
+      const delta = new THREE.Quaternion().setFromAxisAngle(forward, -side * 0.09 * amount);
+      bone.quaternion.premultiply(parent.clone().invert().multiply(delta).multiply(parent));
+    }
   }
 
   /** Standing on the scooter: both arms reach forward to the handlebar (on top of the idle clip). */

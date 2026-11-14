@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Characters fixed (2026-11-14) — owner: "this character is really weird"
+
+- **Real cloth layers** (`player/avatar/garments.ts`): the shirt/kurta top and trousers are their own skinned meshes cut from the body (by region + height), seams welded, smoothed (Laplacian, rims kept) so muscles and abs vanish, then pushed 1–3 cm off the skin. Shared per build + outfit. Hoodie/jacket stand off more (looser); tee has short sleeves.
+- **Kurta skirt**: a flared cloth cone from the waist to the knees riding on the pelvis bone (double-sided). Legs can poke through on wide steps — no cloth simulation.
+- **Normal proportions**: chest (spine_03 ×0.88) and middle (spine_02 ×0.94) scaled down with the head and arms scaled back, shoulders 14 % closer — no more bodybuilder V-shape.
+- **Natural stance**: the library's idle stands wide-legged; thighs are turned in a little while standing/talking.
+- Changing outfit now rebuilds the person (the cloth shape depends on it). Painted clothes stay under the layers in case anything pokes through.
+- Not done: loose sleeves, collars, shoes as separate models, real fabric texture.
+
 ## Roads, flyovers, full map (2026-11-14)
 
 - **Flyovers and bridges** from OpenStreetMap `bridge=*` (pack flag `b`, PACK_VERSION 13): the road deck rides up on smooth ramps (6.5 m clearance on bridges > 120 m, a small lift on short ones), with a concrete slab, crash barriers with a yellow stripe, and round pillars with flared caps every 24 m (`worldgen/roads/flyover.ts`, in the chunk building mesh → solid). You can walk/drive onto them (the deck is in the road collider mesh). Verified at Silk Board (23 bridges, the double-decker shows as stacked decks). The Bellandur test area has no bridges.
