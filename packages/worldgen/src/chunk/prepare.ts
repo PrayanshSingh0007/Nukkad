@@ -8,7 +8,7 @@ import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
 import { findDoors } from '../buildings/doors.ts';
 import type { Door } from '../buildings/doors.ts';
-import { buildRibbon } from '../roads/ribbon.ts';
+import { bridgeRise, buildRibbon } from '../roads/ribbon.ts';
 import { cloneTerrain, terrainFromPack } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
 
@@ -86,6 +86,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
       line.w,
     );
     if (!ribbon) continue;
+    if (line.b) ribbon.rise = bridgeRise(ribbon.along);
     // Proper roads get a footpath on both sides (the same line, 3.2 m wider).
     const paved = PAVED.has(line.kind) && line.w >= 5;
     const wide = paved ? buildRibbon(line.kind, line.pts.map((value) => value / UNITS_PER_METRE), line.w + FOOTPATH_M * 2) : null;
@@ -108,7 +109,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
         bucket.runs.push(run);
       }
     }
-    if (line.w >= MIN_DISC_WIDTH_M && line.kind !== 'river' && line.kind !== 'stream') {
+    if (line.w >= MIN_DISC_WIDTH_M && line.kind !== 'river' && line.kind !== 'stream' && !line.b) {
       for (const end of [0, ribbon.count - 1]) {
         const [x, z] = midpoint(end);
         const cutByEdge = Math.abs(x) > half - 0.2 || Math.abs(z) > half - 0.2;

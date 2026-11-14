@@ -268,6 +268,39 @@ const ROAD_GLSL = /* glsl */ `
     float across = abs(vRoad.x);
     // Tyre tracks: asphalt polished a little darker where wheels run.
     diffuseColor.rgb *= 1.0 - 0.07 * (1.0 - smoothstep(0.3, 0.9, abs(across - vRoad.z * 0.5)));
+    // ---- Bengaluru road wear (only up close, where it can be seen) ----
+    float nearR = 1.0 - smoothstep(0.08, 0.4, fwidth(vRoad.y));
+    vec2 rp = vec2(vRoad.x, vRoad.y);
+    // Tar patches: darker, fresher rectangles where the road was dug up and filled.
+    vec2 pc = floor(rp / vec2(2.6, 7.0));
+    float ph = nkHash(pc + 41.0);
+    vec2 pf = fract(rp / vec2(2.6, 7.0));
+    float patchR = step(0.82, ph) * step(0.12, pf.x) * step(pf.x, 0.88) * step(0.15, pf.y) * step(pf.y, 0.78);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.63, 0.66), patchR * nearR);
+    // Potholes: rough round holes with a dark wet floor and a crumbling lighter rim.
+    vec2 hc = floor(rp / 3.3);
+    float hh = nkHash(hc + 7.0);
+    vec2 hcen = (hc + 0.25 + 0.5 * vec2(nkHash(hc + 1.3), nkHash(hc + 2.9))) * 3.3;
+    float hr = 0.25 + 0.4 * nkHash(hc + 5.1);
+    float hd = length(rp - hcen) / hr + (nkNoise(rp * 6.0) - 0.5) * 0.5;
+    float hole = step(0.9, hh) * (1.0 - smoothstep(0.85, 1.0, hd));
+    float rim = step(0.9, hh) * smoothstep(0.85, 1.0, hd) * (1.0 - smoothstep(1.0, 1.35, hd));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13, 0.12, 0.11) + 0.05 * nkNoise(rp * 20.0), hole * nearR);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.35 + 0.03, rim * nearR * 0.7);
+    // Manhole covers every ~45 m, a little off the centre line.
+    float along45 = mod(vRoad.y + 13.0, 45.0) - 22.5;
+    vec2 mc = vec2(vRoad.x - vRoad.z * 0.28, along45);
+    float md = length(mc);
+    float cover = 1.0 - smoothstep(0.38, 0.4, md);
+    float ring = smoothstep(0.33, 0.35, md) * cover;
+    float grid = step(0.75, fract(mc.x * 6.0)) + step(0.75, fract(mc.y * 6.0));
+    vec3 iron = vec3(0.22, 0.21, 0.2) * (1.0 - 0.25 * min(grid, 1.0)) + ring * 0.08;
+    diffuseColor.rgb = mix(diffuseColor.rgb, iron, cover * nearR * step(5.5, vRoad.z * 2.0));
+    // Painted speed-breakers across smaller roads, now and then: yellow and black stripes.
+    float bump = step(0.86, nkHash(vec2(floor(vRoad.y / 80.0), vRoad.z))) * (1.0 - smoothstep(0.75, 0.8, abs(mod(vRoad.y, 80.0) - 40.0)));
+    bump *= step(vRoad.z, 4.0);
+    vec3 stripe = mix(vec3(0.85, 0.7, 0.1), vec3(0.08), step(0.5, fract(vRoad.x / 0.9)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, stripe, bump);
     float fw = fwidth(vRoad.x) + 0.001;
     float centre = (1.0 - smoothstep(0.07, 0.07 + fw, across)) * step(0.5, fract(vRoad.y / 6.0));
     float edge = smoothstep(vRoad.z - 0.42 - fw, vRoad.z - 0.42, across) * (1.0 - smoothstep(vRoad.z - 0.3, vRoad.z - 0.3 + fw, across));
@@ -313,7 +346,7 @@ function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): 
          }`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-roads-3';
+  material.customProgramCacheKey = () => 'nukkad-roads-4';
 }
 
 /** Breaks up the flat ground colour with soft blotches and fine grain. */

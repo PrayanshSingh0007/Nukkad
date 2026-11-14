@@ -16,6 +16,25 @@ export interface Ribbon {
   along: Float32Array;
   /** Car roads get painted markings. */
   markings: boolean;
+  /** Bridges and flyovers: metres above the ground at each cross-section. */
+  rise?: Float32Array;
+}
+
+/**
+ * How high a bridge rides along its length: long ones are flyovers (6.5 m clearance) with
+ * ramps at both ends; short ones (over a drain or a canal) just lift a little.
+ */
+export function bridgeRise(along: Float32Array): Float32Array {
+  const total = along[along.length - 1] || 1;
+  const clearance = total > 120 ? 6.5 : Math.min(2.5, total * 0.04);
+  const ramp = Math.min(70, total / 3);
+  const rise = new Float32Array(along.length);
+  for (let i = 0; i < along.length; i++) {
+    const fromEnd = Math.min(along[i], total - along[i]);
+    const t = Math.min(1, fromEnd / ramp);
+    rise[i] = clearance * t * t * (3 - 2 * t); // smooth ramp
+  }
+  return rise;
 }
 
 const MARKED = new Set<LineKind>(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential']);

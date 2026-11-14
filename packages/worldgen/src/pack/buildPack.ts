@@ -83,7 +83,8 @@ export function buildPack(input: BuildPackInput): AreaPack {
         quantized.push(x, z);
       }
       if (quantized.length >= 4) {
-        lines.push({ id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized });
+        const bridge = tags.bridge !== undefined && tags.bridge !== 'no' && !NOT_ROADS.has(line.kind);
+        lines.push(bridge ? { id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized, b: 1 } : { id, kind: line.kind, w: Math.round(line.width * 10) / 10, pts: quantized });
       }
     }
   };

@@ -1,6 +1,7 @@
 import { appendBuilding, buildingTriangleEstimate } from '../buildings/buildingMesh.ts';
 import { appendGate, appendWalls } from '../buildings/compoundMesh.ts';
 import { appendDoor } from '../buildings/doors.ts';
+import { appendFlyover } from '../roads/flyover.ts';
 import { signedArea } from '../geom/polygon.ts';
 import { MeshBuilder } from '../mesh/meshBuilder.ts';
 import type { MeshData } from '../mesh/meshBuilder.ts';
@@ -63,6 +64,7 @@ export function buildChunk(world: PreparedWorld, cx: number, cz: number, lod: Ch
   // Gated societies: walls only up close (from far away they are hidden behind trees), gates always.
   if (!far) appendWalls(buildings, bucket.walls, world.terrain);
   if (!far) for (const door of bucket.doors) appendDoor(buildings, door);
+  for (const run of bucket.runs) if (run.ribbon.rise) appendFlyover(buildings, run, world.terrain);
   for (const gate of bucket.gates) appendGate(buildings, gate, world.terrain);
 
   return {

@@ -33,10 +33,17 @@ const DISC_SIDES = 6;
  * Extra numbers per vertex for the road shader: metres across from the centre line,
  * metres along the road, and the half width (0 = no painted markings).
  */
-function addGroundVertex(mesh: MeshBuilder, terrain: TerrainGrid, x: number, z: number, kind: LineKind, across = 0, along = 0, half = 0): number {
+function addGroundVertex(mesh: MeshBuilder, terrain: TerrainGrid, x: number, z: number, kind: LineKind, across = 0, along = 0, half = 0, rise = 0): number {
   const style = LINE_STYLES[kind];
-  const [nx, ny, nz] = normalAt(terrain, x, z);
-  return mesh.addVertex(x, heightAt(terrain, x, z) + style.lift, z, nx, ny, nz, style.color, across, along, half);
+  const [nx, ny, nz] = rise > 0.3 ? [0, 1, 0] : normalAt(terrain, x, z);
+  return mesh.addVertex(x, heightAt(terrain, x, z) + style.lift + rise, z, nx, ny, nz, style.color, across, along, half);
+}
+
+/** Height of a bridge deck at a cross-section: the higher end of the ground under it, plus the rise. */
+export function deckHeight(ribbon: Ribbon, i: number, terrain: TerrainGrid): number {
+  const a = heightAt(terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1]);
+  const b = heightAt(terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1]);
+  return Math.max(a, b) + (ribbon.rise ? ribbon.rise[i] : 0);
 }
 
 /**
@@ -49,8 +56,11 @@ export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: Terr
   let prevRight = -1;
   for (let i = from; i <= to; i = i === to ? to + 1 : Math.min(to, i + stride)) {
     const half = ribbon.markings ? ribbon.halfWidth : 0;
-    const left = addGroundVertex(mesh, terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1], ribbon.kind, -ribbon.halfWidth, ribbon.along[i], half);
-    const right = addGroundVertex(mesh, terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1], ribbon.kind, ribbon.halfWidth, ribbon.along[i], half);
+    // On a bridge both edges sit on one flat deck (the ground under it may slope).
+    const rl = ribbon.rise ? deckHeight(ribbon, i, terrain) - heightAt(terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1]) : 0;
+    const rr = ribbon.rise ? deckHeight(ribbon, i, terrain) - heightAt(terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1]) : 0;
+    const left = addGroundVertex(mesh, terrain, ribbon.left[i * 2], ribbon.left[i * 2 + 1], ribbon.kind, -ribbon.halfWidth, ribbon.along[i], half, rl);
+    const right = addGroundVertex(mesh, terrain, ribbon.right[i * 2], ribbon.right[i * 2 + 1], ribbon.kind, ribbon.halfWidth, ribbon.along[i], half, rr);
     if (i > from) {
       mesh.addTriangleFacing(prevLeft, left, prevRight, true);
       mesh.addTriangleFacing(prevRight, left, right, true);
@@ -58,7 +68,7 @@ export function appendRibbonRun(mesh: MeshBuilder, run: RibbonRun, terrain: Terr
     prevLeft = left;
     prevRight = right;
   }
-  if (run.walk && stride === 1) appendFootpaths(mesh, run, run.walk, terrain);
+  if (run.walk && stride === 1 && !ribbon.rise) appendFootpaths(mesh, run, run.walk, terrain);
 }
 
 /**

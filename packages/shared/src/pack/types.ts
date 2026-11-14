@@ -71,6 +71,8 @@ export interface PackLine {
   /** Total width in metres. */
   w: number;
   pts: number[];
+  /** 1 = a bridge or flyover (drawn raised on pillars). */
+  b?: 1;
 }
 
 export type AreaKind =
