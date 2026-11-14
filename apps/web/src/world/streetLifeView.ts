@@ -19,6 +19,18 @@ export interface SolidBox {
 /** Car body colours (the "Paint" parts of a model). Autos and buses keep their own colours. */
 const PAINTS = ['#f2f2f0', '#b9bcc0', '#b3261e', '#2f5aa8', '#1d1f22', '#6b6f75', '#7a1f2b', '#2f7f7a'].map((hex) => new THREE.Color(hex));
 const NO_PAINT = new Set(['auto', 'bus']);
+/**
+ * Body colours for the premade models (only the body texels change, see bodyPaint in models.ts).
+ * Pure white keeps the model's own paint.
+ */
+const BODY_PAINTS: Record<string, THREE.Color[]> = Object.fromEntries(
+  Object.entries({
+    auto: ['#ffffff', '#1f7a3a', '#2a8d46', '#ffffff', '#18262b', '#1f7a3a', '#2b6f8f', '#ffffff'],
+    two_wheeler: ['#ffffff', '#a8231c', '#2f5aa8', '#e6e4dc', '#1b1d20', '#8a8f96', '#c79a3b', '#2f7f7a'],
+    motorbike: ['#ffffff', '#151617', '#5c1820', '#3d4b2c', '#1f2f55', '#8a8f96', '#151617', '#ffffff'],
+    bus: ['#ffffff', '#2f7a3a', '#a8231c', '#ffffff', '#3a3f8f', '#ffffff', '#2f7a3a', '#ffffff'],
+  }).map(([name, hexes]) => [name, hexes.map((hex) => new THREE.Color(hex))]),
+);
 
 /** A vehicle standing on the street, as found by `nearestVehicle`. */
 export interface ParkedVehicle {
@@ -70,10 +82,10 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
  * `turn` makes the front face -z like the Kenney cars.
  */
 const SKETCHFAB: Record<string, TexturedFit> = {
-  auto: { length: 2.7, turn: 0 },
-  two_wheeler: { length: 1.8, turn: 0 },
-  motorbike: { length: 2.15, turn: Math.PI },
-  bus: { length: 11.2, turn: Math.PI },
+  auto: { length: 2.7, turn: 0, paint: { hue: 155, range: 22, minSat: 0.2, ref: 0.047 } },
+  two_wheeler: { length: 1.8, turn: 0, paint: { hue: 150, range: 25, minSat: 0.1, ref: 0.286 } },
+  motorbike: { length: 2.15, turn: Math.PI, paint: { hue: 358, range: 18, minSat: 0.35, ref: 0.041 } },
+  bus: { length: 11.2, turn: Math.PI, paint: { hue: 205, range: 20, minSat: 0.2, ref: 0.071 } },
 };
 /** Our own Blender models (tools/blender/vehicles.py) are the fallback if a download is missing. */
 const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus', 'motorbike']);
@@ -192,7 +204,8 @@ export class StreetLifeView {
         const item = near[i].item;
         rotation.setFromAxisAngle(up, item.rotation);
         mesh.setMatrixAt(i, matrix.compose(position.set(item.x, item.y, item.z), rotation, one));
-        if (!kind.material) mesh.setColorAt(i, NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[item.variant % PAINTS.length]);
+        const paint = this.paintOf(kind, item.variant);
+        if (paint) mesh.setColorAt(i, paint);
       }
       mesh.count = shown;
       mesh.instanceMatrix.needsUpdate = true;
@@ -254,11 +267,23 @@ export class StreetLifeView {
   modelOf(parked: ParkedVehicle): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; paint: THREE.Color | null } | null {
     const kind = parked.kind as Kind;
     if (!kind.mesh) return null;
-    const paint = kind.material || NO_PAINT.has(kind.name) ? null : PAINTS[parked.item.variant % PAINTS.length];
+    const paint = this.paintOf(kind, parked.item.variant);
     return { geometry: kind.mesh.geometry, material: kind.material ?? this.material, paint };
   }
 
   /** The first loaded model of a vehicle type (to show friends' vehicles). */
+  /** The colour a copy is drawn in: null = the model's own colours. */
+  private paintOf(kind: Kind, variant: number): THREE.Color | null {
+    if (kind.material) return kind.textured?.fit.paint ? BODY_PAINTS[kind.name][variant % 8] : null;
+    return NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[variant % PAINTS.length];
+  }
+
+  /** Colour for a moving vehicle of this type (traffic), or null to keep the model's own. */
+  paintFor(name: string, variant: number): THREE.Color | null {
+    const kind = this.kinds.find((k) => k.name === name && k.mesh);
+    return kind ? this.paintOf(kind, variant) : null;
+  }
+
   modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null {
     const kind = this.kinds.find((k) => k.name === name && k.mesh);
     return kind?.mesh ? { geometry: kind.mesh.geometry, material: kind.material ?? this.material } : null;

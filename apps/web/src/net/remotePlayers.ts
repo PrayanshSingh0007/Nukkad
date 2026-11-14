@@ -129,6 +129,9 @@ export class RemotePlayers {
         riding: riding && (!spec || spec.driverVisible),
         scooter: !spec || spec.model === '',
         lean: remote.lean,
+        grip: spec?.hands,
+        feet: spec?.feet,
+        seat: spec?.seat,
         emote: riding ? 0 : (state.flags >> 4) & 15,
       });
       remote.tag.sprite.position.set(shown.x, shown.y + TAG_HEIGHT, shown.z);

@@ -243,6 +243,7 @@ export class Person {
   private readonly hairColor = { value: new THREE.Color() };
   /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
   private readonly arms: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
+  private readonly legs: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
   private stance = 0;
   /** The model's own straight standing pose (legs, hips, spine), kept to stand upright when idle. */
   private readonly rest: { bone: THREE.Object3D; quaternion: THREE.Quaternion; position: THREE.Vector3 | null; weight: number }[] = [];
@@ -318,6 +319,9 @@ export class Person {
       const upper = body.getObjectByName(`upperarm_${side}`) as THREE.Bone | undefined;
       const lower = body.getObjectByName(`lowerarm_${side}`) as THREE.Bone | undefined;
       if (upper && lower) this.arms.push({ upper, lower });
+      const thigh = body.getObjectByName(`thigh_${side}`) as THREE.Bone | undefined;
+      const calf = body.getObjectByName(`calf_${side}`) as THREE.Bone | undefined;
+      if (thigh && calf) this.legs.push({ upper: thigh, lower: calf });
     }
     // Remember the straight pose before any animation touches the bones.
     for (const [name, weight] of [
@@ -441,7 +445,7 @@ export class Person {
   }
 
   /** speed in m/s; riding: 'stand' (own scooter), 'seat' (two-wheeler / auto), or null. */
-  update(dt: number, speed: number, grounded: boolean, riding: 'stand' | 'seat' | null, emote = 0): void {
+  update(dt: number, speed: number, grounded: boolean, riding: 'stand' | 'seat' | null, emote = 0, grips: THREE.Vector3[] | null = null, feet: THREE.Vector3[] | null = null): void {
     let name: ActionName = 'idle';
     const emoteName = (['idle', 'wave', 'dance', 'sit', 'talk'] as const)[emote] ?? 'idle';
     if (riding === 'seat') name = 'drive';
@@ -469,6 +473,56 @@ export class Person {
       this.relaxArms(this.stance);
     }
     if (riding === 'stand') this.handlebarPose();
+    if (riding === 'seat' && feet) this.reach(this.legs, feet);
+    if (riding === 'seat' && grips) this.reach(this.arms, grips);
+  }
+
+  /**
+   * Hands on the handlebar, feet on the footrests: two-bone IK per limb (shoulder + elbow, or
+   * hip + knee) to points given in world space. Each limb takes the point on its own side.
+   * The elbow or knee keeps the bend plane the clip gave it.
+   */
+  private reach(limbs: { upper: THREE.Bone; lower: THREE.Bone }[], grips: THREE.Vector3[]): void {
+    this.root.updateMatrixWorld(true);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    const clampCos = (v: number): number => Math.max(-1, Math.min(1, v));
+    const free = [...grips];
+    for (const { upper, lower } of limbs) {
+      const hand = lower.children.find((child) => (child as THREE.Bone).isBone);
+      if (!hand || free.length === 0) continue;
+      upper.getWorldPosition(a);
+      lower.getWorldPosition(b);
+      hand.getWorldPosition(c);
+      // The grip on this hand's side.
+      free.sort((p, q) => p.distanceToSquared(c) - q.distanceToSquared(c));
+      const t = free.shift() as THREE.Vector3;
+      const lab = b.distanceTo(a);
+      const lcb = c.distanceTo(b);
+      const lat = Math.max(0.01, Math.min(lab + lcb - 0.002, t.distanceTo(a)));
+      const ac = c.clone().sub(a).normalize();
+      const ab = b.clone().sub(a).normalize();
+      const ba = a.clone().sub(b).normalize();
+      const bc = c.clone().sub(b).normalize();
+      const at = t.clone().sub(a).normalize();
+      const acAb0 = Math.acos(clampCos(ac.dot(ab)));
+      const baBc0 = Math.acos(clampCos(ba.dot(bc)));
+      const acAt0 = Math.acos(clampCos(ac.dot(at)));
+      const acAb1 = Math.acos(clampCos((lcb * lcb - lab * lab - lat * lat) / (-2 * lab * lat)));
+      const baBc1 = Math.acos(clampCos((lat * lat - lab * lab - lcb * lcb) / (-2 * lab * lcb)));
+      const axis0 = ac.clone().cross(ab);
+      if (axis0.lengthSq() < 1e-8) axis0.set(0, 1, 0).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion())).cross(ac);
+      axis0.normalize();
+      const axis1 = ac.clone().cross(at);
+      const upperWorld = upper.getWorldQuaternion(new THREE.Quaternion());
+      const lowerWorld = lower.getWorldQuaternion(new THREE.Quaternion());
+      const local = (world: THREE.Quaternion, r: THREE.Quaternion): THREE.Quaternion => world.clone().invert().multiply(r).multiply(world);
+      upper.quaternion.multiply(local(upperWorld, new THREE.Quaternion().setFromAxisAngle(axis0, acAb1 - acAb0)));
+      lower.quaternion.multiply(local(lowerWorld, new THREE.Quaternion().setFromAxisAngle(axis0, baBc1 - baBc0)));
+      if (axis1.lengthSq() > 1e-10) upper.quaternion.multiply(local(upperWorld, new THREE.Quaternion().setFromAxisAngle(axis1.normalize(), acAt0)));
+      upper.updateMatrixWorld(true);
+    }
   }
 
   /**

@@ -179,7 +179,7 @@ export class LocalPlayer {
     const leanTarget = vehicle.leans ? -this.steerInput * share * MAX_LEAN * Math.sign(this.rideSpeed || 1) : 0;
     this.lean += (leanTarget - this.lean) * Math.min(1, dt * 6);
     this.avatar.object.visible = vehicle.driverVisible;
-    this.avatar.update(dt, this.x, this.y, this.z, { speed: Math.abs(this.rideSpeed), heading: this.heading, grounded: this.body.grounded, riding: vehicle.driverVisible, scooter: vehicle === SCOOTER, lean: this.lean });
+    this.avatar.update(dt, this.x, this.y, this.z, { speed: Math.abs(this.rideSpeed), heading: this.heading, grounded: this.body.grounded, riding: vehicle.driverVisible, scooter: vehicle === SCOOTER, lean: this.lean, grip: vehicle.hands, feet: vehicle.feet, seat: vehicle.seat });
   }
 
   private steerInput = 0;

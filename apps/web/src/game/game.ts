@@ -551,7 +551,7 @@ export class Game {
       this.streetLife = new StreetLifeView(ready.props, this.reflections);
       const streetLife = this.streetLife;
       this.remotes.vehicleModels = (model) => streetLife.modelByName(model);
-      this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name) => streetLife.modelByName(name), (material) => material === streetLife.material);
+      this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name) => streetLife.modelByName(name), (name, variant) => streetLife.paintFor(name, variant));
       this.traffic.setRadius(settings.streetLifeRadius * 1.5);
       this.view3d.scene.add(this.traffic.group);
       this.walkers = new PedestrianView(ready.walkers, this.world.terrain);

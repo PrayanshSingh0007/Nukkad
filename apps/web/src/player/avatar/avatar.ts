@@ -42,6 +42,12 @@ export interface Motion {
   scooter?: boolean;
   /** EMOTES index (wave, dance, sit, talk), 0 = none. */
   emote?: number;
+  /** Handlebar grip of the vehicle you sit on: [half width, height, z] in metres, front is −z. */
+  grip?: readonly [number, number, number];
+  /** Footrests, the same way. */
+  feet?: readonly [number, number, number];
+  /** Where you sit: [up, z] shift from the clip's sitting spot, metres. */
+  seat?: readonly [number, number];
 }
 
 /**
@@ -160,12 +166,22 @@ export class Avatar {
     }
     this.object.rotation.y = this.facingAngle;
     this.body.rotation.z = motion.lean ?? 0;
-    this.body.position.y = motion.riding ? 0.16 : 0; // standing on the scooter deck
+    const seated = motion.riding === true && motion.scooter === false;
+    const [seatUp, seatZ] = seated && motion.seat ? motion.seat : [0, 0];
+    this.body.position.y = motion.riding ? 0.16 + seatUp : 0; // 0.16: up on the scooter deck or a seat
+    this.body.position.z = seatZ;
     this.scooter.mesh.visible = motion.riding === true && motion.scooter !== false;
     this.scooter.mesh.rotation.z = (motion.lean ?? 0) * 0.9;
     if (motion.riding) this.ridePose(dt);
     else this.walkPose(dt, motion.speed, motion.grounded);
-    this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null, motion.emote ?? 0);
+    if (seated) this.body.updateMatrixWorld(true);
+    const pair = (point: readonly [number, number, number] | undefined): THREE.Vector3[] | null => {
+      if (!seated || !point) return null;
+      const [w, h, z] = point;
+      // Points are in the vehicle's frame; the body group is shifted by the seat.
+      return [this.body.localToWorld(new THREE.Vector3(-w, h - 0.16 - seatUp, z - seatZ)), this.body.localToWorld(new THREE.Vector3(w, h - 0.16 - seatUp, z - seatZ))];
+    };
+    this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null, motion.emote ?? 0, pair(motion.grip), pair(motion.feet));
     // Blink every few seconds (a quick 0.12 s), sometimes twice.
     this.nextBlink -= dt;
     const closed = this.nextBlink < 0.12 && this.nextBlink > 0;

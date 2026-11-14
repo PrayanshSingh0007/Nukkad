@@ -104,6 +104,52 @@ export interface TexturedFit {
   length?: number;
   /** Extra turn about the vertical axis after the long side is laid along z, radians. */
   turn?: number;
+  /** Repaint the body: texels of this hue get each copy's instance colour (see bodyPaint). */
+  paint?: BodyPaint;
+}
+
+export interface BodyPaint {
+  /** Body hue in degrees, how far either side still counts, and the least saturation. */
+  hue: number;
+  range: number;
+  minSat: number;
+  /** Mean linear brightness of the body texels, so a new colour keeps the texture's shading. */
+  ref: number;
+}
+
+/**
+ * Repaints only the body of a textured model: texels near the body's hue take the copy's
+ * instance colour, keeping their light and dark. A white instance colour keeps the original.
+ */
+function bodyPaint(material: THREE.MeshStandardMaterial, paint: BodyPaint): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uPaint = { value: new THREE.Vector4(paint.hue / 360, paint.range / 360, paint.minSat, paint.ref) };
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uPaint;').replace(
+      '#include <color_fragment>',
+      `#if defined( USE_INSTANCING_COLOR ) || defined( USE_COLOR )
+      {
+        vec3 c = pow(max(diffuseColor.rgb, vec3(0.0)), vec3(1.0 / 2.2));
+        float mx = max(c.r, max(c.g, c.b));
+        float d = mx - min(c.r, min(c.g, c.b));
+        float h = 0.0;
+        if (d > 1e-4) {
+          if (mx == c.r) h = mod((c.g - c.b) / d, 6.0);
+          else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+          else h = (c.r - c.g) / d + 4.0;
+          h /= 6.0;
+        }
+        float dh = abs(mod(h - uPaint.x + 1.5, 1.0) - 0.5);
+        float sat = d / max(mx, 1e-4);
+        vec3 tint = vColor.rgb;
+        float keep = step(2.995, tint.r + tint.g + tint.b);
+        float m = (1.0 - smoothstep(uPaint.y * 0.7, uPaint.y, dh)) * smoothstep(uPaint.z * 0.6, uPaint.z, sat) * (1.0 - keep);
+        float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        diffuseColor.rgb = mix(diffuseColor.rgb, tint * (min(lum / uPaint.w, 2.5) * 0.85), m);
+      }
+      #endif`,
+    );
+  };
+  material.customProgramCacheKey = () => `nukkad-body-${paint.hue}-${paint.range}-${paint.minSat}-${paint.ref}`;
 }
 
 const texturedCache = new Map<string, Promise<TexturedModel | null>>();
@@ -114,7 +160,7 @@ const texturedCache = new Map<string, Promise<TexturedModel | null>>();
  * into one geometry with one group per material.
  */
 export function loadTexturedModel(path: string, fit: TexturedFit): Promise<TexturedModel | null> {
-  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}`;
+  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}|${fit.paint?.hue}`;
   let promise = texturedCache.get(key);
   if (!promise) {
     promise = loader
@@ -164,6 +210,7 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
             side: source.side,
           });
           if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
+          if (fit.paint) bodyPaint(own, fit.paint);
           return own;
         });
         return { geometry: merged, material, halfWidth: size.x / 2, halfLength: size.z / 2 };

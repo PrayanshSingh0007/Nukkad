@@ -5,7 +5,6 @@ import type { SolidBox } from './streetLifeView.ts';
 
 type ModelSource = (name: string) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
-const PAINTS = ['#f2f2f0', '#b9bcc0', '#b3261e', '#2f5aa8', '#1d1f22', '#6b6f75', '#7a1f2b', '#2f7f7a'].map((hex) => new THREE.Color(hex));
 const STOP_AHEAD_M = 9; // traffic stops when you stand this close in front of it
 const SOLID_COUNT = 5; // the nearest moving vehicles are solid
 
@@ -30,15 +29,15 @@ export class TrafficView {
   private readonly lanes: Lane[];
   private readonly meshes = new Map<number, THREE.InstancedMesh>();
   private readonly models: ModelSource;
-  private readonly paintable: (material: THREE.Material) => boolean;
+  private readonly paint: (name: string, variant: number) => THREE.Color | null;
   private readonly terrain: TerrainGrid;
   private radius = 120;
 
-  constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paintable: (material: THREE.Material) => boolean) {
+  constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paint: (name: string, variant: number) => THREE.Color | null) {
     this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0 }));
     this.terrain = terrain;
     this.models = models;
-    this.paintable = paintable;
+    this.paint = paint;
   }
 
   get count(): number {
@@ -106,9 +105,9 @@ export class TrafficView {
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, lane.y, pose.z), rotation, one));
-      if (this.paintable(mesh.material as THREE.Material) && !['auto', 'bus', 'taxi', 'ambulance'].includes(VEHICLE_KINDS[route.kind])) {
-        mesh.setColorAt(i, PAINTS[route.variant % PAINTS.length]);
-      }
+      const name = VEHICLE_KINDS[route.kind];
+      const paint = name === 'taxi' || name === 'ambulance' ? null : this.paint(name, route.variant);
+      if (paint) mesh.setColorAt(i, paint);
       counts.set(route.kind, i + 1);
     }
     for (const [kind, mesh] of this.meshes) {
