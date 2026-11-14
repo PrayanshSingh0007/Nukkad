@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { STALL_STRIDE, STOP_STRIDE, TANK_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
 import type { PropSet } from '@nukkad/worldgen';
 import { loadModel, loadTexturedModel } from './models.ts';
+import type { TexturedFit } from './models.ts';
 import { createVehicleMaterial, streetModel } from './vehicleModels.ts';
 
 /** A solid box for the physics: centre, half sizes, turn around the up axis. */
@@ -37,9 +38,9 @@ interface Item {
 interface Kind {
   name: string;
   /** Kenney model file, when this kind uses a textured model instead of a code model. */
-  textured?: { path: string; width: number };
+  textured?: { path: string; fit: TexturedFit };
   /** Own material (textured models); otherwise the shared vehicle material. */
-  material?: THREE.MeshStandardMaterial;
+  material?: THREE.MeshStandardMaterial[];
   items: Item[];
   /** Half sizes for the solid box (0 = you can walk through it). */
   half: [number, number, number];
@@ -64,7 +65,17 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
   truck: { files: ['truck'], width: 2.1 },
   delivery: { files: ['delivery'], width: 2.1 },
 };
-/** Vehicles modelled by us in Blender (tools/blender/vehicles.py → public/models/<name>.glb). */
+/**
+ * Indian vehicles from Sketchfab (CC-BY, credited in CREDITS.md), scaled to real lengths.
+ * `turn` makes the front face -z like the Kenney cars.
+ */
+const SKETCHFAB: Record<string, TexturedFit> = {
+  auto: { length: 2.7, turn: 0 },
+  two_wheeler: { length: 1.8, turn: 0 },
+  motorbike: { length: 2.15, turn: Math.PI },
+  bus: { length: 11.2, turn: Math.PI },
+};
+/** Our own Blender models (tools/blender/vehicles.py) are the fallback if a download is missing. */
 const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus', 'motorbike']);
 const SOLID_RADIUS = 30;
 
@@ -87,9 +98,11 @@ export class StreetLifeView {
     const byType: Kind[][] = VEHICLE_KINDS.map((name, index) => {
       const [hw, hl] = VEHICLE_HALF[index];
       const half: [number, number, number] = [hw, VEHICLE_HEIGHT[index] / 2, hl];
+      const sketchfab = SKETCHFAB[name];
+      if (sketchfab) return [{ name, textured: { path: `/models/sketchfab/${name}.glb`, fit: sketchfab }, items: [], half, mesh: null, shadow: null }];
       const kenney = KENNEY[name];
       if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
-      return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, width: kenney.width }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
+      return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, fit: { width: kenney.width, turn: Math.PI } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
     });
     for (const kinds of byType) this.kinds.push(...kinds);
     for (let i = 0; i < props.vehicles.length; i += VEHICLE_STRIDE) {
@@ -108,9 +121,9 @@ export class StreetLifeView {
     for (const kind of this.kinds) {
       if (kind.items.length === 0) continue;
       const ready = kind.textured
-        ? loadTexturedModel(kind.textured.path, kind.textured.width, true).then((model) => {
-            if (!model) return streetModel(kind.name); // fall back to our own model
-            model.material.envMap = this.material.envMap;
+        ? loadTexturedModel(kind.textured.path, kind.textured.fit).then((model) => {
+            if (!model) return BLENDER_MODELS.has(kind.name) ? loadModel(kind.name) : streetModel(kind.name); // fall back to our own model
+            for (const m of model.material) m.envMap = this.material.envMap;
             kind.material = model.material;
             kind.half = [model.halfWidth, kind.half[1], model.halfLength];
             return model.geometry;
@@ -203,7 +216,7 @@ export class StreetLifeView {
   setNight(night: number): void {
     this.material.envMapIntensity = 0.1 + 0.3 * (1 - night); // gentle: the studio reflection washes colours out
     // Kenney's light colours already look bright; their reflections are kept softer.
-    for (const kind of this.kinds) if (kind.material) kind.material.envMapIntensity = this.material.envMapIntensity * 1.2;
+    for (const kind of this.kinds) for (const m of kind.material ?? []) m.envMapIntensity = this.material.envMapIntensity * 1.2;
   }
 
   /** The nearest parked vehicle within `reach` metres whose model is loaded, or null. */
@@ -238,7 +251,7 @@ export class StreetLifeView {
   }
 
   /** Geometry and material to draw the vehicle you are driving. */
-  modelOf(parked: ParkedVehicle): { geometry: THREE.BufferGeometry; material: THREE.Material; paint: THREE.Color | null } | null {
+  modelOf(parked: ParkedVehicle): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; paint: THREE.Color | null } | null {
     const kind = parked.kind as Kind;
     if (!kind.mesh) return null;
     const paint = kind.material || NO_PAINT.has(kind.name) ? null : PAINTS[parked.item.variant % PAINTS.length];
@@ -246,7 +259,7 @@ export class StreetLifeView {
   }
 
   /** The first loaded model of a vehicle type (to show friends' vehicles). */
-  modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material } | null {
+  modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null {
     const kind = this.kinds.find((k) => k.name === name && k.mesh);
     return kind?.mesh ? { geometry: kind.mesh.geometry, material: kind.material ?? this.material } : null;
   }

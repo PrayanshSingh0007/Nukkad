@@ -82,6 +82,15 @@ Google Maps, Street View, any scraped imagery, real brand logos or shop signs, a
 
 Downloaded 2026-11-12 with the owner's OK, free tier (no payment). Clothes are painted on by our own shader (no outfit assets).
 
-## Our own models (made for Nukkad in Blender, 2026-11-14)
+## Vehicles from Sketchfab (CC-BY 4.0)
+
+Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/by/4.0/. Downloaded 2026-11-14 with the owner's OK (free, no payment). Changes made by us: re-scaled and re-oriented; logos and emblems painted over; the bike's number plate replaced; textures re-saved as JPEG.
+
+- `models/sketchfab/auto.glb`: "Autorikshaw - Indian Tuk Tuk" by bhagathartworks, https://sketchfab.com/models/5775d012693741008acff9dad410e92d
+- `models/sketchfab/two_wheeler.glb`: "Indian Scooter 3d model low poly" by Shiveloper, https://sketchfab.com/models/0162842f5bda4ef3b30972fd634c10bb
+- `models/sketchfab/motorbike.glb`: "3D Bullet Bike For Cartoons Free Download" by ProfessionalModels, https://sketchfab.com/models/c40024caf9cd42859097e17dbd890efc
+- `models/sketchfab/bus.glb`: "Indian Bus 1" by playmode280513, https://sketchfab.com/models/a76faa90aa424a44aa28449c11133ea2
+
+## Our own models (made for Nukkad in Blender, 2026-11-14; now only the fallback)
 
 `apps/web/public/models/auto.glb`, `two_wheeler.glb`, `motorbike.glb`, `bus.glb` — built by `tools/blender/vehicles.py`. Original work, no third-party parts, no brand marks.

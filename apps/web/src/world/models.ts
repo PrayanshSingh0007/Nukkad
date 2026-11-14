@@ -87,59 +87,89 @@ export function createModelMaterial(): THREE.MeshLambertMaterial {
   return material;
 }
 
-/** A model that keeps its own textured material (e.g. the Kenney cars). */
+/** A model that keeps its own textured materials (the Kenney cars, the Sketchfab vehicles). */
 export interface TexturedModel {
   geometry: THREE.BufferGeometry;
-  material: THREE.MeshStandardMaterial;
+  /** One material per group of the geometry. */
+  material: THREE.MeshStandardMaterial[];
   /** Half width and half length after scaling, metres (for the solid box). */
   halfWidth: number;
   halfLength: number;
 }
 
+export interface TexturedFit {
+  /** Scale so the model is this wide (x) … */
+  width?: number;
+  /** … or this long (z), metres. */
+  length?: number;
+  /** Extra turn about the vertical axis after the long side is laid along z, radians. */
+  turn?: number;
+}
+
 const texturedCache = new Map<string, Promise<TexturedModel | null>>();
 
 /**
- * Loads a textured .glb, turns it to face -z when `flip` is set, scales it uniformly so it is
- * `width` metres wide with its lowest point on the ground, and merges it into one geometry.
+ * Loads a textured .glb, lays its long side along z (and turns it by `fit.turn`), scales it
+ * uniformly to the given width or length with its lowest point on the ground, and merges it
+ * into one geometry with one group per material.
  */
-export function loadTexturedModel(path: string, width: number, flip: boolean): Promise<TexturedModel | null> {
-  const key = `${path}|${width}|${flip}`;
+export function loadTexturedModel(path: string, fit: TexturedFit): Promise<TexturedModel | null> {
+  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}`;
   let promise = texturedCache.get(key);
   if (!promise) {
     promise = loader
       .loadAsync(path)
       .then((gltf) => {
         const root = gltf.scene;
-        if (flip) root.rotation.y = Math.PI;
         root.updateMatrixWorld(true);
-        const parts: THREE.BufferGeometry[] = [];
-        let material: THREE.MeshStandardMaterial | null = null;
+        const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
         root.traverse((object) => {
           const mesh = object as THREE.Mesh;
           if (!mesh.isMesh) return;
-          material ??= (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
-          const g = mesh.geometry.clone();
+          const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material;
+          let g = mesh.geometry.clone();
           g.applyMatrix4(mesh.matrixWorld);
           for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
-          parts.push(g.index ? g : g);
+          if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+          if (!g.getAttribute('normal')) g.computeVertexNormals();
+          if (g.index) g = g.toNonIndexed();
+          if (!byMaterial.has(material)) byMaterial.set(material, []);
+          byMaterial.get(material)!.push(g);
         });
-        if (parts.length === 0 || !material) return null;
-        const merged = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
+        if (byMaterial.size === 0) return null;
+        const sources = [...byMaterial.keys()];
+        const merged = mergeGeometries(sources.map((m) => mergeGeometries(byMaterial.get(m)!)), true);
         merged.computeBoundingBox();
-        const box = merged.boundingBox as THREE.Box3;
-        const scale = width / (box.max.x - box.min.x);
+        let box = merged.boundingBox as THREE.Box3;
+        if (box.max.x - box.min.x > box.max.z - box.min.z) merged.rotateY(Math.PI / 2);
+        if (fit.turn) merged.rotateY(fit.turn);
+        merged.computeBoundingBox();
+        box = merged.boundingBox as THREE.Box3;
+        const scale = fit.length ? fit.length / (box.max.z - box.min.z) : (fit.width ?? 1) / (box.max.x - box.min.x);
         merged.translate(-(box.max.x + box.min.x) / 2, -box.min.y, -(box.max.z + box.min.z) / 2);
         merged.scale(scale, scale, scale);
         merged.computeBoundingBox();
         merged.computeBoundingSphere();
         const size = (merged.boundingBox as THREE.Box3).getSize(new THREE.Vector3());
-        const source = material as THREE.MeshStandardMaterial;
-        const own = new THREE.MeshStandardMaterial({ map: source.map, roughness: 0.42, metalness: 0.15 });
-        if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
-        return { geometry: merged, material: own, halfWidth: size.x / 2, halfLength: size.z / 2 };
+        const material = sources.map((m) => {
+          const source = m as THREE.MeshStandardMaterial;
+          const own = new THREE.MeshStandardMaterial({
+            map: source.map ?? null,
+            color: source.color ?? new THREE.Color(1, 1, 1),
+            roughness: Math.max(0.3, source.roughness ?? 0.5),
+            metalness: Math.min(0.6, source.metalness ?? 0.1),
+            transparent: source.transparent,
+            opacity: source.opacity,
+            alphaTest: source.alphaTest,
+            side: source.side,
+          });
+          if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
+          return own;
+        });
+        return { geometry: merged, material, halfWidth: size.x / 2, halfLength: size.z / 2 };
       })
-      .catch(() => {
-        console.warn(`Nukkad: ${path} could not be loaded — skipped`);
+      .catch((error: unknown) => {
+        console.warn(`Nukkad: ${path} could not be loaded — skipped`, error);
         return null;
       });
     texturedCache.set(key, promise);

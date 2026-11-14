@@ -24,7 +24,7 @@ interface Remote {
 }
 
 /** Gives the geometry + material for a vehicle model name (from the street-life models). */
-export type VehicleModelSource = (model: string) => { geometry: THREE.BufferGeometry; material: THREE.Material } | null;
+export type VehicleModelSource = (model: string) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
 /** Everyone else in the room: their avatars, name tags and smoothed movement. */
 export class RemotePlayers {

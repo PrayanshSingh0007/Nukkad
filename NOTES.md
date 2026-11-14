@@ -9,6 +9,13 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Premade Indian vehicles from Sketchfab (2026-11-14)
+
+- Owner: "its not coming good just use premade". With the owner's OK and their own Sketchfab sign-in, 4 free CC-BY models were downloaded to `apps/web/public/models/sketchfab/` (auto, two_wheeler, motorbike, bus). Credits are in CREDITS.md and **must stay** (CC-BY).
+- Changes made to the files: the bus maker's grille badge and both state-transport emblems are painted over; a small script badge on the scooter side panel is painted over; the bike's US number plate is replaced by a plain "KA 01 EK 2611" plate. The bus and scooter textures were re-saved as JPEG (the bus went from 3.6 MB to 0.95 MB).
+- `loadTexturedModel(path, fit)` now keeps one material per part (the bus has 5 and the bike has 6), lays the long side along z, and scales to a real length (`SKETCHFAB` table in streetLifeView.ts: auto 2.7 m, scooter 1.8, bike 2.15, bus 11.2; the bike and bus are turned by π). Parked vehicles, traffic, the vehicle you drive and friends' vehicles all use them. Our Blender models are now only the fallback if a file is missing.
+- Honest limits: the bus is a Maharashtra bus with Marathi text, not a BMTC bus. The bike is a cruiser style, not a real Bullet. These models are not paint-tinted, so every auto, scooter and bus looks the same. The rider's hands do not reach the bike's handlebars. Not tested on a phone.
+
 ## Vehicles rebuilt from real proportions + a bullet-style bike (2026-11-14)
 
 Owner: "these are the exact same… check the real design… add a bullet bike".

@@ -3,7 +3,7 @@ import { VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, heightAt, trafficPose } fr
 import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { SolidBox } from './streetLifeView.ts';
 
-type ModelSource = (name: string) => { geometry: THREE.BufferGeometry; material: THREE.Material } | null;
+type ModelSource = (name: string) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
 const PAINTS = ['#f2f2f0', '#b9bcc0', '#b3261e', '#2f5aa8', '#1d1f22', '#6b6f75', '#7a1f2b', '#2f7f7a'].map((hex) => new THREE.Color(hex));
 const STOP_AHEAD_M = 9; // traffic stops when you stand this close in front of it
