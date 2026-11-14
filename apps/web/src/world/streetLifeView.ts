@@ -65,7 +65,7 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
   delivery: { files: ['delivery'], width: 2.1 },
 };
 /** Vehicles modelled by us in Blender (tools/blender/vehicles.py → public/models/<name>.glb). */
-const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus']);
+const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus', 'motorbike']);
 const SOLID_RADIUS = 30;
 
 /**

@@ -8,8 +8,8 @@ import type { Occupancy } from './occupancy.ts';
  * Parked vehicles, street-food stalls and bus stops — what makes a Bengaluru street feel
  * busy. Seeded, so everyone sees the same street. (Moving traffic is roadmap step L5.)
  */
-export const VEHICLE = { hatchback: 0, sedan: 1, suv: 2, auto: 3, twoWheeler: 4, bus: 5, taxi: 6, van: 7, ambulance: 8, truck: 9, delivery: 10 } as const;
-export const VEHICLE_KINDS = ['hatchback', 'sedan', 'suv', 'auto', 'two_wheeler', 'bus', 'taxi', 'van', 'ambulance', 'truck', 'delivery'] as const;
+export const VEHICLE = { hatchback: 0, sedan: 1, suv: 2, auto: 3, twoWheeler: 4, bus: 5, taxi: 6, van: 7, ambulance: 8, truck: 9, delivery: 10, motorbike: 11 } as const;
+export const VEHICLE_KINDS = ['hatchback', 'sedan', 'suv', 'auto', 'two_wheeler', 'bus', 'taxi', 'van', 'ambulance', 'truck', 'delivery', 'motorbike'] as const;
 /** Footprint half-sizes (sideways, lengthways) in metres, for collisions. */
 export const VEHICLE_HALF: [number, number][] = [
   [0.82, 1.9],
@@ -23,8 +23,9 @@ export const VEHICLE_HALF: [number, number][] = [
   [1.0, 2.6],
   [1.05, 2.5],
   [1.05, 2.6],
+  [0.42, 1.08],
 ];
-export const VEHICLE_HEIGHT = [1.5, 1.45, 1.75, 1.75, 1.1, 3.2, 1.6, 1.6, 2.3, 1.85, 3.0];
+export const VEHICLE_HEIGHT = [1.5, 1.45, 1.75, 1.75, 1.1, 3.2, 1.6, 1.6, 2.3, 1.85, 3.0, 1.15];
 
 /** Per vehicle: x, y, z, rotation, kind, colour variant (0–7). */
 export const VEHICLE_STRIDE = 6;
@@ -45,7 +46,8 @@ const STOP_SPACING_M = 320;
 
 /** Kerbside parking mix, roughly like a Bengaluru side street: lots of two-wheelers. */
 function pickParked(roll: number): number {
-  if (roll < 0.4) return VEHICLE.twoWheeler;
+  if (roll < 0.3) return VEHICLE.twoWheeler;
+  if (roll < 0.4) return VEHICLE.motorbike;
   if (roll < 0.55) return VEHICLE.hatchback;
   if (roll < 0.65) return VEHICLE.sedan;
   if (roll < 0.74) return VEHICLE.suv;

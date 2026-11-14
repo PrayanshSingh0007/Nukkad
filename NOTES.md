@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Vehicles rebuilt from real proportions + a bullet-style bike (2026-11-14)
+
+Owner: "these are the exact same… check the real design… add a bullet bike".
+- `tools/blender/vehicles.py` now shapes bodies from **lofted cross-sections** (rounded-rectangle sections along the length, smoothed with subdivision) instead of boxes, plus bent tubes, curved mudguards and wire-spoked wheels.
+- **Auto-rickshaw** (2.63 × 1.3 × 1.7 m): tall narrow nose with the headlamp in its face, flat-sided waist-high tub, arched canvas hood with black piping curving down the back, black rexine rear with a window, tube frame, rolled curtains, bench/backrest, handlebar, meter. 12.3k triangles.
+- **Scooter** (1.76 m, seat 0.7 m): full leg-shield apron up to the handlebar cowl (headlamp in the cowl), flat floorboard, rear body swelling over the engine down to the wheel, long seat, telescopic fork, mudguard, grab rail, exhaust. 13.9k triangles.
+- **Bullet-style motorbike** (generic 350 cc classic, no brand): 19" wire-spoked wheels, teardrop tank with knee pads and a gold pinstripe, round headlamp in a nacelle with a speedo on top, finned barrel leaning forward, crankcase, round toolbox/oil tank, long chrome exhaust and silencer, sprung saddle + pillion, deep mudguards. 15.5k triangles. New vehicle kind `motorbike` (code 13): ~8 % of traffic and ~10 % of parked vehicles, drivable (22 m/s, leans).
+- Honest: much closer to the real things, still stylised; triangle counts are 2–3× the first Blender versions — phone cost unmeasured (if heavy, lower the spoke count and subdivision first).
+
 ## Blender works: our own vehicle models (2026-11-14)
 
 - Blender MCP is connected (the add-on "MCP" from lab.blender.org had never been installed inside Blender; it auto-starts on port 9876 — no tab). Blender must be open.

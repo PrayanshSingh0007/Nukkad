@@ -39,7 +39,8 @@ export interface TrafficPose {
 
 /** Traffic mix on a Bengaluru main road: lots of two-wheelers and autos. Kind indexes follow VEHICLE_KINDS. */
 function pickKind(roll: number): number {
-  if (roll < 0.34) return 4; // two-wheeler
+  if (roll < 0.26) return 4; // scooter
+  if (roll < 0.34) return 11; // motorbike
   if (roll < 0.52) return 3; // auto
   if (roll < 0.62) return 0; // hatchback
   if (roll < 0.7) return 1; // sedan

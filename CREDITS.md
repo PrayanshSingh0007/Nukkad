@@ -84,4 +84,4 @@ Downloaded 2026-11-12 with the owner's OK, free tier (no payment). Clothes are p
 
 ## Our own models (made for Nukkad in Blender, 2026-11-14)
 
-`apps/web/public/models/auto.glb`, `two_wheeler.glb`, `bus.glb` — built by `tools/blender/vehicles.py`. Original work, no third-party parts, no brand marks.
+`apps/web/public/models/auto.glb`, `two_wheeler.glb`, `motorbike.glb`, `bus.glb` — built by `tools/blender/vehicles.py`. Original work, no third-party parts, no brand marks.

@@ -45,6 +45,7 @@ export const VEHICLES: Record<string, VehicleSpec> = {
   ambulance: spec({ code: 10, model: 'ambulance', label: 'ambulance', maxSpeed: 19, reverse: 4, accel: 4.6, brake: 9, wheelbase: 3.1, maxSteer: 0.55, grip: 6.5, driftGrip: 1.8, radius: 1.0, leans: false, driverVisible: false, cameraDistance: 8 }),
   truck: spec({ code: 11, model: 'truck', label: 'truck', maxSpeed: 13, reverse: 3, accel: 3, brake: 7, wheelbase: 3.0, maxSteer: 0.55, grip: 6, driftGrip: 2.2, radius: 1.05, leans: false, driverVisible: false, cameraDistance: 8.5 }),
   delivery: spec({ code: 12, model: 'delivery', label: 'tempo', maxSpeed: 13, reverse: 3, accel: 3.2, brake: 7.5, wheelbase: 3.0, maxSteer: 0.57, grip: 6, driftGrip: 2.2, radius: 1.05, leans: false, driverVisible: false, cameraDistance: 8.5 }),
+  motorbike: spec({ code: 13, model: 'motorbike', label: 'bike', maxSpeed: 22, reverse: 2, accel: 6, brake: 11, wheelbase: 1.39, maxSteer: 0.5, grip: 9, driftGrip: 3, radius: 0.4, leans: true, driverVisible: true, cameraDistance: 5.6 }),
   bus: spec({ code: 7, model: 'bus', label: 'bus', maxSpeed: 12, reverse: 3, accel: 2.4, brake: 6, wheelbase: 6.4, maxSteer: 0.6, grip: 6, driftGrip: 3, radius: 1.25, leans: false, driverVisible: false, cameraDistance: 13 }),
 };
 
