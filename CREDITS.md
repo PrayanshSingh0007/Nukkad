@@ -81,3 +81,7 @@ Google Maps, Street View, any scraped imagery, real brand logos or shop signs, a
 | Universal Animation Library — free Standard pack | Quaternius | CC0 1.0 | https://quaternius.itch.io/universal-animation-library | `apps/web/public/models/people/anims.glb` (12 clips kept: idle, walk, jog, sprint, jump ×3, driving, sitting, talking, dance, interact; no combat clips) |
 
 Downloaded 2026-11-12 with the owner's OK, free tier (no payment). Clothes are painted on by our own shader (no outfit assets).
+
+## Our own models (made for Nukkad in Blender, 2026-11-14)
+
+`apps/web/public/models/auto.glb`, `two_wheeler.glb`, `bus.glb` — built by `tools/blender/vehicles.py`. Original work, no third-party parts, no brand marks.

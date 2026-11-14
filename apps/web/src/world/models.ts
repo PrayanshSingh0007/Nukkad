@@ -27,7 +27,8 @@ function flatten(root: THREE.Object3D): THREE.BufferGeometry | null {
     for (const group of groups) {
       const material = materials[group.materialIndex ?? 0] as THREE.MeshStandardMaterial;
       const color = material.color ?? new THREE.Color(1, 1, 1);
-      const isPaint = /paint/i.test(material.name) ? 1 : 0;
+      // 1 = car paint (takes the per-copy colour) · 2 = glossy (glass, chrome, lamps) · 0 = matte.
+      const isPaint = /paint/i.test(material.name) ? 1 : /glass|chrome|light/i.test(material.name) ? 2 : 0;
       for (let i = group.start; i < group.start + group.count; i++) {
         colors.set([color.r, color.g, color.b], i * 3);
         paint[i] = isPaint;
@@ -71,9 +72,18 @@ export function createModelMaterial(): THREE.MeshLambertMaterial {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aPaint;')
-      .replace('vColor.rgb *= instanceColor.rgb;', 'vColor.rgb *= mix(vec3(1.0), instanceColor.rgb, aPaint);');
+      .replace(
+        '#include <color_vertex>',
+        `vColor = vec4(1.0);
+         #ifdef USE_COLOR
+           vColor.rgb *= color;
+         #endif
+         #ifdef USE_INSTANCING_COLOR
+           vColor.rgb *= mix(vec3(1.0), instanceColor.rgb, step(0.5, aPaint) * (1.0 - step(1.5, aPaint)));
+         #endif`,
+      );
   };
-  material.customProgramCacheKey = () => 'nukkad-paint-1';
+  material.customProgramCacheKey = () => 'nukkad-paint-2';
   return material;
 }
 

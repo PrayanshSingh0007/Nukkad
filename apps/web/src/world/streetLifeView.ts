@@ -64,6 +64,8 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
   truck: { files: ['truck'], width: 2.1 },
   delivery: { files: ['delivery'], width: 2.1 },
 };
+/** Vehicles modelled by us in Blender (tools/blender/vehicles.py → public/models/<name>.glb). */
+const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus']);
 const SOLID_RADIUS = 30;
 
 /**
@@ -113,7 +115,8 @@ export class StreetLifeView {
             kind.half = [model.halfWidth, kind.half[1], model.halfLength];
             return model.geometry;
           })
-        : Promise.resolve(streetModel(kind.name) ?? null).then((built) => built ?? loadModel(kind.name));
+        : // Our own Blender models win; the built-in-code shapes are the fallback.
+          (BLENDER_MODELS.has(kind.name) ? loadModel(kind.name) : Promise.resolve(null)).then((made) => made ?? streetModel(kind.name) ?? loadModel(kind.name));
       void ready.then((geometry) => {
         if (!geometry) return;
         const material = kind.material ?? this.material;
@@ -198,9 +201,9 @@ export class StreetLifeView {
 
   /** Reflections are dimmer at night. */
   setNight(night: number): void {
-    this.material.envMapIntensity = 0.15 + 0.85 * (1 - night);
+    this.material.envMapIntensity = 0.1 + 0.3 * (1 - night); // gentle: the studio reflection washes colours out
     // Kenney's light colours already look bright; their reflections are kept softer.
-    for (const kind of this.kinds) if (kind.material) kind.material.envMapIntensity = this.material.envMapIntensity * 0.6;
+    for (const kind of this.kinds) if (kind.material) kind.material.envMapIntensity = this.material.envMapIntensity * 1.2;
   }
 
   /** The nearest parked vehicle within `reach` metres whose model is loaded, or null. */

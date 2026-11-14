@@ -410,17 +410,29 @@ export function streetModel(name: string): THREE.BufferGeometry | null {
  * glossy), 2 glass and lights (glossy, own colour).
  */
 export function createVehicleMaterial(envMap: THREE.Texture | null = null): THREE.MeshStandardMaterial {
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMap });
+  // The reflection picture is a bright studio: keep it gentle or it washes the colours out.
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, envMap, envMapIntensity: 0.4 });
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aPaint;\nvarying float vPaint;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaint = aPaint;')
-      .replace('vColor.rgb *= instanceColor.rgb;', 'vColor.rgb *= mix(vec3(1.0), instanceColor.rgb, step(0.5, aPaint) * (1.0 - step(1.5, aPaint)));');
+      // The per-copy colour only tints "paint" parts (aPaint = 1), not tyres, glass or lamps.
+      // (The stock code lives in an #include, so the whole include is replaced.)
+      .replace(
+        '#include <color_vertex>',
+        `vColor = vec4(1.0);
+         #ifdef USE_COLOR
+           vColor.rgb *= color;
+         #endif
+         #ifdef USE_INSTANCING_COLOR
+           vColor.rgb *= mix(vec3(1.0), instanceColor.rgb, step(0.5, aPaint) * (1.0 - step(1.5, aPaint)));
+         #endif`,
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vPaint;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vPaint > 1.5 ? 0.12 : (vPaint > 0.5 ? 0.28 : 0.75);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = vPaint > 0.5 && vPaint < 1.5 ? 0.35 : 0.0;');
   };
-  material.customProgramCacheKey = () => 'nukkad-vehicle-1';
+  material.customProgramCacheKey = () => 'nukkad-vehicle-2';
   return material;
 }

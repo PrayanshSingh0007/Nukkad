@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Blender works: our own vehicle models (2026-11-14)
+
+- Blender MCP is connected (the add-on "MCP" from lab.blender.org had never been installed inside Blender; it auto-starts on port 9876 — no tab). Blender must be open.
+- `tools/blender/vehicles.py` builds **our own** auto-rickshaw (6,500 triangles), scooter (3,620) and city bus (6,424) by script: bevelled panels, lathed tyres, arched canvas roof, seats, lamps, mirrors. Run in Blender: `exec(open('<repo>/tools/blender/vehicles.py').read()); build_all('<repo>/apps/web/public/models')` → `auto.glb`, `two_wheeler.glb`, `bus.glb`. No brand marks, blank plates.
+- The game prefers these files (`BLENDER_MODELS` in streetLifeView.ts) and falls back to the code-built shapes. Material names matter: "Paint…" takes the per-vehicle colour, "Glass/Chrome/Light…" are glossy.
+- Fixed an old bug found on the way: the per-vehicle colour tinted the whole model (the shader replace targeted text inside an #include). Now only paint parts are tinted. Daytime reflection strength lowered (it washed colours out).
+- Owner also asked for Unreal Engine and two repos: Unreal = a different engine and a restart, not done (owner chose the web on 2026-11-12). gugu-2/Game-NPC-Brain-LLM (Apache-2.0, local LLM NPC chat server) is usable later, needs a strong machine. casanova77koresh/The-Pinnacle-Of-V looks like a malware lure (no code, only links to an outside "free download" of a GTA V mod) — do NOT use or download.
+- Honest: these are clean stylised models, far better than before, but not photoreal AAA; triangle counts are ~6× the old ones (phone cost unmeasured).
+
 ## Characters fixed (2026-11-14) — owner: "this character is really weird"
 
 - **Real cloth layers** (`player/avatar/garments.ts`): the shirt/kurta top and trousers are their own skinned meshes cut from the body (by region + height), seams welded, smoothed (Laplacian, rims kept) so muscles and abs vanish, then pushed 1–3 cm off the skin. Shared per build + outfit. Hoodie/jacket stand off more (looser); tee has short sleeves.
