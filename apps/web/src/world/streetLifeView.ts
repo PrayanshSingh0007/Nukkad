@@ -72,28 +72,33 @@ interface Kind {
 const MAX_SHOWN = 60; // per kind, nearest first
 
 /**
- * Cars: comrade1280's generic car packs from Sketchfab (CC-BY, credited in CREDITS.md), split
- * per car by tools/vehicles/split.mjs. Two looks per type where we have them, picked by the
- * colour variant; real lengths in metres. Their body colour is found from the texture.
+ * Cars: Indian models from Sketchfab (CC-BY, credited in CREDITS.md), slimmed for phones by
+ * tools/vehicles/slim.mjs, plus a few of comrade1280's generic ones. Several looks per type,
+ * picked by the colour variant; real lengths in metres. `paint` names the body paint material
+ * (otherwise the body colour is found from the texture; null = keep the model's own colours).
  */
-const CARS: Record<string, { file: string; length: number; back?: true }[]> = {
+const CARS: Record<string, { file: string; length: number; back?: true; paint?: RegExp | null }[]> = {
   hatchback: [
-    { file: 'hatchback', length: 3.85, back: true },
-    { file: 'compact', length: 3.7 },
+    { file: 'wagonr', length: 3.65, back: true, paint: /^Car_Paint/ },
+    { file: 'nano', length: 3.1, back: true, paint: /^carpaint/ },
   ],
   sedan: [
-    { file: 'sedan', length: 4.45 },
-    { file: 'wagon', length: 4.6 },
+    { file: 'city', length: 4.44, back: true, paint: /^Body$/ },
+    { file: 'bmw', length: 4.47, back: true },
   ],
   suv: [
-    { file: 'suv', length: 4.65 },
-    { file: 'offroad', length: 4.2, back: true },
+    { file: 'creta', length: 4.3, back: true, paint: /^carpaint/ },
+    { file: 'seltos', length: 4.36, back: true },
+    { file: 'thar', length: 3.99, back: true, paint: null },
   ],
-  taxi: [{ file: 'sedan', length: 4.45 }],
+  taxi: [{ file: 'city', length: 4.44, back: true, paint: /^Body$/ }],
   van: [{ file: 'minivan', length: 4.8 }],
   ambulance: [{ file: 'ambulance', length: 5.4 }],
-  truck: [{ file: 'garbage_truck', length: 6.8, back: true }],
-  delivery: [{ file: 'pickup', length: 5.1, back: true }],
+  truck: [{ file: 'signa', length: 10, back: true }],
+  delivery: [
+    { file: 'minitruck', length: 3.8, paint: /^carroceria/ },
+    { file: 'pickup', length: 5.1, back: true },
+  ],
 };
 // `back`: this model comes facing backwards, so it is turned round (checked in the game).
 
@@ -144,7 +149,7 @@ export class StreetLifeView {
       const sketchfab = SKETCHFAB[name];
       if (sketchfab) return [{ name, textured: { path: `/models/sketchfab/${name}.glb`, fit: sketchfab }, items: [], half, mesh: null, shadow: null }];
       const cars = CARS[name];
-      if (cars) return cars.map(({ file, length, back }) => ({ name, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: 'auto' as const } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
+      if (cars) return cars.map(({ file, length, back, paint }) => ({ name, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: paint === null ? undefined : ('auto' as const), paintMaterial: paint ?? undefined } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
       const kenney = KENNEY[name];
       if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
       return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, fit: { width: kenney.width, turn: Math.PI } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));

@@ -95,8 +95,22 @@ Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/
 
 Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/by/4.0/. Downloaded 2026-11-15 with the owner's OK (free, no payment). The author made them trademark-free (no real car brands). Changes made by us: split into one file per vehicle (`tools/vehicles/split.mjs`), textures shrunk to 512 px WebP, unused texture maps removed, re-scaled, re-oriented and repainted in the game.
 
-- `models/sketchfab/cars/{hatchback,compact,sedan,wagon,suv,offroad,minivan,pickup}.glb`: "Generic passenger car pack" by comrade1280, https://sketchfab.com/models/20f9af9b8a404d5cb022ac6fe87f21f5
-- `models/sketchfab/cars/{ambulance,garbage_truck}.glb`: "Generic civil service vehicles pack" by comrade1280, https://sketchfab.com/models/8ff2a13f30914932a70c7950cfa58465
+- `models/sketchfab/cars/{minivan,pickup}.glb`: "Generic passenger car pack" by comrade1280, https://sketchfab.com/models/20f9af9b8a404d5cb022ac6fe87f21f5
+- `models/sketchfab/cars/ambulance.glb`: "Generic civil service vehicles pack" by comrade1280, https://sketchfab.com/models/8ff2a13f30914932a70c7950cfa58465
+
+## Indian cars from Sketchfab (CC-BY 4.0)
+
+Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/by/4.0/. Downloaded 2026-11-15 with the owner's OK (free, no payment). Changes made by us: simplified to about 15–20k triangles (Blender decimate and meshoptimizer), textures shrunk to 512 px WebP, re-scaled, re-oriented and repainted in the game. Brand logos, badges and model names were removed or painted over, and number plates were replaced. These are shapes of real cars; the car makers' names and logos belong to them, and this game is not connected to them.
+
+- `models/sketchfab/cars/city.glb`: "Honda City 2017" by dewa, https://sketchfab.com/models/75671276d4da476294202a5dc050a99e
+- `models/sketchfab/cars/creta.glb`: "Hyundai Creta" by MattDoesBlender, https://sketchfab.com/models/67645b6f549441a786e2b4050dc0268b
+- `models/sketchfab/cars/seltos.glb`: "Kia Seltos 2026- Low Poly" by playmode280513, https://sketchfab.com/models/12bda54cbfb04a39878b410303a7de14
+- `models/sketchfab/cars/wagonr.glb`: "Wagon R" by tkanimationsd742, https://sketchfab.com/models/6700812ecaa840199bdc31fc3b921385
+- `models/sketchfab/cars/thar.glb`: "THAR 4X4" by MB_Mahesh, https://sketchfab.com/models/66ee970b18014c98a1750064b65657b0
+- `models/sketchfab/cars/nano.glb`: "Tata Nano" by BumpkinCZ, https://sketchfab.com/models/b40695a12723449dbdc5976700c8f1b6
+- `models/sketchfab/cars/bmw.glb`: "Low Poly Car - BMW E46 1998" by roh3d, https://sketchfab.com/models/d9bfd8126e754164b48ded833c017bbf
+- `models/sketchfab/cars/signa.glb`: "Tata Signa Cargo Truck | Low Poly Game Ready PBR" by kevin_k_5124, https://sketchfab.com/models/a5c03c1a1c2c4b21b7db6192b1ef8718
+- `models/sketchfab/cars/minitruck.glb`: "Mini-Truck" by roy.3dartist, https://sketchfab.com/models/71e499219de548a7a1be74c237b6a2fb
 
 ## Our own models (made for Nukkad in Blender, 2026-11-14; now only the fallback)
 

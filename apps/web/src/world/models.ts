@@ -109,6 +109,11 @@ export interface TexturedFit {
   /** Repaint the body: texels of this hue get each copy's instance colour (see bodyPaint). */
   /** 'auto' = find the body's colour from the texture of the part that covers most of the model. */
   paint?: BodyPaint | 'auto';
+  /**
+   * With paint 'auto': the paint material(s) by name. A flat-coloured paint material simply
+   * takes each copy's colour; a textured one gets its colour found from the texture.
+   */
+  paintMaterial?: RegExp;
 }
 
 export interface PaintWindow {
@@ -222,7 +227,7 @@ const texturedCache = new Map<string, Promise<TexturedModel | null>>();
  * into one geometry with one group per material.
  */
 export function loadTexturedModel(path: string, fit: TexturedFit): Promise<TexturedModel | null> {
-  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}|${JSON.stringify(fit.paint ?? null)}`;
+  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}|${JSON.stringify(fit.paint ?? null)}|${fit.paintMaterial ?? ''}`;
   let promise = texturedCache.get(key);
   if (!promise) {
     promise = loader
@@ -236,8 +241,19 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
           if (!mesh.isMesh) return;
           const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material;
           let g = mesh.geometry.clone();
-          g.applyMatrix4(mesh.matrixWorld);
           for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+          // Quantized files (KHR_mesh_quantization) store small integers: turn them back into
+          // plain floats before moving the geometry, or the transform overflows them.
+          for (const name of ['position', 'normal', 'uv']) {
+            const attribute = g.getAttribute(name) as THREE.BufferAttribute | undefined;
+            if (!attribute) continue;
+            const interleaved = (attribute as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute === true;
+            if (!interleaved && attribute.array instanceof Float32Array && !attribute.normalized) continue;
+            const floats = new Float32Array(attribute.count * attribute.itemSize);
+            for (let i = 0; i < attribute.count; i++) for (let k = 0; k < attribute.itemSize; k++) floats[i * attribute.itemSize + k] = attribute.getComponent(i, k);
+            g.setAttribute(name, new THREE.BufferAttribute(floats, attribute.itemSize));
+          }
+          g.applyMatrix4(mesh.matrixWorld);
           if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
           if (!g.getAttribute('normal')) g.computeVertexNormals();
           if (g.index) g = g.toNonIndexed();
@@ -261,7 +277,12 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
         const size = (merged.boundingBox as THREE.Box3).getSize(new THREE.Vector3());
         // The body = the material drawing the most triangles.
         const counts = sources.map((m) => byMaterial.get(m)!.reduce((sum, g) => sum + g.getAttribute('position').count, 0));
-        const body = counts.indexOf(Math.max(...counts));
+        let body = counts.indexOf(Math.max(...counts));
+        const isPaint = (m: THREE.Material): boolean => !!fit.paintMaterial && fit.paintMaterial.test(m.name);
+        if (fit.paintMaterial) {
+          const named = sources.map((m, i) => (isPaint(m) ? i : -1)).filter((i) => i >= 0);
+          if (named.length) body = named.reduce((best, i) => (counts[i] > counts[best] ? i : best), named[0]);
+        }
         let painted = false;
         const material = sources.map((m, index) => {
           const source = m as THREE.MeshStandardMaterial;
@@ -276,10 +297,17 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
             side: source.side,
           });
           if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
+          own.name = source.name;
           // 'auto': only the body takes paint; the other parts keep their own colours.
+          if (fit.paint === 'auto' && isPaint(m) && !source.map) {
+            // Flat paint: three.js multiplies it by the copy's colour (start from near-white).
+            own.color.setRGB(0.9, 0.9, 0.9);
+            painted = true;
+            return own;
+          }
           const paint = fit.paint === 'auto' ? (index === body ? findBodyPaint(source) : null) ?? [] : fit.paint;
           if (paint) bodyPaint(own, paint);
-          if (index === body) painted = (paint?.length ?? 0) > 0;
+          if (index === body && paint && paint.length > 0) painted = true;
           return own;
         });
         return { geometry: merged, material, painted, halfWidth: size.x / 2, halfLength: size.z / 2 };

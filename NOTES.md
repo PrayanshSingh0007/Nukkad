@@ -9,6 +9,31 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Indian car models (2026-11-15)
+
+- Owner asked for "indian models like fortuner, BMW, scorpio, creta, innova, swift". **No usable free Fortuner, Innova, Swift or Scorpio exists**: on Sketchfab they are GTA-mod rips (BHP3D), spam/re-uploads (David_Holiday, shreyanshchaurasia13, re-uploads of ddiaz-design's non-commercial work) or bare shells. With the owner's OK we use 9 clean CC-BY models instead (CREDITS.md): Honda City, Hyundai Creta, Kia Seltos, Maruti WagonR, Mahindra Thar, Tata Nano, BMW 3 Series (E46), Tata Signa truck, a Tata Ace-style mini-truck.
+- Owner was told: real car shapes and names belong to the car makers, so a public release carries some legal risk. All logos, badges, model names and number plates were removed.
+- Pipeline (the original downloads are not in the repo):
+  1. Heavy models (Creta, Nano, Thar, WagonR) were decimated in Blender (via MCP, in a temporary scene).
+  2. `tools/vehicles/slim.mjs` keeps colour textures only (512 px WebP), quantizes the geometry, simplifies, and drops nodes named emblem/logo/badge/shadow plus any names given on the command line.
+  3. Logo fixes:
+     - Creta: Object_212/214/216/696/702 dropped.
+     - Nano: Object_5 dropped; rear chrome faces deleted in Blender.
+     - WagonR: lettering islands and the "S" faces (wipers material, UV area 30–120 × 26–90 px) deleted in Blender; textures 2/7/8/11 painted over.
+     - BMW: 2 roundels painted over in texture 0.
+     - Seltos: logo painted over in texture 1.
+     - Tata truck: logo and lettering painted over in texture 1.
+     - City: emblem nodes dropped; both plates replaced with KA plates in texture 0.
+  4. **Re-running slim.mjs on an original download loses steps 1 and 3**, so redo them.
+- Loader fixes this needed:
+  - Quantized attributes are turned back into floats before the transform; without this they overflow into crumpled shapes.
+  - Material names are kept (`own.name`).
+  - `paintMaterial` names the flat paint material, which then simply takes the copy's colour.
+  - `paint: null` keeps a model's own colours (Thar, Seltos).
+- `back: true` on almost all of them: these models face +z. Every one was checked from the front in the game.
+- Kinds: hatchback = WagonR/Nano, sedan = City/BMW, SUV = Creta/Seltos/Thar, taxi = City (white), van = generic minivan, ambulance = generic, truck = Tata Signa (10 m, longer than the old 5 m truck slot, so parked ones may overlap), delivery = mini-truck/generic pickup.
+- Honest limits: no Fortuner, Innova, Swift or Scorpio. The Thar and Seltos are always their own colour. Not tested on a phone. About 5.8 MB of car files (loaded only when used).
+
 ## Real-looking cars + rider polish (2026-11-15)
 
 - Owner: "make the things which are not perfect perfect and then get good cars". With the owner's OK, 2 free CC-BY packs by comrade1280 were downloaded (credited in CREDITS.md). `tools/vehicles/split.mjs` cuts them into one ~350 KB file per vehicle in `public/models/sketchfab/cars/` (512 px WebP, colour textures only; bodies opaque, decals cut-out, glass see-through). The raw packs are not in the repo.
