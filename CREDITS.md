@@ -91,6 +91,13 @@ Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/
 - `models/sketchfab/motorbike.glb`: "3D Bullet Bike For Cartoons Free Download" by ProfessionalModels, https://sketchfab.com/models/c40024caf9cd42859097e17dbd890efc
 - `models/sketchfab/bus.glb`: "Indian Bus 1" by playmode280513, https://sketchfab.com/models/a76faa90aa424a44aa28449c11133ea2
 
+## Cars from Sketchfab (CC-BY 4.0)
+
+Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/by/4.0/. Downloaded 2026-11-15 with the owner's OK (free, no payment). The author made them trademark-free (no real car brands). Changes made by us: split into one file per vehicle (`tools/vehicles/split.mjs`), textures shrunk to 512 px WebP, unused texture maps removed, re-scaled, re-oriented and repainted in the game.
+
+- `models/sketchfab/cars/{hatchback,compact,sedan,wagon,suv,offroad,minivan,pickup}.glb`: "Generic passenger car pack" by comrade1280, https://sketchfab.com/models/20f9af9b8a404d5cb022ac6fe87f21f5
+- `models/sketchfab/cars/{ambulance,garbage_truck}.glb`: "Generic civil service vehicles pack" by comrade1280, https://sketchfab.com/models/8ff2a13f30914932a70c7950cfa58465
+
 ## Our own models (made for Nukkad in Blender, 2026-11-14; now only the fallback)
 
 `apps/web/public/models/auto.glb`, `two_wheeler.glb`, `motorbike.glb`, `bus.glb` — built by `tools/blender/vehicles.py`. Original work, no third-party parts, no brand marks.

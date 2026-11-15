@@ -92,6 +92,8 @@ export interface TexturedModel {
   geometry: THREE.BufferGeometry;
   /** One material per group of the geometry. */
   material: THREE.MeshStandardMaterial[];
+  /** True when the body takes each copy's colour (see bodyPaint). */
+  painted: boolean;
   /** Half width and half length after scaling, metres (for the solid box). */
   halfWidth: number;
   halfLength: number;
@@ -105,26 +107,79 @@ export interface TexturedFit {
   /** Extra turn about the vertical axis after the long side is laid along z, radians. */
   turn?: number;
   /** Repaint the body: texels of this hue get each copy's instance colour (see bodyPaint). */
-  paint?: BodyPaint;
+  /** 'auto' = find the body's colour from the texture of the part that covers most of the model. */
+  paint?: BodyPaint | 'auto';
 }
 
-export interface BodyPaint {
-  /** Body hue in degrees, how far either side still counts, and the least saturation. */
+export interface PaintWindow {
+  /** Hue in degrees, how far either side still counts, and the least saturation. */
   hue: number;
   range: number;
   minSat: number;
-  /** Mean linear brightness of the body texels, so a new colour keeps the texture's shading. */
+  /** Most saturation and least brightness (0–1), to pick out pale panels. */
+  maxSat?: number;
+  minVal?: number;
+  /** Mean linear brightness of these texels, so a new colour keeps the texture's shading. */
   ref: number;
 }
 
+/** One or two colour areas of the body that take the copy's paint. */
+export type BodyPaint = PaintWindow[];
+
 /**
- * Repaints only the body of a textured model: texels near the body's hue take the copy's
- * instance colour, keeping their light and dark. A white instance colour keeps the original.
+ * The main paint of a body texture: the most common strong hue, and how bright those texels
+ * are (linear). Null when the texture has no clear colour (e.g. a white car) or can't be read.
+ */
+function findBodyPaint(material: THREE.MeshStandardMaterial): BodyPaint | null {
+  const image = material.map?.image as CanvasImageSource | undefined;
+  if (!image) return null;
+  const S = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return null;
+  try {
+    context.drawImage(image, 0, 0, S, S);
+  } catch {
+    return null;
+  }
+  const data = context.getImageData(0, 0, S, S).data;
+  const lin = (v: number): number => Math.pow(v, 2.2);
+  const bins = new Array<number>(36).fill(0);
+  const texels: [number, number][] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] / 255;
+    const g = data[i + 1] / 255;
+    const b = data[i + 2] / 255;
+    const mx = Math.max(r, g, b);
+    const d = mx - Math.min(r, g, b);
+    if (mx < 0.15 || d / mx < 0.3) continue;
+    let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+    bins[Math.floor(h / 10) % 36]++;
+    texels.push([h, 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)]);
+  }
+  const top = bins.indexOf(Math.max(...bins));
+  if (bins[top] < S * S * 0.05) return null;
+  const hue = top * 10 + 5;
+  const near = texels.filter(([h]) => Math.abs(((h - hue + 540) % 360) - 180) < 20);
+  const ref = near.reduce((sum, [, l]) => sum + l, 0) / near.length;
+  return [{ hue, range: 24, minSat: 0.3, ref: Math.max(0.01, ref) }];
+}
+
+/**
+ * Repaints only the body of a textured model: texels inside a paint window (by hue,
+ * saturation and brightness) take the copy's instance colour, keeping their light and dark.
+ * A white instance colour keeps the original.
  */
 function bodyPaint(material: THREE.MeshStandardMaterial, paint: BodyPaint): void {
+  const off: PaintWindow = { hue: 0, range: 0, minSat: 2, ref: 1 };
+  const windows = [paint[0] ?? off, paint[1] ?? off];
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uPaint = { value: new THREE.Vector4(paint.hue / 360, paint.range / 360, paint.minSat, paint.ref) };
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uPaint;').replace(
+    shader.uniforms.uPaintA = { value: windows.map((w) => new THREE.Vector4(w.hue / 360, w.range / 360, w.minSat, w.ref)) };
+    shader.uniforms.uPaintB = { value: windows.map((w) => new THREE.Vector4(w.maxSat ?? 2, w.minVal ?? 0, 0, 0)) };
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uPaintA[2];\nuniform vec4 uPaintB[2];').replace(
       '#include <color_fragment>',
       `#if defined( USE_INSTANCING_COLOR ) || defined( USE_COLOR )
       {
@@ -138,18 +193,25 @@ function bodyPaint(material: THREE.MeshStandardMaterial, paint: BodyPaint): void
           else h = (c.r - c.g) / d + 4.0;
           h /= 6.0;
         }
-        float dh = abs(mod(h - uPaint.x + 1.5, 1.0) - 0.5);
         float sat = d / max(mx, 1e-4);
         vec3 tint = vColor.rgb;
         float keep = step(2.995, tint.r + tint.g + tint.b);
-        float m = (1.0 - smoothstep(uPaint.y * 0.7, uPaint.y, dh)) * smoothstep(uPaint.z * 0.6, uPaint.z, sat) * (1.0 - keep);
         float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-        diffuseColor.rgb = mix(diffuseColor.rgb, tint * (min(lum / uPaint.w, 2.5) * 0.85), m);
+        vec3 painted = diffuseColor.rgb;
+        for (int i = 0; i < 2; i++) {
+          vec4 a = uPaintA[i];
+          vec4 b = uPaintB[i];
+          float dh = abs(mod(h - a.x + 1.5, 1.0) - 0.5);
+          float m = (1.0 - smoothstep(a.y * 0.7, a.y, dh)) * smoothstep(a.z * 0.6 - 0.0001, a.z, sat)
+            * (1.0 - smoothstep(b.x, b.x + 0.08, sat)) * smoothstep(b.y - 0.08, b.y, mx) * step(0.0001, a.y);
+          painted = mix(painted, tint * (min(lum / a.w, 1.3) * 0.8), m * (1.0 - keep));
+        }
+        diffuseColor.rgb = painted;
       }
       #endif`,
     );
   };
-  material.customProgramCacheKey = () => `nukkad-body-${paint.hue}-${paint.range}-${paint.minSat}-${paint.ref}`;
+  material.customProgramCacheKey = () => `nukkad-body-${JSON.stringify(paint)}`;
 }
 
 const texturedCache = new Map<string, Promise<TexturedModel | null>>();
@@ -160,7 +222,7 @@ const texturedCache = new Map<string, Promise<TexturedModel | null>>();
  * into one geometry with one group per material.
  */
 export function loadTexturedModel(path: string, fit: TexturedFit): Promise<TexturedModel | null> {
-  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}|${fit.paint?.hue}`;
+  const key = `${path}|${fit.width}|${fit.length}|${fit.turn}|${JSON.stringify(fit.paint ?? null)}`;
   let promise = texturedCache.get(key);
   if (!promise) {
     promise = loader
@@ -197,7 +259,11 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
         merged.computeBoundingBox();
         merged.computeBoundingSphere();
         const size = (merged.boundingBox as THREE.Box3).getSize(new THREE.Vector3());
-        const material = sources.map((m) => {
+        // The body = the material drawing the most triangles.
+        const counts = sources.map((m) => byMaterial.get(m)!.reduce((sum, g) => sum + g.getAttribute('position').count, 0));
+        const body = counts.indexOf(Math.max(...counts));
+        let painted = false;
+        const material = sources.map((m, index) => {
           const source = m as THREE.MeshStandardMaterial;
           const own = new THREE.MeshStandardMaterial({
             map: source.map ?? null,
@@ -210,10 +276,13 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
             side: source.side,
           });
           if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
-          if (fit.paint) bodyPaint(own, fit.paint);
+          // 'auto': only the body takes paint; the other parts keep their own colours.
+          const paint = fit.paint === 'auto' ? (index === body ? findBodyPaint(source) : null) ?? [] : fit.paint;
+          if (paint) bodyPaint(own, paint);
+          if (index === body) painted = (paint?.length ?? 0) > 0;
           return own;
         });
-        return { geometry: merged, material, halfWidth: size.x / 2, halfLength: size.z / 2 };
+        return { geometry: merged, material, painted, halfWidth: size.x / 2, halfLength: size.z / 2 };
       })
       .catch((error: unknown) => {
         console.warn(`Nukkad: ${path} could not be loaded — skipped`, error);

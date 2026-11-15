@@ -23,12 +23,18 @@ const NO_PAINT = new Set(['auto', 'bus']);
  * Body colours for the premade models (only the body texels change, see bodyPaint in models.ts).
  * Pure white keeps the model's own paint.
  */
+/** Car colours as seen on Bengaluru roads: mostly white and silver, then grey, red, blue, black. */
+const CAR_PAINTS = ['#f1f1ee', '#b9bcc0', '#e9e9e6', '#5d6166', '#a3261f', '#24427a', '#18191b', '#8a6f4f'].map((hex) => new THREE.Color(hex));
 const BODY_PAINTS: Record<string, THREE.Color[]> = Object.fromEntries(
   Object.entries({
     auto: ['#ffffff', '#1f7a3a', '#2a8d46', '#ffffff', '#18262b', '#1f7a3a', '#2b6f8f', '#ffffff'],
-    two_wheeler: ['#ffffff', '#a8231c', '#2f5aa8', '#e6e4dc', '#1b1d20', '#8a8f96', '#c79a3b', '#2f7f7a'],
+    two_wheeler: ['#ffffff', '#a8231c', '#2f5aa8', '#e9e7e0', '#1b1d20', '#8a8f96', '#5f9e8f', '#7a1f2b'],
     motorbike: ['#ffffff', '#151617', '#5c1820', '#3d4b2c', '#1f2f55', '#8a8f96', '#151617', '#ffffff'],
     bus: ['#ffffff', '#2f7a3a', '#a8231c', '#ffffff', '#3a3f8f', '#ffffff', '#2f7a3a', '#ffffff'],
+    // Bengaluru taxis are white (yellow number plates).
+    taxi: ['#f1f1ee', '#f1f1ee', '#e8e8e4', '#f1f1ee', '#f1f1ee', '#e8e8e4', '#f1f1ee', '#f1f1ee'],
+    ambulance: ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
+    truck: ['#ffffff', '#2f7a3a', '#e9e7e0', '#1f4f8f', '#d9822b', '#ffffff', '#3f8a4a', '#e9e7e0'],
   }).map(([name, hexes]) => [name, hexes.map((hex) => new THREE.Color(hex))]),
 );
 
@@ -53,6 +59,8 @@ interface Kind {
   textured?: { path: string; fit: TexturedFit };
   /** Own material (textured models); otherwise the shared vehicle material. */
   material?: THREE.MeshStandardMaterial[];
+  /** The textured body takes each copy's colour. */
+  painted?: boolean;
   items: Item[];
   /** Half sizes for the solid box (0 = you can walk through it). */
   half: [number, number, number];
@@ -64,9 +72,32 @@ interface Kind {
 const MAX_SHOWN = 60; // per kind, nearest first
 
 /**
- * Cars use Kenney's Car Kit (CC0) — two looks per type, picked by the car's colour variant.
- * Autos, two-wheelers, buses, carts and bus stops keep our own code models.
+ * Cars: comrade1280's generic car packs from Sketchfab (CC-BY, credited in CREDITS.md), split
+ * per car by tools/vehicles/split.mjs. Two looks per type where we have them, picked by the
+ * colour variant; real lengths in metres. Their body colour is found from the texture.
  */
+const CARS: Record<string, { file: string; length: number; back?: true }[]> = {
+  hatchback: [
+    { file: 'hatchback', length: 3.85, back: true },
+    { file: 'compact', length: 3.7 },
+  ],
+  sedan: [
+    { file: 'sedan', length: 4.45 },
+    { file: 'wagon', length: 4.6 },
+  ],
+  suv: [
+    { file: 'suv', length: 4.65 },
+    { file: 'offroad', length: 4.2, back: true },
+  ],
+  taxi: [{ file: 'sedan', length: 4.45 }],
+  van: [{ file: 'minivan', length: 4.8 }],
+  ambulance: [{ file: 'ambulance', length: 5.4 }],
+  truck: [{ file: 'garbage_truck', length: 6.8, back: true }],
+  delivery: [{ file: 'pickup', length: 5.1, back: true }],
+};
+// `back`: this model comes facing backwards, so it is turned round (checked in the game).
+
+/** Kenney's Car Kit (CC0): the old toy-style cars, now only a fallback. */
 const KENNEY: Record<string, { files: string[]; width: number }> = {
   hatchback: { files: ['hatchback-sports'], width: 1.7 },
   sedan: { files: ['sedan', 'sedan-sports'], width: 1.78 },
@@ -82,10 +113,10 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
  * `turn` makes the front face -z like the Kenney cars.
  */
 const SKETCHFAB: Record<string, TexturedFit> = {
-  auto: { length: 2.7, turn: 0, paint: { hue: 155, range: 22, minSat: 0.2, ref: 0.047 } },
-  two_wheeler: { length: 1.8, turn: 0, paint: { hue: 150, range: 25, minSat: 0.1, ref: 0.286 } },
-  motorbike: { length: 2.15, turn: Math.PI, paint: { hue: 358, range: 18, minSat: 0.35, ref: 0.041 } },
-  bus: { length: 11.2, turn: Math.PI, paint: { hue: 205, range: 20, minSat: 0.2, ref: 0.071 } },
+  auto: { length: 2.7, turn: 0, paint: [{ hue: 155, range: 22, minSat: 0.2, ref: 0.047 }] },
+  two_wheeler: { length: 1.8, turn: 0, paint: [{ hue: 150, range: 25, minSat: 0.1, ref: 0.286 }, { hue: 0, range: 360, minSat: 0, maxSat: 0.2, minVal: 0.62, ref: 0.55 }] },
+  motorbike: { length: 2.15, turn: Math.PI, paint: [{ hue: 358, range: 18, minSat: 0.35, ref: 0.041 }] },
+  bus: { length: 11.2, turn: Math.PI, paint: [{ hue: 205, range: 20, minSat: 0.2, ref: 0.071 }] },
 };
 /** Our own Blender models (tools/blender/vehicles.py) are the fallback if a download is missing. */
 const BLENDER_MODELS = new Set(['auto', 'two_wheeler', 'bus', 'motorbike']);
@@ -112,6 +143,8 @@ export class StreetLifeView {
       const half: [number, number, number] = [hw, VEHICLE_HEIGHT[index] / 2, hl];
       const sketchfab = SKETCHFAB[name];
       if (sketchfab) return [{ name, textured: { path: `/models/sketchfab/${name}.glb`, fit: sketchfab }, items: [], half, mesh: null, shadow: null }];
+      const cars = CARS[name];
+      if (cars) return cars.map(({ file, length, back }) => ({ name, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: 'auto' as const } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
       const kenney = KENNEY[name];
       if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
       return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, fit: { width: kenney.width, turn: Math.PI } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
@@ -137,6 +170,7 @@ export class StreetLifeView {
             if (!model) return BLENDER_MODELS.has(kind.name) ? loadModel(kind.name) : streetModel(kind.name); // fall back to our own model
             for (const m of model.material) m.envMap = this.material.envMap;
             kind.material = model.material;
+            kind.painted = model.painted;
             kind.half = [model.halfWidth, kind.half[1], model.halfLength];
             return model.geometry;
           })
@@ -274,7 +308,7 @@ export class StreetLifeView {
   /** The first loaded model of a vehicle type (to show friends' vehicles). */
   /** The colour a copy is drawn in: null = the model's own colours. */
   private paintOf(kind: Kind, variant: number): THREE.Color | null {
-    if (kind.material) return kind.textured?.fit.paint ? BODY_PAINTS[kind.name][variant % 8] : null;
+    if (kind.material) return kind.painted ? (BODY_PAINTS[kind.name] ?? CAR_PAINTS)[variant % 8] : null;
     return NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[variant % PAINTS.length];
   }
 

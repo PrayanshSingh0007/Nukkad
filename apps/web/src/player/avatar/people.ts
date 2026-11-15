@@ -244,6 +244,9 @@ export class Person {
   /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
   private readonly arms: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
   private readonly legs: { upper: THREE.Bone; lower: THREE.Bone }[] = [];
+  private spine: THREE.Bone | null = null;
+  /** The spine before last frame's lean, put back first so the lean never builds up. */
+  private spineBefore: THREE.Quaternion | null = null;
   private stance = 0;
   /** The model's own straight standing pose (legs, hips, spine), kept to stand upright when idle. */
   private readonly rest: { bone: THREE.Object3D; quaternion: THREE.Quaternion; position: THREE.Vector3 | null; weight: number }[] = [];
@@ -323,6 +326,7 @@ export class Person {
       const calf = body.getObjectByName(`calf_${side}`) as THREE.Bone | undefined;
       if (thigh && calf) this.legs.push({ upper: thigh, lower: calf });
     }
+    this.spine = (body.getObjectByName('spine_01') as THREE.Bone | undefined) ?? null;
     // Remember the straight pose before any animation touches the bones.
     for (const [name, weight] of [
       ['pelvis', 1],
@@ -446,6 +450,10 @@ export class Person {
 
   /** speed in m/s; riding: 'stand' (own scooter), 'seat' (two-wheeler / auto), or null. */
   update(dt: number, speed: number, grounded: boolean, riding: 'stand' | 'seat' | null, emote = 0, grips: THREE.Vector3[] | null = null, feet: THREE.Vector3[] | null = null): void {
+    if (this.spine && this.spineBefore) {
+      this.spine.quaternion.copy(this.spineBefore);
+      this.spineBefore = null;
+    }
     let name: ActionName = 'idle';
     const emoteName = (['idle', 'wave', 'dance', 'sit', 'talk'] as const)[emote] ?? 'idle';
     if (riding === 'seat') name = 'drive';
@@ -474,7 +482,48 @@ export class Person {
     }
     if (riding === 'stand') this.handlebarPose();
     if (riding === 'seat' && feet) this.reach(this.legs, feet);
-    if (riding === 'seat' && grips) this.reach(this.arms, grips);
+    if (riding === 'seat' && grips) {
+      this.leanTo(grips);
+      this.reach(this.arms, grips);
+    }
+  }
+
+  /**
+   * Bend forward from the lower back until both shoulders are close enough for the hands to
+   * hold the grips with a slight bend in the elbow. Undone at the start of the next update.
+   */
+  private leanTo(grips: THREE.Vector3[]): void {
+    const spine = this.spine;
+    if (!spine) return;
+    this.spineBefore = spine.quaternion.clone();
+    const up = new THREE.Vector3(0, 1, 0);
+    let total = 0;
+    for (let pass = 0; pass < 3 && total < 0.32; pass++) {
+      this.root.updateMatrixWorld(true);
+      const base = spine.getWorldPosition(new THREE.Vector3());
+      let excess = 0;
+      let height = 0.4;
+      for (const { upper, lower } of this.arms) {
+        const hand = lower.children.find((child) => (child as THREE.Bone).isBone);
+        if (!hand) continue;
+        const a = upper.getWorldPosition(new THREE.Vector3());
+        const b = lower.getWorldPosition(new THREE.Vector3());
+        const c = hand.getWorldPosition(new THREE.Vector3());
+        const t = grips.reduce((best, g) => (g.distanceToSquared(c) < best.distanceToSquared(c) ? g : best));
+        excess = Math.max(excess, a.distanceTo(t) - 0.985 * (a.distanceTo(b) + b.distanceTo(c)));
+        height = Math.max(0.25, a.y - base.y);
+      }
+      if (excess < 0.004) return;
+      const toward = grips.reduce((sum, g) => sum.add(g), new THREE.Vector3()).multiplyScalar(1 / grips.length).sub(base);
+      toward.y = 0;
+      const axis = up.clone().cross(toward);
+      if (axis.lengthSq() < 1e-8) return;
+      const parent = spine.parent?.getWorldQuaternion(new THREE.Quaternion()) ?? new THREE.Quaternion();
+      const angle = Math.min(0.32 - total, excess / height);
+      total += angle;
+      const turn = new THREE.Quaternion().setFromAxisAngle(axis.normalize(), angle);
+      spine.quaternion.premultiply(parent.clone().invert().multiply(turn).multiply(parent));
+    }
   }
 
   /**

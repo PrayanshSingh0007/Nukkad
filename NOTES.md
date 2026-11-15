@@ -9,6 +9,15 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Real-looking cars + rider polish (2026-11-15)
+
+- Owner: "make the things which are not perfect perfect and then get good cars". With the owner's OK, 2 free CC-BY packs by comrade1280 were downloaded (credited in CREDITS.md). `tools/vehicles/split.mjs` cuts them into one ~350 KB file per vehicle in `public/models/sketchfab/cars/` (512 px WebP, colour textures only; bodies opaque, decals cut-out, glass see-through). The raw packs are not in the repo.
+- `CARS` in streetLifeView.ts: hatchback = hatchback + compact, sedan = sedan + wagon, suv = suv + offroad, taxi = sedan in white, van = minivan, ambulance, truck = garbage truck, delivery = pickup. `back: true` turns a model round. This was checked from the side while driving each one, with forward on the screen's right. The Kenney cars are now only the fallback.
+- Colours: `paint: 'auto'` finds the body's main hue from the texture of the part with the most triangles (`findBodyPaint`). Other parts keep their own colours. `CAR_PAINTS` gives Bengaluru-style colours (mostly white and silver). A body with no clear hue (the black SUV) keeps its own colour. Repainted brightness is capped (×1.3) so white cars don't glow.
+- Scooters: a second paint area covers the pale panels, so the whole body takes the colour. `BodyPaint` is now a list of up to 2 areas.
+- Riders: `leanTo` bends the lower back forward, up to 0.32 rad, until the hands reach the grips. The Driving clip does not reset the spine each frame, so the previous frame's lean is undone first (`spineBefore`); without that it builds up into a hunch. The bike seat moved 8 cm forward. The auto driver now sits on the front seat with their head clear of the roof.
+- Honest limits: the cars are generic Western/Japanese shapes, not Indian models (no Swift, Innova and so on). Those on Sketchfab were either ripped from GTA mods or asked for permission. The ambulance and garbage truck are US-style. Not tested on a phone. Loading the cars adds about 4 MB.
+
 ## Premade Indian vehicles from Sketchfab (2026-11-14)
 
 - Owner: "its not coming good just use premade". With the owner's OK and their own Sketchfab sign-in, 4 free CC-BY models were downloaded to `apps/web/public/models/sketchfab/` (auto, two_wheeler, motorbike, bus). Credits are in CREDITS.md and **must stay** (CC-BY).
