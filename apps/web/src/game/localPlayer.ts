@@ -34,6 +34,16 @@ export class LocalPlayer {
   heading = 0;
   rideSpeed = 0;
   lean = 0;
+  /** Body motion from weight transfer, radians: nose up on the throttle, down on the brakes; roll in corners. */
+  bodyPitch = 0;
+  bodyRoll = 0;
+  /** Smoothed forward acceleration, m/s² (for the camera and the engine sound). */
+  longAccel = 0;
+  /** Throttle you are giving (0–1), for the engine sound. */
+  throttle = 0;
+  /** How much the tyres are sliding sideways (0 = gripping, 1 = full drift). */
+  slip = 0;
+  private yawVelocity = 0;
   private readonly physics: PhysicsWorld;
   private readonly limit: number;
   private velocityX = 0;
@@ -76,6 +86,11 @@ export class LocalPlayer {
     this.vehicle = vehicle;
     this.heading = heading;
     this.rideSpeed = 0;
+    this.yawVelocity = 0;
+    this.bodyPitch = 0;
+    this.bodyRoll = 0;
+    this.longAccel = 0;
+    this.slip = 0;
     this.velocityX = 0;
     this.velocityZ = 0;
     this.steerInput = 0;
@@ -184,25 +199,70 @@ export class LocalPlayer {
 
   private steerInput = 0;
 
-  /** One physics step of driving: throttle, brakes, a bicycle-model turn, and grip. */
+  /**
+   * One physics step of driving, tuned to feel like an arcade racer rather than a simulator:
+   * - power is strongest at low speed and fades towards top speed (air drag), and lifting off
+   *   slows you with engine braking and drag, more the faster you go;
+   * - steering is quick at low speed and calmer at speed, and the turn is limited by how much
+   *   sideways grip the tyres have (≈ 1 g), so a 250 km/h car cannot turn like a scooter;
+   * - the car's yaw has some inertia (weight) instead of snapping to the wheel;
+   * - with the handbrake the rear lets go: it rotates more and slides, and sliding scrubs speed.
+   */
   private rideStep(vehicle: VehicleSpec, moveX: number, moveY: number, groundAt: (x: number, z: number) => number): void {
     const throttle = moveY;
-    this.steerInput += (moveX - this.steerInput) * Math.min(1, STEP_S * 7);
-    let v = this.rideSpeed;
-    if (throttle > 0.05) v += (v < 0 ? vehicle.brake : vehicle.accel * (1 - Math.max(0, v) / (vehicle.maxSpeed * 1.12))) * throttle * STEP_S;
-    else if (throttle < -0.05) v -= (v > 0 ? vehicle.brake : vehicle.accel * 0.6) * -throttle * STEP_S;
-    else v -= Math.sign(v) * Math.min(Math.abs(v), (this.handbrake ? 4 : 1.2) * STEP_S);
-    this.rideSpeed = Math.min(vehicle.maxSpeed, Math.max(-vehicle.reverse, v));
+    const before = this.rideSpeed;
+    const speed = Math.abs(before);
+    const quickness = 8 - 4 * Math.min(1, speed / 40);
+    this.steerInput += (moveX - this.steerInput) * Math.min(1, STEP_S * quickness);
 
-    // Less steering lock at speed, like a real car; the turn rate follows from the wheelbase.
-    const share = Math.min(1, Math.abs(this.rideSpeed) / vehicle.maxSpeed);
-    const angle = this.steerInput * vehicle.maxSteer * (1 - 0.55 * share);
-    const yawRate = (this.rideSpeed / vehicle.wheelbase) * Math.tan(angle);
-    this.heading -= yawRate * STEP_S * (this.handbrake ? 1.35 : 1);
+    let v = before;
+    const share = Math.max(0, v) / vehicle.maxSpeed;
+    if (throttle > 0.05) {
+      if (v < -0.3) v += vehicle.brake * throttle * STEP_S;
+      else v += vehicle.accel * Math.max(0, 1 - Math.pow(share, 2.2)) * throttle * STEP_S;
+    } else if (throttle < -0.05) {
+      if (v > 0.3) v -= vehicle.brake * (1 + 0.25 * share) * -throttle * STEP_S;
+      else v -= vehicle.accel * 0.6 * -throttle * STEP_S;
+    } else {
+      const coast = 0.7 + 2.4 * share * share + (this.handbrake ? 4.5 : 0);
+      v -= Math.sign(v) * Math.min(Math.abs(v), coast * STEP_S);
+    }
+    if (this.handbrake && throttle <= 0.05) v -= Math.sign(v) * Math.min(Math.abs(v), 2 * STEP_S);
+    this.rideSpeed = Math.min(vehicle.maxSpeed, Math.max(-vehicle.reverse, v));
+    this.throttle = Math.max(0, throttle);
+
+    // The turn: bicycle model, less lock at speed, capped by tyre grip, with yaw inertia.
+    const absShare = Math.min(1, Math.abs(this.rideSpeed) / vehicle.maxSpeed);
+    const angle = this.steerInput * vehicle.maxSteer * (1 - 0.35 * absShare);
+    let targetYaw = (this.rideSpeed / vehicle.wheelbase) * Math.tan(angle);
+    const lateralGrip = (vehicle.leans ? 11 : 12.5) * (this.handbrake ? 1.6 : 1); // m/s²: about 1.2 g, arcade-friendly
+    const abs = Math.abs(this.rideSpeed);
+    if (abs > 1) targetYaw = Math.max(-lateralGrip / abs, Math.min(lateralGrip / abs, targetYaw));
+    const weight = vehicle.leans ? 12 : this.handbrake ? 4 : 7;
+    this.yawVelocity += (targetYaw * (this.handbrake ? 1.35 : 1) - this.yawVelocity) * Math.min(1, STEP_S * weight);
+    this.heading -= this.yawVelocity * STEP_S;
 
     const wantX = -Math.sin(this.heading) * this.rideSpeed;
     const wantZ = -Math.cos(this.heading) * this.rideSpeed;
     this.step(wantX, wantZ, groundAt, this.handbrake ? vehicle.driftGrip : vehicle.grip);
+
+    // Sliding: the angle between where the car points and where it goes. It scrubs speed.
+    const going = Math.hypot(this.velocityX, this.velocityZ);
+    if (going > 2) {
+      const along = (this.velocityX * wantX + this.velocityZ * wantZ) / (going * (Math.abs(this.rideSpeed) || 1));
+      this.slip += (Math.min(1, Math.max(0, 1 - along) * 4) - this.slip) * Math.min(1, STEP_S * 8);
+      this.rideSpeed *= 1 - this.slip * 0.35 * STEP_S;
+    } else this.slip *= 0.9;
+
+    // Weight transfer, for the body and the camera.
+    this.longAccel += ((this.rideSpeed - before) / STEP_S - this.longAccel) * Math.min(1, STEP_S * 6);
+    if (!vehicle.leans) {
+      const pitchTarget = Math.max(-0.05, Math.min(0.04, this.longAccel * 0.0055));
+      const rollTarget = Math.max(-0.06, Math.min(0.06, this.yawVelocity * this.rideSpeed * 0.0055));
+      this.bodyPitch += (pitchTarget - this.bodyPitch) * Math.min(1, STEP_S * 6);
+      this.bodyRoll += (rollTarget - this.bodyRoll) * Math.min(1, STEP_S * 6);
+    }
+
     // Compare with the distance we actually tried to move (the slide-smoothed velocity), not the throttle speed.
     const tried = Math.hypot(this.velocityX, this.velocityZ) * STEP_S;
     const moved = Math.hypot(this.body.x - this.previous.x, this.body.z - this.previous.z);

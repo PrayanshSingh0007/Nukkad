@@ -35,11 +35,28 @@ import type { Interior } from '../world/interiors.ts';
 import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES } from './vehicleSpecs.ts';
+import type { VehicleSpec } from './vehicleSpecs.ts';
 import type { ParkedVehicle } from '../world/streetLifeView.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
 import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
 import { Sound } from '../audio/sound.ts';
+import { SpeedLines } from './speedLines.ts';
+
+/**
+ * A simple gearbox for the engine note: gears get longer as you go up, the revs climb through
+ * each gear and drop at the change. Scooters (and the electric one) are smooth automatics.
+ */
+function engineRpm(vehicle: VehicleSpec, speed: number): number {
+  const share = Math.min(1, speed / vehicle.maxSpeed);
+  if (vehicle.code === 1 || vehicle.code === 6) return 0.3 + 0.6 * share;
+  const gears = vehicle.leans ? 5 : vehicle.maxSpeed > 40 ? 6 : 5;
+  const top = (i: number): number => vehicle.maxSpeed * Math.pow(i / gears, 0.75);
+  let gear = 1;
+  while (gear < gears && speed > top(gear) * 0.97) gear++;
+  const low = gear === 1 ? 0 : top(gear - 1) * 0.75;
+  return 0.25 + 0.75 * Math.min(1, Math.max(0, (speed - low) / (top(gear) - low)));
+}
 import type { GameScene } from './scene.ts';
 
 export interface GameStatus {
@@ -144,6 +161,9 @@ export class Game {
   private driveHint: string | null = null;
   private lastDragAt = 0;
   private static readonly BASE_FOV = 62;
+  /** Camera pull-back from acceleration (metres; negative = pushed in by braking). */
+  private cameraLag = 0;
+  private readonly speedLines: SpeedLines;
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -152,6 +172,7 @@ export class Game {
     this.view3d = createGameScene(options.canvas, { antialias: QUALITY[this.level].antialias });
     this.input = new PlayerInput(options.canvas, options.stick);
     this.rig = new CameraRig(this.view3d.camera);
+    this.speedLines = new SpeedLines(options.canvas.parentElement ?? document.body);
     this.remotes = new RemotePlayers(this.view3d.scene);
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
     this.view3d.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -723,11 +744,11 @@ export class Game {
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       if (this.driveMesh) {
         this.driveMesh.position.set(player.x, player.y, player.z);
-        this.driveMesh.rotation.set(0, player.heading, player.lean);
+        this.driveMesh.rotation.set(player.bodyPitch, player.heading, player.lean + player.bodyRoll);
       }
       this.updateDriveHint();
       const riding = player.vehicle;
-      this.sound.engine(riding ? Math.abs(player.rideSpeed) / riding.maxSpeed : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine');
+      this.sound.engine(riding ? engineRpm(riding, Math.abs(player.rideSpeed)) : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine', player.throttle);
       this.speedClock += dt;
       if (this.speedClock > 0.1) {
         this.speedClock = 0;
@@ -755,17 +776,28 @@ export class Game {
       const [cx, cz] = chunkAt(player.x, player.z, streamer.settings);
       if (!this.collidersComplete || this.colliderChunk !== `${cx},${cz}`) this.syncColliders(player.x, player.z);
 
-      // On the scooter the camera swings in behind you (unless you just dragged the view),
-      // and widens a little with speed — the "FOV kick" that makes speed feel fast.
+      // Driving camera, tuned for the feeling of speed (like racing games):
+      // - it swings in behind you (unless you just dragged the view) and drops a little lower;
+      // - the field of view opens with real speed (km/h, not the vehicle's share), plus a kick
+      //   when you floor it; the camera lags back as you accelerate and pushes in as you brake;
+      // - a little road shake that grows with speed, and speed lines at the screen edges.
       const camera = this.view3d.camera;
       const vehicle = player.vehicle;
-      const speedShare = vehicle ? Math.min(1, Math.abs(player.rideSpeed) / vehicle.maxSpeed) : 0;
-      if (player.riding && Math.abs(player.rideSpeed) > 1 && now - this.lastDragAt > 1500) {
+      const kmh = vehicle ? Math.abs(player.rideSpeed) * 3.6 : 0;
+      const fast = Math.min(1, kmh / 260);
+      const ease = fast * (2 - fast); // fast at first, then levelling off
+      const dragged = now - this.lastDragAt < 1500;
+      if (player.riding && Math.abs(player.rideSpeed) > 1 && !dragged) {
         const behind = player.rideSpeed >= 0 ? player.heading : player.heading + Math.PI;
-        this.rig.yaw += Math.atan2(Math.sin(behind - this.rig.yaw), Math.cos(behind - this.rig.yaw)) * Math.min(1, dt * 2.5);
+        this.rig.yaw += Math.atan2(Math.sin(behind - this.rig.yaw), Math.cos(behind - this.rig.yaw)) * Math.min(1, dt * (2.5 + fast * 2));
+        const pitch = -0.27 + ease * 0.09;
+        this.rig.pitch += (pitch - this.rig.pitch) * Math.min(1, dt * 1.5);
       }
-      this.rig.distance = (vehicle ? vehicle.cameraDistance : inside ? 3.4 : 5.2) + speedShare * 1.3;
-      const fov = Game.BASE_FOV + speedShare * 14;
+      const lagTarget = vehicle ? Math.max(-0.7, Math.min(1.1, player.longAccel * 0.09)) : 0;
+      this.cameraLag += (lagTarget - this.cameraLag) * Math.min(1, dt * 3);
+      this.rig.distance = (vehicle ? vehicle.cameraDistance : inside ? 3.4 : 5.2) + ease * 1.4 + this.cameraLag;
+      const kick = vehicle ? Math.max(0, Math.min(5, player.longAccel * 0.45)) * player.throttle : 0;
+      const fov = Game.BASE_FOV + ease * 20 + kick;
       if (Math.abs(camera.fov - fov) > 0.05) {
         camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
         camera.updateProjectionMatrix();
@@ -773,6 +805,14 @@ export class Game {
 
       const body = player.body.collider;
       this.rig.update(player.x, player.y, player.z, dt, (ox, oy, oz, dx, dy, dz, max) => physics.castRay(ox, oy, oz, dx, dy, dz, max, body), groundAt);
+      if (vehicle && kmh > 5) {
+        // Road shake: a few mixed sine waves (no randomness, so it never jerks), more when sliding.
+        const t = now / 1000;
+        const amount = (0.004 + 0.03 * fast * fast) * (1 + player.slip * 1.5) * (vehicle.leans ? 0.7 : 1);
+        camera.position.x += (Math.sin(t * 37.1) + Math.sin(t * 23.7) * 0.6) * amount;
+        camera.position.y += (Math.sin(t * 41.3) * 0.8 + Math.sin(t * 17.9) * 0.5) * amount;
+      }
+      this.speedLines.update(vehicle ? kmh : 0, dt);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);

@@ -84,20 +84,23 @@ export class Sound {
   }
 
   /**
-   * Engine hum. `share` = speed as a share of top speed (0–1); `kind` = 'none' on foot,
-   * 'electric' for your own scooter (a soft whine), 'engine' for everything else.
+   * Engine note. `rpm` = engine speed as a share of the rev range (0–1; the game runs a simple
+   * gearbox so it climbs and drops at each gear change); `load` = throttle (0–1), which makes it
+   * louder and brighter; `kind` = 'none' on foot, 'electric' for your own scooter (a soft
+   * whine), 'engine' for everything else.
    */
-  engine(share: number, kind: 'none' | 'electric' | 'engine'): void {
+  engine(rpm: number, kind: 'none' | 'electric' | 'engine', load = 0): void {
     const context = this.context;
     if (!context || !this.engineGain || !this.engineFilter) return;
     const now = context.currentTime;
-    const s = Math.min(1, Math.max(0, share));
+    const r = Math.min(1, Math.max(0, rpm));
+    const l = Math.min(1, Math.max(0, load));
     const electric = kind === 'electric';
-    const base = electric ? 140 + s * 420 : 46 + s * 105;
-    this.engineOscs[0]?.frequency.setTargetAtTime(base, now, 0.08);
-    this.engineOscs[1]?.frequency.setTargetAtTime(base * 2.01, now, 0.08);
-    this.engineFilter.frequency.setTargetAtTime(electric ? 900 + s * 1200 : 320 + s * 900, now, 0.1);
-    const level = kind === 'none' || this.muted ? 0 : electric ? 0.015 + s * 0.03 : 0.05 + s * 0.05;
-    this.engineGain.gain.setTargetAtTime(level, now, 0.12);
+    const base = electric ? 140 + r * 420 : 42 + r * 150;
+    this.engineOscs[0]?.frequency.setTargetAtTime(base, now, 0.05);
+    this.engineOscs[1]?.frequency.setTargetAtTime(base * 2.01, now, 0.05);
+    this.engineFilter.frequency.setTargetAtTime(electric ? 900 + r * 1200 : 300 + r * 1500 * (0.55 + 0.45 * l), now, 0.06);
+    const level = kind === 'none' || this.muted ? 0 : electric ? 0.015 + r * 0.03 : 0.04 + r * 0.05 + l * 0.03;
+    this.engineGain.gain.setTargetAtTime(level, now, 0.08);
   }
 }

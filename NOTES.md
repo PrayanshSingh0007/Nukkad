@@ -9,6 +9,27 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Handling and speed feel (2026-11-15)
+
+- Owner: "make the handling better and make the speed feel real like in games like FH6". An original arcade feel, no copied assets.
+- **Physics** (`LocalPlayer.rideStep`):
+  - Power fades towards top speed (`1 − share^2.2`), and lifting off slows you with drag (`0.7 + 2.4·share²` m/s²).
+  - Brakes are a little stronger at speed.
+  - Steering is quick at low speed and calmer at high speed.
+  - The turn is capped by tyre grip: about 12.5 m/s² for cars, 11 for bikes, ×1.6 with the handbrake.
+  - Yaw has inertia (weight), sliding scrubs speed (`slip`), and the handbrake still drifts.
+- **Body motion:** `bodyPitch` (nose up on the throttle, down on the brakes) and `bodyRoll` (outward in corners, checked) are applied to the car you drive. Bikes keep their lean.
+- **Camera** (`game.ts`):
+  - The field of view follows real km/h (62° → 82°), plus a kick when you floor it.
+  - The camera pulls back when you accelerate and pushes in when you brake (`cameraLag`), sits lower at speed, and swings in faster at speed.
+  - Road shake (sine waves, no random jerks) grows with speed and with sliding.
+- **Speed lines:** `speedLines.ts`, a half-resolution 2D canvas over the game. They start at 70 km/h and peak at 250.
+- **Engine sound:** a simple gearbox (`engineRpm`: 5–6 gears, longer as you go up) makes the note climb and drop at each change. Throttle makes it louder and brighter. Scooters are smooth automatics.
+- Honest limits:
+  - Only checked by short automated drives. The test streets are narrow, so a full 250 km/h run wasn't done.
+  - No skid marks, tyre smoke or real motion blur yet.
+  - Not tested on a phone. The speed-lines canvas is cheap, but it's an extra layer.
+
 ## More cars, more colours, always day, faster vehicles (2026-11-15)
 
 - **Always day:** `Atmosphere.override` starts at `DAY_HOUR` (16:00) instead of following the real clock (owner: "stop making the time according to the time of the day"). The debug slider still moves it, and setting it to null brings the real clock back.
