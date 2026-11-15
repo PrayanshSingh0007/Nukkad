@@ -9,7 +9,7 @@ import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ }
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
-import { Atmosphere } from '../atmosphere/atmosphere.ts';
+import { Atmosphere, DAY_HOUR } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
 import { StatsMeter, formatStats } from '../debug/statsHud.ts';
@@ -168,7 +168,7 @@ export class Game {
         saveQuality(level);
         this.setQuality(level);
       },
-      (hour) => (this.atmosphere.override = hour),
+      (hour) => (this.atmosphere.override = hour ?? DAY_HOUR),
     );
     this.meter = new StatsMeter(this.view3d.renderer, (stats) => {
       const lines = formatStats(stats, this.debugLines());

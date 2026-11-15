@@ -12,7 +12,7 @@ import type { RoomRecord, RoomStore } from '../store/roomStore.ts';
 export const AWAY_AFTER_MS = 10_000; // silent this long → others see you as "reconnecting…"
 export const FREE_AFTER_MS = 60_000; // gone this long → your slot is free again
 export const ROOM_TTL_MS = 24 * 60 * 60 * 1000; // an empty room's link keeps working this long
-const MAX_SPEED = 25; // m/s — faster than any walk or scooter ride
+const MAX_SPEED = 75; // m/s (270 km/h) — faster than the fastest car (250 km/h)
 const MOVE_SLACK_M = 3;
 const AREA_LIMIT_M = 640; // area half size (600) + margin
 

@@ -9,6 +9,26 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## More cars, more colours, always day, faster vehicles (2026-11-15)
+
+- **Always day:** `Atmosphere.override` starts at `DAY_HOUR` (16:00) instead of following the real clock (owner: "stop making the time according to the time of the day"). The debug slider still moves it, and setting it to null brings the real clock back.
+- **More cars:**
+  - Parking now runs every 4–12 m (was 5–26) and skips 12 % of spots (was 35 %). It also uses tertiary streets.
+  - The parked mix is more cars and fewer two-wheelers. `MAX_VEHICLES` is 6000. Traffic has 70 routes (was 40) with more cars in the mix.
+  - One test area went from fewer to about 3,400 parked vehicles.
+- **Light models:**
+  - `<car>_lod.glb` is about 3–4k triangles, made with `slim.mjs <car>.glb <car>_lod.glb 3000 0.08` from the cleaned game files, so the logo fixes carry over.
+  - The nearest 6 of each type use the full model (`NEAR_FULL`) and the rest use the light one. Shadows and moving traffic use the light one.
+- **More colours:**
+  - Variants are now 0–63 (were 0–7) in parking and traffic.
+  - `CAR_PAINTS` has 26 colours (mostly white, silver and grey). Two-wheelers have 16, bikes 14 and autos 12.
+  - The Thar (red window) and Seltos (pale-panel window) now take colours too. Their lights may pick up a little tint.
+- **Speeds** (owner's numbers): bike 150 km/h, scooters 90, hatchbacks and taxis 180, SUVs 200, sedans (City, BMW) 250. Acceleration and brakes were raised to match. The server's plausibility limit went from 25 to 75 m/s.
+  - The wire format still carries speed in one byte (max 25.5 m/s). That only affects friends' riding animation; positions are exact.
+- Honest limits:
+  - Not tested on a phone. Medium quality can now show 100+ vehicles, about half of them light versions.
+  - Fast driving was only tried briefly (0 to 80 km/h in about 2 s before a wall). The physics was never tested at 250 km/h, so going through thin walls is possible.
+
 ## Indian car models (2026-11-15)
 
 - Owner asked for "indian models like fortuner, BMW, scorpio, creta, innova, swift". **No usable free Fortuner, Innova, Swift or Scorpio exists**: on Sketchfab they are GTA-mod rips (BHP3D), spam/re-uploads (David_Holiday, shreyanshchaurasia13, re-uploads of ddiaz-design's non-commercial work) or bare shells. With the owner's OK we use 9 clean CC-BY models instead (CREDITS.md): Honda City, Hyundai Creta, Kia Seltos, Maruti WagonR, Mahindra Thar, Tata Nano, BMW 3 Series (E46), Tata Signa truck, a Tata Ace-style mini-truck.

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { STALL_STRIDE, STOP_STRIDE, TANK_STRIDE, VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, VEHICLE_STRIDE } from '@nukkad/worldgen';
 import type { PropSet } from '@nukkad/worldgen';
 import { loadModel, loadTexturedModel } from './models.ts';
-import type { TexturedFit } from './models.ts';
+import type { BodyPaint, TexturedFit } from './models.ts';
 import { createVehicleMaterial, streetModel } from './vehicleModels.ts';
 
 /** A solid box for the physics: centre, half sizes, turn around the up axis. */
@@ -24,12 +24,18 @@ const NO_PAINT = new Set(['auto', 'bus']);
  * Pure white keeps the model's own paint.
  */
 /** Car colours as seen on Bengaluru roads: mostly white and silver, then grey, red, blue, black. */
-const CAR_PAINTS = ['#f1f1ee', '#b9bcc0', '#e9e9e6', '#5d6166', '#a3261f', '#24427a', '#18191b', '#8a6f4f'].map((hex) => new THREE.Color(hex));
+const CAR_PAINTS = [
+  // Mostly white, silver and grey, like Bengaluru traffic, then a wide spread of colours.
+  '#f1f1ee', '#ebebe7', '#f4f2ec', '#c9ccd0', '#b9bcc0', '#a7abb0', '#7d8287', '#5d6166', '#3a3d41',
+  '#18191b', '#a3261f', '#c0392b', '#6e1a22', '#24427a', '#2f5fa8', '#5c8fc9', '#1d5c63', '#8a6f4f',
+  '#b49a74', '#d8c9a8', '#c46a1f', '#d9a520', '#2e5e3a', '#6b8f3a', '#4a3a6b', '#7a7f5a',
+].map((hex) => new THREE.Color(hex));
 const BODY_PAINTS: Record<string, THREE.Color[]> = Object.fromEntries(
   Object.entries({
-    auto: ['#ffffff', '#1f7a3a', '#2a8d46', '#ffffff', '#18262b', '#1f7a3a', '#2b6f8f', '#ffffff'],
-    two_wheeler: ['#ffffff', '#a8231c', '#2f5aa8', '#e9e7e0', '#1b1d20', '#8a8f96', '#5f9e8f', '#7a1f2b'],
-    motorbike: ['#ffffff', '#151617', '#5c1820', '#3d4b2c', '#1f2f55', '#8a8f96', '#151617', '#ffffff'],
+    // Autos: Bengaluru green with a few black, blue and electric ones; pure white keeps the model's own.
+    auto: ['#ffffff', '#1f7a3a', '#2a8d46', '#ffffff', '#18262b', '#1f7a3a', '#2b6f8f', '#ffffff', '#3f9a50', '#16653a', '#5aa66a', '#f0f0ea'],
+    two_wheeler: ['#ffffff', '#a8231c', '#2f5aa8', '#e9e7e0', '#1b1d20', '#8a8f96', '#5f9e8f', '#7a1f2b', '#d9a520', '#c46a1f', '#5c8fc9', '#2e5e3a', '#b9bcc0', '#6b2c5e', '#f4f2ec', '#3a3d41'],
+    motorbike: ['#ffffff', '#151617', '#5c1820', '#3d4b2c', '#1f2f55', '#8a8f96', '#151617', '#ffffff', '#a3261f', '#c46a1f', '#2f5fa8', '#d9d9d4', '#4a4f55', '#7a6a3a'],
     bus: ['#ffffff', '#2f7a3a', '#a8231c', '#ffffff', '#3a3f8f', '#ffffff', '#2f7a3a', '#ffffff'],
     // Bengaluru taxis are white (yellow number plates).
     taxi: ['#f1f1ee', '#f1f1ee', '#e8e8e4', '#f1f1ee', '#f1f1ee', '#e8e8e4', '#f1f1ee', '#f1f1ee'],
@@ -61,6 +67,10 @@ interface Kind {
   material?: THREE.MeshStandardMaterial[];
   /** The textured body takes each copy's colour. */
   painted?: boolean;
+  /** A light (~3k triangle) version for all but the nearest copies, and for traffic. */
+  lodPath?: string;
+  lod?: THREE.InstancedMesh | null;
+  lodMaterial?: THREE.MeshStandardMaterial[];
   items: Item[];
   /** Half sizes for the solid box (0 = you can walk through it). */
   half: [number, number, number];
@@ -70,6 +80,8 @@ interface Kind {
 }
 
 const MAX_SHOWN = 60; // per kind, nearest first
+/** This many nearest copies of each kind use the full model; the rest use the light one. */
+const NEAR_FULL = 6;
 
 /**
  * Cars: Indian models from Sketchfab (CC-BY, credited in CREDITS.md), slimmed for phones by
@@ -77,7 +89,7 @@ const MAX_SHOWN = 60; // per kind, nearest first
  * picked by the colour variant; real lengths in metres. `paint` names the body paint material
  * (otherwise the body colour is found from the texture; null = keep the model's own colours).
  */
-const CARS: Record<string, { file: string; length: number; back?: true; paint?: RegExp | null }[]> = {
+const CARS: Record<string, { file: string; length: number; back?: true; paint?: RegExp | null; windows?: BodyPaint }[]> = {
   hatchback: [
     { file: 'wagonr', length: 3.65, back: true, paint: /^Car_Paint/ },
     { file: 'nano', length: 3.1, back: true, paint: /^carpaint/ },
@@ -88,8 +100,8 @@ const CARS: Record<string, { file: string; length: number; back?: true; paint?: 
   ],
   suv: [
     { file: 'creta', length: 4.3, back: true, paint: /^carpaint/ },
-    { file: 'seltos', length: 4.36, back: true },
-    { file: 'thar', length: 3.99, back: true, paint: null },
+    { file: 'seltos', length: 4.36, back: true, windows: [{ hue: 0, range: 360, minSat: 0, maxSat: 0.12, minVal: 0.62, ref: 0.56 }] },
+    { file: 'thar', length: 3.99, back: true, windows: [{ hue: 358, range: 16, minSat: 0.45, ref: 0.11 }] },
   ],
   taxi: [{ file: 'city', length: 4.44, back: true, paint: /^Body$/ }],
   van: [{ file: 'minivan', length: 4.8 }],
@@ -149,7 +161,7 @@ export class StreetLifeView {
       const sketchfab = SKETCHFAB[name];
       if (sketchfab) return [{ name, textured: { path: `/models/sketchfab/${name}.glb`, fit: sketchfab }, items: [], half, mesh: null, shadow: null }];
       const cars = CARS[name];
-      if (cars) return cars.map(({ file, length, back, paint }) => ({ name, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: paint === null ? undefined : ('auto' as const), paintMaterial: paint ?? undefined } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
+      if (cars) return cars.map(({ file, length, back, paint, windows }) => ({ name, lodPath: file === 'signa' ? undefined : `/models/sketchfab/cars/${file}_lod.glb`, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: windows ?? (paint === null ? undefined : ('auto' as const)), paintMaterial: paint ?? undefined } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
       const kenney = KENNEY[name];
       if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
       return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, fit: { width: kenney.width, turn: Math.PI } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
@@ -197,6 +209,23 @@ export class StreetLifeView {
         kind.shadow = shadow;
         this.group.add(mesh, shadow);
         this.lastAt = null; // fill it on the next update
+        if (kind.lodPath && kind.textured) {
+          void loadTexturedModel(kind.lodPath, kind.textured.fit).then((light) => {
+            if (!light) return;
+            for (const m of light.material) m.envMap = this.material.envMap;
+            const lod = new THREE.InstancedMesh(light.geometry, light.material, Math.min(MAX_SHOWN, kind.items.length));
+            lod.count = 0;
+            lod.receiveShadow = true;
+            lod.frustumCulled = false;
+            kind.lod = lod;
+            kind.lodMaterial = light.material;
+            // Shadows from the light version too: nobody can tell, and it is far cheaper.
+            shadow.geometry = light.geometry;
+            shadow.material = light.material;
+            this.group.add(lod);
+            this.lastAt = null;
+          });
+        }
       });
     }
   }
@@ -238,22 +267,32 @@ export class StreetLifeView {
       }
       const mesh = kind.mesh;
       if (!mesh) continue;
+      const lod = kind.lod ?? null;
       const shown = Math.min(near.length, mesh.instanceMatrix.count);
+      const full = lod ? Math.min(NEAR_FULL, shown) : shown;
       for (let i = 0; i < shown; i++) {
         const item = near[i].item;
+        const target = i < full ? mesh : (lod as THREE.InstancedMesh);
+        const slot = i < full ? i : i - full;
         rotation.setFromAxisAngle(up, item.rotation);
-        mesh.setMatrixAt(i, matrix.compose(position.set(item.x, item.y, item.z), rotation, one));
+        target.setMatrixAt(slot, matrix.compose(position.set(item.x, item.y, item.z), rotation, one));
         const paint = this.paintOf(kind, item.variant);
-        if (paint) mesh.setColorAt(i, paint);
+        if (paint) target.setColorAt(slot, paint);
       }
-      mesh.count = shown;
+      mesh.count = full;
       mesh.instanceMatrix.needsUpdate = true;
+      if (lod) {
+        lod.count = shown - full;
+        lod.instanceMatrix.needsUpdate = true;
+        if (lod.instanceColor) lod.instanceColor.needsUpdate = true;
+      }
       const shadow = kind.shadow;
       if (shadow) {
         let casting = 0;
         while (casting < shown && casting < shadow.instanceMatrix.count && near[casting].d < this.shadowRadius) {
-          mesh.getMatrixAt(casting, matrix);
-          shadow.setMatrixAt(casting, matrix);
+          const item = near[casting].item;
+          rotation.setFromAxisAngle(up, item.rotation);
+          shadow.setMatrixAt(casting, matrix.compose(position.set(item.x, item.y, item.z), rotation, one));
           casting++;
         }
         shadow.count = casting;
@@ -268,7 +307,7 @@ export class StreetLifeView {
   setNight(night: number): void {
     this.material.envMapIntensity = 0.1 + 0.3 * (1 - night); // gentle: the studio reflection washes colours out
     // Kenney's light colours already look bright; their reflections are kept softer.
-    for (const kind of this.kinds) for (const m of kind.material ?? []) m.envMapIntensity = this.material.envMapIntensity * 1.2;
+    for (const kind of this.kinds) for (const m of [...(kind.material ?? []), ...(kind.lodMaterial ?? [])]) m.envMapIntensity = this.material.envMapIntensity * 1.2;
   }
 
   /** The nearest parked vehicle within `reach` metres whose model is loaded, or null. */
@@ -313,8 +352,10 @@ export class StreetLifeView {
   /** The first loaded model of a vehicle type (to show friends' vehicles). */
   /** The colour a copy is drawn in: null = the model's own colours. */
   private paintOf(kind: Kind, variant: number): THREE.Color | null {
-    if (kind.material) return kind.painted ? (BODY_PAINTS[kind.name] ?? CAR_PAINTS)[variant % 8] : null;
-    return NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[variant % PAINTS.length];
+    if (!kind.material) return NO_PAINT.has(kind.name) ? PAINTS[0] : PAINTS[variant % PAINTS.length];
+    if (!kind.painted) return null;
+    const palette = BODY_PAINTS[kind.name] ?? CAR_PAINTS;
+    return palette[variant % palette.length];
   }
 
   /** Colour for a moving vehicle of this type (traffic), or null to keep the model's own. */
@@ -325,7 +366,10 @@ export class StreetLifeView {
 
   modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null {
     const kind = this.kinds.find((k) => k.name === name && k.mesh);
-    return kind?.mesh ? { geometry: kind.mesh.geometry, material: kind.material ?? this.material } : null;
+    if (!kind?.mesh) return null;
+    // Moving traffic and friends' vehicles use the light version once it is loaded.
+    if (kind.lod && kind.lodMaterial) return { geometry: kind.lod.geometry, material: kind.lodMaterial };
+    return { geometry: kind.mesh.geometry, material: kind.material ?? this.material };
   }
 
   dispose(): void {

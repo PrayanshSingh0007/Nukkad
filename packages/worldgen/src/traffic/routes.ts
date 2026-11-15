@@ -39,14 +39,14 @@ export interface TrafficPose {
 
 /** Traffic mix on a Bengaluru main road: lots of two-wheelers and autos. Kind indexes follow VEHICLE_KINDS. */
 function pickKind(roll: number): number {
-  if (roll < 0.26) return 4; // scooter
-  if (roll < 0.34) return 11; // motorbike
-  if (roll < 0.52) return 3; // auto
-  if (roll < 0.62) return 0; // hatchback
-  if (roll < 0.7) return 1; // sedan
-  if (roll < 0.77) return 2; // SUV
-  if (roll < 0.83) return 6; // taxi
-  if (roll < 0.88) return 7; // van
+  if (roll < 0.18) return 4; // scooter
+  if (roll < 0.25) return 11; // motorbike
+  if (roll < 0.38) return 3; // auto
+  if (roll < 0.54) return 0; // hatchback
+  if (roll < 0.66) return 1; // sedan
+  if (roll < 0.78) return 2; // SUV
+  if (roll < 0.84) return 6; // taxi
+  if (roll < 0.87) return 7; // van
   if (roll < 0.92) return 10; // delivery tempo
   if (roll < 0.95) return 9; // truck
   if (roll < 0.96) return 8; // ambulance
@@ -183,7 +183,7 @@ function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficR
       lane: rules.lane(line.w, random),
       speed: rules.speed(line.kind, kind, random),
       kind,
-      variant: Math.floor(random() * 8),
+      variant: Math.floor(random() * 64),
       offset: random() * length * 2,
     });
   }

@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { localHour, skyDirection, sunPosition } from '@nukkad/shared';
+
+/** The fixed time of day the game shows (4 pm: bright, with soft long shadows). */
+export const DAY_HOUR = 16;
 import { Sky } from './sky.ts';
 
 /**
@@ -71,8 +74,12 @@ export class Atmosphere {
   clock = '';
   /** Direction the light comes from (sun by day, moon by night), unit length. */
   readonly lightDir = new THREE.Vector3(0, 1, 0);
-  /** Hours on the place's clock to show instead of now (debug slider and, later, photo mode). */
-  override: number | null = null;
+  /**
+   * Hours on the place's clock to show instead of now. The owner wants it always day, so it
+   * starts at a fixed afternoon (DAY_HOUR) instead of following the real clock; the debug slider
+   * can still move it. null = follow the real local time.
+   */
+  override: number | null = DAY_HOUR;
   private readonly sun: THREE.DirectionalLight;
   private readonly ambient: THREE.HemisphereLight;
   private readonly fog: THREE.Fog;

@@ -27,7 +27,7 @@ export const VEHICLE_HALF: [number, number][] = [
 ];
 export const VEHICLE_HEIGHT = [1.5, 1.45, 1.75, 1.75, 1.1, 3.2, 1.6, 1.6, 2.3, 1.85, 3.0, 1.15];
 
-/** Per vehicle: x, y, z, rotation, kind, colour variant (0–7). */
+/** Per vehicle: x, y, z, rotation, kind, colour variant (0–63). */
 export const VEHICLE_STRIDE = 6;
 /** Per stall / bus stop: x, y, z, rotation. */
 export const STALL_STRIDE = 4;
@@ -39,23 +39,23 @@ export interface StreetLife {
   stops: Float32Array;
 }
 
-const PARKING_STREETS = new Set<LineKind>(['residential', 'living', 'service']); // main roads carry moving traffic
+const PARKING_STREETS = new Set<LineKind>(['residential', 'living', 'service', 'tertiary']); // bigger roads carry moving traffic
 const BUS_STREETS = new Set<LineKind>(['primary', 'secondary', 'tertiary']);
-const MAX_VEHICLES = 3000; // only the ones near the player are drawn
+const MAX_VEHICLES = 6000; // only the ones near the player are drawn
 const STOP_SPACING_M = 320;
 
-/** Kerbside parking mix, roughly like a Bengaluru side street: lots of two-wheelers. */
+/** Kerbside parking mix, roughly like a Bengaluru side street: lots of cars and two-wheelers. */
 function pickParked(roll: number): number {
-  if (roll < 0.3) return VEHICLE.twoWheeler;
-  if (roll < 0.4) return VEHICLE.motorbike;
-  if (roll < 0.55) return VEHICLE.hatchback;
-  if (roll < 0.65) return VEHICLE.sedan;
-  if (roll < 0.74) return VEHICLE.suv;
-  if (roll < 0.83) return VEHICLE.auto;
-  if (roll < 0.88) return VEHICLE.taxi;
-  if (roll < 0.93) return VEHICLE.van;
-  if (roll < 0.96) return VEHICLE.delivery;
-  if (roll < 0.985) return VEHICLE.truck;
+  if (roll < 0.18) return VEHICLE.twoWheeler;
+  if (roll < 0.25) return VEHICLE.motorbike;
+  if (roll < 0.43) return VEHICLE.hatchback;
+  if (roll < 0.57) return VEHICLE.sedan;
+  if (roll < 0.72) return VEHICLE.suv;
+  if (roll < 0.8) return VEHICLE.auto;
+  if (roll < 0.86) return VEHICLE.taxi;
+  if (roll < 0.9) return VEHICLE.van;
+  if (roll < 0.95) return VEHICLE.delivery;
+  if (roll < 0.99) return VEHICLE.truck;
   return VEHICLE.ambulance;
 }
 
@@ -93,9 +93,9 @@ export function placeStreetLife(pack: AreaPack, terrain: TerrainGrid, occupancy:
     const half = line.w / 2;
     // Parked along the kerb, on both sides, facing the way the street runs.
     if (PARKING_STREETS.has(line.kind) && line.w >= 3.4) {
-      walk(pts, hash32(line.id, 90), 5, 26, (x, z, dx, dz, n) => {
+      walk(pts, hash32(line.id, 90), 4, 12, (x, z, dx, dz, n) => {
         const seed = hash32(line.id, 91 + n);
-        if (vehicles.length / VEHICLE_STRIDE >= MAX_VEHICLES || hash01(seed, 1) < 0.35) return;
+        if (vehicles.length / VEHICLE_STRIDE >= MAX_VEHICLES || hash01(seed, 1) < 0.12) return;
         const kind = pickParked(hash01(seed, 2));
         const side = hash01(seed, 3) < 0.5 ? 1 : -1;
         const offset = Math.max(0.6, half - VEHICLE_HALF[kind][0] - 0.25) * side;
@@ -104,7 +104,7 @@ export function placeStreetLife(pack: AreaPack, terrain: TerrainGrid, occupancy:
         // Not inside a building, and not where a crossing road or a car already is.
         if (!inside(px, pz) || occupancy.isBlocked(px, pz, 0.3, -1000) || occupancy.roadsAt(px, pz, 2.5) > 1) return;
         const rotation = Math.atan2(-dx, -dz) + (hash01(seed, 4) < 0.5 ? 0 : Math.PI);
-        vehicles.push(px, heightAt(terrain, px, pz), pz, rotation, kind, Math.floor(hash01(seed, 5) * 8));
+        vehicles.push(px, heightAt(terrain, px, pz), pz, rotation, kind, Math.floor(hash01(seed, 5) * 64));
       });
     }
     // Bus stops on main roads, with a bus waiting at some of them.
@@ -120,7 +120,7 @@ export function placeStreetLife(pack: AreaPack, terrain: TerrainGrid, occupancy:
         if (hash01(seed, 2) < 0.4) {
           const bx = x - dz * (half - 1.5) * side;
           const bz = z + dx * (half - 1.5) * side;
-          vehicles.push(bx, heightAt(terrain, bx, bz), bz, Math.atan2(-dx, -dz), VEHICLE.bus, Math.floor(hash01(seed, 3) * 8));
+          vehicles.push(bx, heightAt(terrain, bx, bz), bz, Math.atan2(-dx, -dz), VEHICLE.bus, Math.floor(hash01(seed, 3) * 64));
         }
       });
     }

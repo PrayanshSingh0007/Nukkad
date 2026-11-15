@@ -83,7 +83,7 @@ async function load(url: string): Promise<void> {
       water,
       props,
       places: pack.places,
-      traffic: buildTrafficRoutes(pack, 40),
+      traffic: buildTrafficRoutes(pack, 70),
       walkers: buildWalkRoutes(pack, 160),
       doors: world.doors,
     },
