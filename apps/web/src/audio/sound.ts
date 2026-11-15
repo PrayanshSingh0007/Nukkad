@@ -24,13 +24,20 @@ export class Sound {
   /** Call from a tap or key press. Safe to call many times. */
   unlock(): void {
     if (this.context) {
-      if (this.context.state === 'suspended') void this.context.resume();
+      if (this.context.state === 'suspended' && document.visibilityState === 'visible') void this.context.resume();
       return;
     }
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return;
     const context = new Ctor();
     this.context = context;
+    // Silence when the tab is hidden or closed; back when you return to it.
+    const follow = (): void => {
+      if (document.visibilityState === 'hidden') void context.suspend();
+      else void context.resume();
+    };
+    document.addEventListener('visibilitychange', follow);
+    window.addEventListener('pagehide', () => void context.suspend());
     this.master = context.createGain();
     this.master.gain.value = 0.5;
     this.master.connect(context.destination);
@@ -101,6 +108,11 @@ export class Sound {
     this.engineOscs[1]?.frequency.setTargetAtTime(base * 2.01, now, 0.05);
     this.engineFilter.frequency.setTargetAtTime(electric ? 900 + r * 1200 : 300 + r * 1500 * (0.55 + 0.45 * l), now, 0.06);
     const level = kind === 'none' || this.muted ? 0 : electric ? 0.015 + r * 0.03 : 0.04 + r * 0.05 + l * 0.03;
-    this.engineGain.gain.setTargetAtTime(level, now, 0.08);
+    const gain = this.engineGain.gain;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(level, now, 0.08);
+    // Watchdog: the game calls this every frame; if the frames stop (tab in the background,
+    // game paused), the engine fades out by itself instead of droning on.
+    gain.setTargetAtTime(0, now + 0.35, 0.1);
   }
 }

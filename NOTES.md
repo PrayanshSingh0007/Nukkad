@@ -9,6 +9,25 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## Nukkad Expressway, quiet highways, handling, sound fix (2026-11-15)
+
+- **Nukkad Expressway** (`packages/worldgen/src/roads/expressway.ts`):
+  - What it is: our own elevated 20 m-wide motorway, so there's room to test top speed. It's a straight line across the area with 70 m ramps at both ends and a 6.5 m deck (the usual flyover code, `b: 1`).
+  - Where it goes: it tries 16 angles × 5 offsets and keeps the line with the least building height per metre.
+  - What it clears: buildings, trees, lamps, benches, compound walls and places within 14 m of its centre line.
+  - How it's added: in the world worker straight after `decodePack`, so the server, cache and `PACK_VERSION` are unchanged and every player in the same place gets the same road. It's skipped for areas smaller than 245 m half-size.
+  - Test result: a BMW went 0 → 246 km/h in about 12 s over about 750 m, with no traffic in the way.
+- **Quiet highways:** traffic routes that would start on a motorway are re-drawn 90 % of the time (trunk and flyovers 75 %, primary 50 %).
+- **Handling:**
+  - Hitting things keeps the forward part of the speed (×0.97). Grazing walls and kerbs slides on; a head-on hit stops you. The old "×0.6 on any bump" rule is gone.
+  - Stability assist: when sliding without the handbrake or steering into it, the car lines up with where it's going.
+- **Sound fix:** the engine note fades out by itself if it isn't refreshed within 0.35 s (game frames stopped). The audio context is suspended when the tab is hidden or closed, and resumed when you come back.
+- Honest limits:
+  - The expressway's two ends just ramp down to the ground. They aren't joined to streets with proper junctions.
+  - The deck has only a centre line (no lane lines yet).
+  - It clears real buildings in its path.
+  - The sound fix was not heard on a real device.
+
 ## Handling and speed feel (2026-11-15)
 
 - Owner: "make the handling better and make the speed feel real like in games like FH6". An original arcade feel, no copied assets.

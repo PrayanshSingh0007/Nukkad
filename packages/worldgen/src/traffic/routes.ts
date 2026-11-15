@@ -148,6 +148,10 @@ function buildRoutes(pack: AreaPack, count: number, rules: RouteRules): TrafficR
   for (let attempt = 0; attempt < count * 4 && routes.length < count; attempt++) {
     const start = starts[Math.floor(random() * starts.length)];
     let edge = start.edges[Math.floor(random() * start.edges.length)];
+    // Highways and flyovers stay fairly empty, so there is room to drive fast.
+    const startLine = lines[edge.line];
+    const quiet = startLine.kind === 'motorway' ? 0.9 : startLine.kind === 'trunk' || startLine.b ? 0.75 : startLine.kind === 'primary' ? 0.5 : 0;
+    if (quiet > 0 && random() < quiet) continue;
     const path = [edge.from];
     let length = 0;
     const visited = new Set<string>();

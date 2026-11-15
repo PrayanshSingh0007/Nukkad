@@ -10,7 +10,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
  * 0 matte · 1 car paint (takes the per-copy colour, glossy) · 2 glass/lights (glossy).
  * Models face -z, wheels on y = 0. No files to download.
  */
-const MATTE = 0;
+const MATTE = 1;
 const PAINT = 1;
 const GLOSS = 2;
 
@@ -208,7 +208,7 @@ const SUV: CarShape = {
 function autoRickshaw(): THREE.BufferGeometry {
   const p = new Parts();
   const green = 0x2a8a3a;
-  const greenDark = 0x1f6b2c;
+  const greenDark = 0x1f6b4f;
   const yellow = 0xf2c230;
   const black = 0x1b1c1e;
   // Lower body: rounded green tub with the nose sloping up to the cab.

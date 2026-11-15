@@ -1,6 +1,6 @@
 import { PACK_VERSION, decodePack } from '@nukkad/shared';
 import type { WirePack } from '@nukkad/shared';
-import { GROUND_MAP_SIZE, MINI_MAP_SIZE, paintMiniMap, streetLabels, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { GROUND_MAP_SIZE, MINI_MAP_SIZE, addExpressway, paintMiniMap, streetLabels, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkLod, PreparedWorld } from '@nukkad/worldgen';
 import type { FromWorker, ToWorker } from './protocol.ts';
 
@@ -35,6 +35,8 @@ async function load(url: string): Promise<void> {
   const wire = JSON.parse(text) as WirePack;
   if (wire.v !== PACK_VERSION) throw new Error('This place was saved by a different version of Nukkad. Reload the page.');
   const pack = decodePack(wire);
+  // Our own elevated expressway for fast driving (same for everyone in this place).
+  addExpressway(pack);
   const fetchMs = performance.now() - fetchStart;
 
   scope.postMessage({ type: 'progress', stage: 'build' });

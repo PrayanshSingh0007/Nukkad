@@ -263,10 +263,28 @@ export class LocalPlayer {
       this.bodyRoll += (rollTarget - this.bodyRoll) * Math.min(1, STEP_S * 6);
     }
 
-    // Compare with the distance we actually tried to move (the slide-smoothed velocity), not the throttle speed.
+    // Hitting things: keep only the part of the speed that still goes forward. Grazing a wall
+    // or a kerb slides along it with little loss; a head-on hit stops you.
     const tried = Math.hypot(this.velocityX, this.velocityZ) * STEP_S;
-    const moved = Math.hypot(this.body.x - this.previous.x, this.body.z - this.previous.z);
-    if (tried > 0.05 && moved < tried * 0.3) this.rideSpeed *= 0.6; // bumped into something
+    const mx = this.body.x - this.previous.x;
+    const mz = this.body.z - this.previous.z;
+    const moved = Math.hypot(mx, mz);
+    if (tried > 0.05 && moved < tried * 0.85) {
+      const forward = (mx * -Math.sin(this.heading) + mz * -Math.cos(this.heading)) / STEP_S;
+      const kept = Math.sign(this.rideSpeed) * Math.max(0, Math.abs(forward)) * 0.97;
+      this.rideSpeed = Math.abs(kept) < Math.abs(this.rideSpeed) ? kept : this.rideSpeed;
+      this.velocityX = mx / STEP_S;
+      this.velocityZ = mz / STEP_S;
+    }
+
+    // Stability assist: when sliding without the handbrake and without steering into it,
+    // the car gently lines up with where it is going, so slides are easy to catch.
+    if (!this.handbrake && this.slip > 0.15 && going > 3) {
+      const travel = Math.atan2(-this.velocityX, -this.velocityZ) + (this.rideSpeed < 0 ? Math.PI : 0);
+      const diff = Math.atan2(Math.sin(travel - this.heading), Math.cos(travel - this.heading));
+      const assist = (1 - Math.min(1, Math.abs(this.steerInput) * 1.5)) * 2.2;
+      this.heading += diff * Math.min(1, STEP_S * assist);
+    }
   }
 
   private smoothDrawnPosition(dt: number): void {
