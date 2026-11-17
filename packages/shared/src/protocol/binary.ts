@@ -6,7 +6,7 @@
  * Snapshot (server → everyone), 6 bytes + 11 per player:
  *   type u8 · serverTime u32 · count u8 · then per player: slot u8 · x · y · z · yaw · speed · flags
  *
- * x and z are stored in 2 cm steps (±655 m), y in 5 cm steps, yaw in 1/65536 of a turn,
+ * x and z are stored in 6 cm steps (±1966 m), y in 5 cm steps, yaw in 1/65536 of a turn,
  * speed in 0.1 m/s. All numbers little-endian.
  */
 export const MSG_STATE = 1;
@@ -28,7 +28,7 @@ export const FLAG_TALKING = 4;
 export const FLAG_AWAY = 8;
 export const CLIENT_FLAGS_MASK = 0xff & ~FLAG_AWAY;
 
-const XZ_STEP = 0.02;
+const XZ_STEP = 0.06; // ±1966 m in an i16: covers the largest area (half size 1800 m)
 const Y_STEP = 0.05;
 const TURN = Math.PI * 2;
 

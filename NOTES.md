@@ -9,9 +9,43 @@ Read order for a fresh session: PLAN.md → this file → BUGS.md.
 - Never copy GTA's name, characters, art or missions (Claude's rule: genre yes, recreation no).
 - `npm test` 122 green. Phone fps still unknown.
 
+## START HERE: hand-over for any model (2026-11-17)
+
+The owner can no longer use the model that did most of this work, so this section is written for whoever continues. Keep working the same way: small steps, check in the real game, commit and push after each piece.
+
+**How to test in the game (important, saves hours):**
+- Start the dev server with the preview tool (`nukkad-dev-http` in `.claude/launch.json`), open the page, click "Start a Nukkad". `window.nukkad` is the Game.
+- The preview pane throttles frames. Stop the loop and drive frames yourself: `nukkad.view3d.renderer.setAnimationLoop(null); nukkad.governor.frame = () => 'ok';` then call `nukkad.frame(performance.now())` in a loop with ~34 ms waits. Render 2–3 times before a screenshot; the first is often stale.
+- Useful handles: `nukkad.debug.player` (`body.teleport(x, y, z)`, `heading`, `rideSpeed`), `nukkad.streetLife.kinds` (parked vehicles; each has `items`, `mesh`, `textured.path`), `nukkad.toggleDrive()`, `nukkad.debug.rig.camera`, `nukkad.traffic.lanes`.
+- To check which way a car model faces: place a copy with `makeRotationY(Math.PI / 2)` (its front then points to −x) and look from the −x side. If you see the rear, add `back: true` in `CARS`.
+- Keys: dispatch `KeyboardEvent('keydown', { code: 'KeyW' })` on `window` to drive.
+
+**Next steps, in the order the owner cares about:**
+1. **BMW M5 F90 and M4 CSL** are downloaded but not in the game: they are too heavy (250k and 84k triangles after `slim.mjs`). Open Blender (the MCP add-on listens on 9876), import, add a Decimate modifier per mesh to reach about 20k triangles, export GLB, then run `tools/vehicles/slim.mjs`. The originals were in the session's temp folder and are gone; re-download from Sketchfab (owner must be signed in and must approve): M5 `5478e978bd634337adc8e3dc413fbfa3` (Res1n), M4 CSL `26d05968e63b4fc28205cbb9abb0ea41` (BlackSnow02). Remove badges (materials named logo/badge) and credit them in CREDITS.md.
+2. **Phone test.** Nothing since the 3.6 km map, the Indian cars or the speed changes has been tried on a phone. The owner copies a report with 5 taps on the logo. If it is too slow: lower `GAME_HALF_SIZE` to 1200, lower `NEAR_FULL`, or lower traffic counts in `world.worker.ts`.
+3. **Fortuner, Innova, Swift, Scorpio:** no clean free models exist (see "Indian car models" below). Do not use BHP3D or other game rips.
+4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
+5. **Roads:** lane markings on flyover decks; smoother junctions.
+
+## Real Outer Ring Road, modern BMWs (2026-11-17)
+
+- Owner: "dont just add any random expressway, add the real highway which is there near bellandur". The made-up Nukkad Expressway is **removed** (`expressway.ts` deleted).
+- **Bigger map:** the real ORR is 1.6 km from the test area's centre, outside the old 1.2 km map. The game now asks for `GAME_HALF_SIZE = 1800` (a 3.6 km square). `DEFAULT_HALF_SIZE` stays 600 for the API and the tests; `MAX_HALF_SIZE` is 1800.
+  - The Bellandur pack at 1800: 475 KB gzipped, 6,729 buildings, 2,562 road lines. It has 3.9 km of Outer Ring Road carriageway (both directions, 460 m of flyover) and 5.4 km of Sarjapura Road.
+  - First build on the server takes about a minute (Overpass); after that it is cached in `.cache/areas`. In the browser, preparing the world takes about 3 s on the owner's Mac.
+  - Network positions are now stored in 6 cm steps (±1966 m; were 2 cm, ±655 m). The server's area limit is 1840 m.
+  - Traffic and walker counts scale with the area (up to 420 and 900 routes).
+- **Getting on the highway:** it is the real road, so you drive onto it from the real side roads and service roads; its flyover has ramps at both ends. It is the orange road in the north-west of the map (press M).
+- **`clearMainRoads`** (`roads/clearRoads.ts`, run in the worker after `decodePack`): removes buildings whose outline contains a main-road centre-line point (2 in this area, e.g. a structure over the ORR) and trees/lamps/benches on the carriageway.
+- **Footbridges** (`bridgeRise(along, foot)`): bridges of kind footway/pedestrian/steps/cycleway are now skywalks 5.6 m up with short stair ramps and no pillars in the road. Before, a 1 m-high slab blocked the ORR.
+- Test: a BMW M3 followed the ORR's real points at full throttle: 0 → 245 km/h over about 750 m, passing under the footbridge. (The run ended when my coarse test path cut a curve, not because of the road.)
+- **Modern BMWs** (CC-BY, in CREDITS.md): `bmw_m3.glb` ("BMW M3 (G80)" by alex20010804, made without logos) replaces the 1998 E46 as the sedan; `bmw_x3.glb` ("2020 BMW X3" by tonielpro520, logo part removed) joins the SUVs. Both take colours (`paint` names their flat paint material) and both needed `back: true`. The X3 has no light version (`NO_LIGHT_MODEL`): the simplifier only got it to 17k triangles.
+- `slim.mjs` now also removes parts whose material is named logo/badge/emblem.
+- Honest limits: the 3.6 km map is untested on a phone (9× the area: more memory and a longer first load). Rooms made before today were for the 1.2 km map. The X3's front badge area was only checked from a distance. A stray "]" typed into `apps/web/src/world/streamPlan.ts` (not by the assistant) was removed because it broke the build.
+
 ## Nukkad Expressway, quiet highways, handling, sound fix (2026-11-15)
 
-- **Nukkad Expressway** (`packages/worldgen/src/roads/expressway.ts`):
+- **Nukkad Expressway** (REMOVED on 2026-11-17, replaced by the real Outer Ring Road; kept here as history):
   - What it is: our own elevated 20 m-wide motorway, so there's room to test top speed. It's a straight line across the area with 70 m ramps at both ends and a 6.5 m deck (the usual flyover code, `b: 1`).
   - Where it goes: it tries 16 angles × 5 offsets and keeps the line with the least building height per metre.
   - What it clears: buildings, trees, lamps, benches, compound walls and places within 14 m of its centre line.

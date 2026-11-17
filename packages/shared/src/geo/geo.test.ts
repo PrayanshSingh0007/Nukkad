@@ -57,7 +57,7 @@ describe('area ids', () => {
   it('keeps the radius to whole chunks inside the limits', () => {
     expect(clampHalfSize(10)).toBe(150);
     expect(clampHalfSize(500)).toBe(450);
-    expect(clampHalfSize(5000)).toBe(600);
+    expect(clampHalfSize(5000)).toBe(1800);
   });
 
   it('validates coordinates', () => {

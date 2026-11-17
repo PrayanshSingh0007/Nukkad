@@ -20,14 +20,18 @@ export interface Ribbon {
   rise?: Float32Array;
 }
 
+/** Bridges for people on foot (skywalks over big roads). */
+export const FOOT_KINDS = new Set<LineKind>(['footway', 'pedestrian', 'steps', 'cycleway']);
+
 /**
  * How high a bridge rides along its length: long ones are flyovers (6.5 m clearance) with
- * ramps at both ends; short ones (over a drain or a canal) just lift a little.
+ * ramps at both ends; short ones (over a drain or a canal) just lift a little. Footbridges
+ * (`foot`) are skywalks: 5.6 m up almost at once (stairs), so traffic passes underneath.
  */
-export function bridgeRise(along: Float32Array): Float32Array {
+export function bridgeRise(along: Float32Array, foot = false): Float32Array {
   const total = along[along.length - 1] || 1;
-  const clearance = total > 120 ? 6.5 : Math.min(2.5, total * 0.04);
-  const ramp = Math.min(70, total / 3);
+  const clearance = foot ? (total > 12 ? 5.6 : 0) : total > 120 ? 6.5 : Math.min(2.5, total * 0.04);
+  const ramp = foot ? Math.min(6, total / 4) : Math.min(70, total / 3);
   const rise = new Float32Array(along.length);
   for (let i = 0; i < along.length; i++) {
     const fromEnd = Math.min(along[i], total - along[i]);

@@ -41,7 +41,7 @@ describe('binary fast lane', () => {
 
   it('clamps values that do not fit instead of wrapping around', () => {
     const back = decodeState(encodeState({ ...state, x: 99999, speed: 999 }))!;
-    expect(back.x).toBeCloseTo(655.34, 1);
+    expect(back.x).toBeCloseTo(1966.02, 1);
     expect(back.speed).toBe(25.5);
   });
 });

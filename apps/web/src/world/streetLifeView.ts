@@ -89,6 +89,8 @@ const NEAR_FULL = 6;
  * picked by the colour variant; real lengths in metres. `paint` names the body paint material
  * (otherwise the body colour is found from the texture; null = keep the model's own colours).
  */
+/** Already light, or could not be made lighter: these have no `_lod` file. */
+const NO_LIGHT_MODEL = new Set(['signa', 'bmw_x3']);
 const CARS: Record<string, { file: string; length: number; back?: true; paint?: RegExp | null; windows?: BodyPaint }[]> = {
   hatchback: [
     { file: 'wagonr', length: 3.65, back: true, paint: /^Car_Paint/ },
@@ -96,12 +98,13 @@ const CARS: Record<string, { file: string; length: number; back?: true; paint?: 
   ],
   sedan: [
     { file: 'city', length: 4.44, back: true, paint: /^Body$/ },
-    { file: 'bmw', length: 4.47, back: true },
+    { file: 'bmw_m3', length: 4.79, back: true, paint: /^bodyColor$/ },
   ],
   suv: [
     { file: 'creta', length: 4.3, back: true, paint: /^carpaint/ },
     { file: 'seltos', length: 4.36, back: true, windows: [{ hue: 0, range: 360, minSat: 0, maxSat: 0.12, minVal: 0.62, ref: 0.56 }] },
     { file: 'thar', length: 3.99, back: true, windows: [{ hue: 358, range: 16, minSat: 0.45, ref: 0.11 }] },
+    { file: 'bmw_x3', length: 4.71, back: true, paint: /^Carro_Pintura$/ },
   ],
   taxi: [{ file: 'city', length: 4.44, back: true, paint: /^Body$/ }],
   van: [{ file: 'minivan', length: 4.8 }],
@@ -161,7 +164,7 @@ export class StreetLifeView {
       const sketchfab = SKETCHFAB[name];
       if (sketchfab) return [{ name, textured: { path: `/models/sketchfab/${name}.glb`, fit: sketchfab }, items: [], half, mesh: null, shadow: null }];
       const cars = CARS[name];
-      if (cars) return cars.map(({ file, length, back, paint, windows }) => ({ name, lodPath: file === 'signa' ? undefined : `/models/sketchfab/cars/${file}_lod.glb`, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: windows ?? (paint === null ? undefined : ('auto' as const)), paintMaterial: paint ?? undefined } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
+      if (cars) return cars.map(({ file, length, back, paint, windows }) => ({ name, lodPath: NO_LIGHT_MODEL.has(file) ? undefined : `/models/sketchfab/cars/${file}_lod.glb`, textured: { path: `/models/sketchfab/cars/${file}.glb`, fit: { length, turn: back ? Math.PI : 0, paint: windows ?? (paint === null ? undefined : ('auto' as const)), paintMaterial: paint ?? undefined } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));
       const kenney = KENNEY[name];
       if (!kenney) return [{ name, items: [], half, mesh: null, shadow: null }];
       return kenney.files.map((file) => ({ name, textured: { path: `/models/kenney/${file}.glb`, fit: { width: kenney.width, turn: Math.PI } }, items: [], half: [...half] as [number, number, number], mesh: null, shadow: null }));

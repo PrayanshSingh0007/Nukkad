@@ -5,7 +5,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { CHUNK_SIZE, EMOTES, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
+import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
@@ -535,7 +535,7 @@ export class Game {
   }
 
   /** Loads the place around (lat, lng) and drops the player at its nearest street corner. */
-  async start(lat: number, lng: number, halfSize = 0): Promise<void> {
+  async start(lat: number, lng: number, halfSize: number = GAME_HALF_SIZE): Promise<void> {
     this.loadStarted = performance.now();
     this.setStatus('loading', 'Getting the map… a brand-new place can take up to a minute.');
     try {

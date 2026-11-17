@@ -108,7 +108,8 @@ Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/
 - `models/sketchfab/cars/wagonr.glb`: "Wagon R" by tkanimationsd742, https://sketchfab.com/models/6700812ecaa840199bdc31fc3b921385
 - `models/sketchfab/cars/thar.glb`: "THAR 4X4" by MB_Mahesh, https://sketchfab.com/models/66ee970b18014c98a1750064b65657b0
 - `models/sketchfab/cars/nano.glb`: "Tata Nano" by BumpkinCZ, https://sketchfab.com/models/b40695a12723449dbdc5976700c8f1b6
-- `models/sketchfab/cars/bmw.glb`: "Low Poly Car - BMW E46 1998" by roh3d, https://sketchfab.com/models/d9bfd8126e754164b48ded833c017bbf
+- `models/sketchfab/cars/bmw_m3.glb`: "BMW M3 (G80)" by alex20010804 (Cherk), https://sketchfab.com/models/e7d8be35e2f34b7f84e0543fff7fda27
+- `models/sketchfab/cars/bmw_x3.glb`: "2020 BMW X3" by tonielpro520, https://sketchfab.com/models/5142078aebec406688e19401985050ec
 - `models/sketchfab/cars/signa.glb`: "Tata Signa Cargo Truck | Low Poly Game Ready PBR" by kevin_k_5124, https://sketchfab.com/models/a5c03c1a1c2c4b21b7db6192b1ef8718
 - `models/sketchfab/cars/minitruck.glb`: "Mini-Truck" by roy.3dartist, https://sketchfab.com/models/71e499219de548a7a1be74c237b6a2fb
 

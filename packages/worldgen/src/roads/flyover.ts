@@ -3,6 +3,7 @@ import { linear } from '../style/palette.ts';
 import { heightAt } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
 import { deckHeight } from './groundMesh.ts';
+import { FOOT_KINDS } from './ribbon.ts';
 import type { RibbonRun } from './groundMesh.ts';
 
 /**
@@ -76,6 +77,7 @@ export function appendFlyover(mesh: MeshBuilder, run: RibbonRun, terrain: Terrai
       nextPillar += PILLAR_EVERY_M;
       const r = rise[i] + (rise[j] - rise[i]) * t;
       if (r < 3) continue; // the ramps sit on fill, not pillars
+      if (FOOT_KINDS.has(ribbon.kind)) continue; // a skywalk spans the road: no pillar in the carriageway
       const cx = (ribbon.left[i * 2] + ribbon.right[i * 2]) / 2 + ((ribbon.left[j * 2] + ribbon.right[j * 2]) / 2 - (ribbon.left[i * 2] + ribbon.right[i * 2]) / 2) * t;
       const cz = (ribbon.left[i * 2 + 1] + ribbon.right[i * 2 + 1]) / 2 + ((ribbon.left[j * 2 + 1] + ribbon.right[j * 2 + 1]) / 2 - (ribbon.left[i * 2 + 1] + ribbon.right[i * 2 + 1]) / 2) * t;
       const top = yi + (yj - yi) * t - SLAB_M;

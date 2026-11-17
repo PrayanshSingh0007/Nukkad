@@ -31,6 +31,12 @@ const triangles = () => {
 for (const node of doc.getRoot().listNodes()) {
   if (/emblem|logo|badge|shadow/i.test(node.getName()) || drop.has(node.getName())) node.dispose();
 }
+// Badge materials (logos painted on their own little parts): remove those parts.
+for (const mesh of doc.getRoot().listMeshes()) {
+  for (const primitive of mesh.listPrimitives()) {
+    if (/logo|badge|emblem|paiqi/i.test(primitive.getMaterial()?.getName() ?? '')) primitive.dispose();
+  }
+}
 for (const material of doc.getRoot().listMaterials()) {
   material.setMetallicRoughnessTexture(null).setNormalTexture(null).setOcclusionTexture(null).setEmissiveTexture(null);
   if (material.getAlphaMode() === 'BLEND' && !/glass|window|windshield/i.test(material.getName())) {
@@ -38,7 +44,7 @@ for (const material of doc.getRoot().listMaterials()) {
   }
 }
 const before = triangles();
-await doc.transform(prune(), dedup(), flatten(), join(), weld());
+await doc.transform(prune(), dedup(), flatten(), join(), weld({ tolerance: 0.0005 }));
 if (before > maxTriangles) {
   await MeshoptSimplifier.ready;
   await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio: maxTriangles / before, error: Number(errorArg ?? 0.012), lockBorder: false }));

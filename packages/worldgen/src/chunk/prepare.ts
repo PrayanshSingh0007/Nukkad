@@ -8,7 +8,7 @@ import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
 import { findDoors } from '../buildings/doors.ts';
 import type { Door } from '../buildings/doors.ts';
-import { bridgeRise, buildRibbon } from '../roads/ribbon.ts';
+import { FOOT_KINDS, bridgeRise, buildRibbon } from '../roads/ribbon.ts';
 import { cloneTerrain, terrainFromPack } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
 
@@ -86,7 +86,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
       line.w,
     );
     if (!ribbon) continue;
-    if (line.b) ribbon.rise = bridgeRise(ribbon.along);
+    if (line.b) ribbon.rise = bridgeRise(ribbon.along, FOOT_KINDS.has(line.kind));
     // Proper roads get a footpath on both sides (the same line, 3.2 m wider).
     const paved = PAVED.has(line.kind) && line.w >= 5;
     const wide = paved ? buildRibbon(line.kind, line.pts.map((value) => value / UNITS_PER_METRE), line.w + FOOTPATH_M * 2) : null;

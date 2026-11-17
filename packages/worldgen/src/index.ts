@@ -10,7 +10,7 @@ export { MINI_MAP_SIZE, paintMiniMap, streetLabels } from './areas/miniMap.ts';
 export type { StreetLabel } from './areas/miniMap.ts';
 export { buildWaterMesh } from './areas/water.ts';
 export { prepareWorld } from './chunk/prepare.ts';
-export { EXPRESSWAY_ID, addExpressway } from './roads/expressway.ts';
+export { clearMainRoads } from './roads/clearRoads.ts';
 export type { Door, InteriorKind } from './buildings/doors.ts';
 export { findSpawn } from './chunk/spawn.ts';
 export type { PreparedWorld } from './chunk/prepare.ts';
