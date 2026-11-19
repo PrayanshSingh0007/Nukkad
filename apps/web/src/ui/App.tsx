@@ -7,6 +7,7 @@ import { PlacesPanel } from './PlacesPanel.tsx';
 import { Speedometer } from './Speedometer.tsx';
 import { MiniMap } from './MiniMap.tsx';
 import { BigMap } from './BigMap.tsx';
+import { LoadingScreen } from './LoadingScreen.tsx';
 import { setAutojoin } from './api.ts';
 
 interface Props {
@@ -86,17 +87,7 @@ export function App({ game, initialLook, roomId }: Props) {
 
   return (
     <>
-      {status.phase !== 'playing' && (
-        <div className={status.phase === 'error' ? 'cover error' : 'cover'} role="status">
-          <h1>Nukkad</h1>
-          <p>{status.message}</p>
-          {status.phase === 'error' && (
-            <button type="button" onClick={() => location.assign('/')}>
-              Back to start
-            </button>
-          )}
-        </div>
-      )}
+      {status.phase !== 'playing' && <LoadingScreen message={status.message} error={status.phase === 'error'} onBack={() => location.assign('/')} />}
       {status.phase === 'playing' && !panelOpen && (
         <div className="hudButtons">
           <span className="people" aria-label={`${players} in this Nukkad`}>

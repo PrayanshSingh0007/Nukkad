@@ -182,6 +182,7 @@ const CINEMA_SHADER = {
     }`,
 };
 
+const INTRO_S = 4.5; // the arrival drone shot
 const COLLIDER_RADIUS = 1; // colliders for the 3 × 3 chunks around the player
 const EDGE_MARGIN_M = 100; // the playable square ends this far inside the area
 const HYSTERESIS_M = 30;
@@ -209,6 +210,11 @@ export class Game {
   private composer: EffectComposer | null = null;
   private cinema: ShaderPass | null = null;
   private cinemaKmh = 0;
+  private introLeft = 0;
+  private introAngle = 0;
+  private readonly introFrom = new THREE.Vector3();
+  private readonly introLook = new THREE.Vector3();
+  private readonly introQuat = new THREE.Quaternion();
   private readonly sunOnScreen = new THREE.Vector3();
   private ready: ReadyMessage | null = null;
   private streamer: Streamer | null = null;
@@ -748,6 +754,29 @@ export class Game {
     });
   }
 
+  /**
+   * The arrival shot: the camera starts high above the street like a drone, circles a little
+   * and glides down into the normal camera behind you. Moving or dragging the view cuts it short.
+   */
+  private introShot(player: LocalPlayer, dt: number): void {
+    if (this.introLeft <= 0) return;
+    if (this.input.moveX !== 0 || this.input.moveY !== 0 || performance.now() - this.lastDragAt < 100) this.introLeft = Math.min(this.introLeft, 0.7);
+    this.introLeft = Math.max(0, this.introLeft - dt);
+    const k = 1 - this.introLeft / INTRO_S;
+    const e = k * k * k * (k * (k * 6 - 15) + 10); // smooth start and end
+    const camera = this.view3d.camera;
+    const a = this.introAngle + k * 0.9;
+    const radius = 75 * (1 - e) + 8;
+    const from = this.introFrom.set(player.x + Math.sin(a) * radius, player.y + 55 * (1 - e) + 4, player.z + Math.cos(a) * radius);
+    const rigQuat = this.introQuat.copy(camera.quaternion);
+    camera.position.lerpVectors(from, camera.position, e);
+    const look = this.introLook.copy(camera.position);
+    camera.position.copy(from);
+    camera.lookAt(player.x, player.y + 1.2, player.z);
+    camera.quaternion.slerp(rigQuat, e);
+    camera.position.copy(look);
+  }
+
   /** Where the sun is on screen and how fast you go, for the cinema pass. */
   private updateCinema(now: number): void {
     const u = this.cinema?.uniforms;
@@ -826,6 +855,8 @@ export class Game {
     this.player = new LocalPlayer(physics, this.look, x, heightAt(world.terrain, x, z) + 0.3, z, limit);
     this.view3d.scene.add(this.player.avatar.object);
     this.timeToPlayMs = performance.now() - this.loadStarted;
+    this.introLeft = INTRO_S;
+    this.introAngle = this.rig.yaw + Math.PI * 0.85;
     this.setStatus('playing', '');
   }
 
@@ -965,6 +996,7 @@ export class Game {
       }
       this.speedLines.update(vehicle ? kmh : 0, dt);
       this.cinemaKmh = kmh;
+      this.introShot(player, dt);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);

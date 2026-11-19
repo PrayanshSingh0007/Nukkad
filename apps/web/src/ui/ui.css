@@ -908,3 +908,81 @@ button {
 .swatch.picked {
   box-shadow: 0 0 0 3px var(--accent-a);
 }
+
+/* Loading screen: skyline, real-stage progress bar, control tips. */
+.cover.loading {
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 110%, #ff9a4a33 0%, transparent 55%), radial-gradient(ellipse at 50% 20%, #24324a 0%, #111723 55%, #07090e 100%);
+}
+
+.cover.loading .skyline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 34vh;
+  fill: #0b0f17;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.cover.loading .skyline .lit {
+  fill: #ffc56b;
+  opacity: 0.75;
+}
+
+.cover.loading h1,
+.cover.loading p,
+.cover.loading .loadBar,
+.cover.loading button {
+  position: relative;
+}
+
+.loadBar {
+  width: min(320px, 80vw);
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.loadFill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+  box-shadow: 0 0 12px rgba(255, 170, 60, 0.7);
+  transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+}
+
+/* A soft light sweeping along the filled part, so a long stage still looks alive. */
+.loadFill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: loadSweep 1.6s ease-in-out infinite;
+}
+
+@keyframes loadSweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.cover.loading p.tip {
+  margin-top: 18px;
+  font-size: 13px;
+  color: #8f9bb0;
+  animation: tipIn 0.5s ease;
+}
+
+@keyframes tipIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
