@@ -1,7 +1,9 @@
 /**
  * Sounds made in code with the browser's Web Audio (no audio files to download or credit):
- * a horn per vehicle and an engine hum that rises with speed. Only you hear them for now —
- * they are not sent to friends. Audio can only start after a tap or key press (browser rule).
+ * a horn per vehicle, an engine hum that rises with speed, tyre screech, and the city around
+ * you (a low traffic hum that swells, far-off horns, birds by day, wind at speed; muffled
+ * indoors). Only you hear them — they are not sent to friends. Audio can only start after a
+ * tap or key press (browser rule).
  */
 type HornVoice = 'scooter' | 'car' | 'heavy';
 
@@ -21,6 +23,14 @@ export class Sound {
   private engineOscs: OscillatorNode[] = [];
   private skidGain: GainNode | null = null;
   private skidFilter: BiquadFilterNode | null = null;
+  private outdoorFilter: BiquadFilterNode | null = null;
+  private outdoorGain: GainNode | null = null;
+  private humGain: GainNode | null = null;
+  private windGain: GainNode | null = null;
+  private windFilter: BiquadFilterNode | null = null;
+  private swell = 0;
+  private nextHorn = 0;
+  private nextBird = 0;
   muted = false;
 
   /** Call from a tap or key press. Safe to call many times. */
@@ -95,6 +105,156 @@ export class Sound {
     this.skidGain.gain.value = 0;
     source.connect(this.skidFilter).connect(this.skidGain).connect(this.master);
     source.start();
+
+    // ---- The city around you. Everything outdoors goes through one filter that muffles it
+    // when you step inside a building.
+    this.outdoorFilter = context.createBiquadFilter();
+    this.outdoorFilter.type = 'lowpass';
+    this.outdoorFilter.frequency.value = 16000;
+    this.outdoorGain = context.createGain();
+    this.outdoorFilter.connect(this.outdoorGain).connect(this.master);
+    // Traffic hum: deep "brown" noise (white noise smoothed), low-passed.
+    const brown = context.createBuffer(1, context.sampleRate * 4, context.sampleRate);
+    const b = brown.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < b.length; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      b[i] = last * 3.5;
+    }
+    const hum = context.createBufferSource();
+    hum.buffer = brown;
+    hum.loop = true;
+    const humFilter = context.createBiquadFilter();
+    humFilter.type = 'lowpass';
+    humFilter.frequency.value = 380;
+    this.humGain = context.createGain();
+    this.humGain.gain.value = 0;
+    hum.connect(humFilter).connect(this.humGain).connect(this.outdoorFilter);
+    hum.start();
+    // Wind past the car at speed: soft broadband noise.
+    const wind = context.createBufferSource();
+    wind.buffer = noise;
+    wind.loop = true;
+    wind.playbackRate.value = 0.5;
+    this.windFilter = context.createBiquadFilter();
+    this.windFilter.type = 'bandpass';
+    this.windFilter.frequency.value = 600;
+    this.windFilter.Q.value = 0.5;
+    this.windGain = context.createGain();
+    this.windGain.gain.value = 0;
+    wind.connect(this.windFilter).connect(this.windGain).connect(this.master);
+    wind.start();
+  }
+
+  /**
+   * The city around you; call every frame while playing. `night` 0–1 (fewer horns, no birds),
+   * `indoors` muffles it, `kmh` = your speed in a vehicle (wind).
+   */
+  ambience(dt: number, night: number, indoors: boolean, kmh: number): void {
+    const context = this.context;
+    if (!context || !this.humGain || !this.outdoorFilter || !this.outdoorGain || !this.windGain || !this.windFilter) return;
+    const now = context.currentTime;
+    const day = 1 - night;
+    // A slow random swell, like traffic passing a street away.
+    this.swell = Math.max(-0.35, Math.min(0.35, this.swell + (Math.random() - 0.5) * dt * 1.2));
+    const quiet = this.muted ? 0 : 1;
+    const hum = this.humGain.gain;
+    hum.cancelScheduledValues(now);
+    hum.setTargetAtTime((0.05 + 0.035 * day) * (1 + this.swell) * quiet, now, 0.6);
+    hum.setTargetAtTime(0, now + 0.5, 0.3); // watchdog: fades out if the frames stop
+    this.outdoorFilter.frequency.cancelScheduledValues(now);
+    this.outdoorFilter.frequency.setTargetAtTime(indoors ? 450 : 16000, now, 0.25);
+    this.outdoorGain.gain.cancelScheduledValues(now);
+    this.outdoorGain.gain.setTargetAtTime(indoors ? 0.5 : 1, now, 0.25);
+    const w = Math.min(1, Math.max(0, kmh) / 220);
+    this.windGain.gain.cancelScheduledValues(now);
+    this.windGain.gain.setTargetAtTime(0.16 * w * w * quiet, now, 0.2);
+    this.windGain.gain.setTargetAtTime(0, now + 0.35, 0.2); // stops if the frames stop
+    this.windFilter.frequency.cancelScheduledValues(now);
+    this.windFilter.frequency.setTargetAtTime(450 + 1100 * w, now, 0.2);
+    if (this.muted) return;
+    if (now > this.nextHorn) {
+      if (this.nextHorn > 0) this.distantHorn(now);
+      this.nextHorn = now + 2 + Math.random() * (night > 0.5 ? 16 : 6);
+    }
+    if (day > 0.4 && now > this.nextBird) {
+      if (this.nextBird > 0) this.birdCall(now);
+      this.nextBird = now + 1.5 + Math.random() * 7;
+    }
+  }
+
+  /** Somebody honking a street or two away: one to three short beeps, left or right. */
+  private distantHorn(now: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter) return;
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 800 + Math.random() * 900; // further away = duller
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const pan = context.createStereoPanner ? context.createStereoPanner() : null;
+    if (pan) pan.pan.value = Math.random() * 1.6 - 0.8;
+    filter.connect(gain).connect(pan ?? this.outdoorFilter);
+    if (pan) pan.connect(this.outdoorFilter);
+    const base = [330, 392, 440, 523][Math.floor(Math.random() * 4)];
+    const level = 0.01 + Math.random() * 0.022;
+    let t = now + 0.02;
+    const beeps = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < beeps; i++) {
+      const length = 0.1 + Math.random() * (i === beeps - 1 ? 0.45 : 0.18);
+      gain.gain.setTargetAtTime(level, t, 0.008);
+      gain.gain.setTargetAtTime(0, t + length, 0.02);
+      t += length + 0.08 + Math.random() * 0.08;
+    }
+    for (const f of [base, base * 1.26]) {
+      const osc = context.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = f;
+      osc.connect(filter);
+      osc.start(now);
+      osc.stop(t + 0.2);
+      osc.onended = () => osc.disconnect();
+    }
+    window.setTimeout(() => {
+      filter.disconnect();
+      gain.disconnect();
+      pan?.disconnect();
+    }, (t - now + 0.5) * 1000);
+  }
+
+  /** A small bird: two to five quick whistled notes. */
+  private birdCall(now: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter) return;
+    const osc = context.createOscillator();
+    osc.type = 'sine';
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const pan = context.createStereoPanner ? context.createStereoPanner() : null;
+    if (pan) pan.pan.value = Math.random() * 1.8 - 0.9;
+    osc.connect(gain).connect(pan ?? this.outdoorFilter);
+    if (pan) pan.connect(this.outdoorFilter);
+    const level = 0.006 + Math.random() * 0.012;
+    const f0 = 2600 + Math.random() * 2000;
+    let t = now + 0.02;
+    const notes = 2 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < notes; i++) {
+      const length = 0.05 + Math.random() * 0.08;
+      const f = f0 * (0.9 + Math.random() * 0.25);
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * (Math.random() < 0.5 ? 1.35 : 0.75), t + length);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(level, t + 0.012);
+      gain.gain.linearRampToValueAtTime(0, t + length);
+      t += length + 0.04 + Math.random() * 0.1;
+    }
+    osc.start(now);
+    osc.stop(t + 0.05);
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+      pan?.disconnect();
+    };
   }
 
   /** Tyre screech, 0 (silent) to 1 (full slide). Fades out by itself if not refreshed. */

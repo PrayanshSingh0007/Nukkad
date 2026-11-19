@@ -997,6 +997,7 @@ export class Game {
       this.speedLines.update(vehicle ? kmh : 0, dt);
       this.cinemaKmh = kmh;
       this.introShot(player, dt);
+      this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);
