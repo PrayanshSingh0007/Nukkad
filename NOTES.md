@@ -27,6 +27,22 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Cinema pass: sun shafts, lens flare, speed blur, car reflections (2026-11-19)
+
+- **One "cinema" post pass on High** (`CINEMA_SHADER` in `game.ts`; it replaces the old grade pass and keeps its grade and vignette). Uniforms are set each frame in `updateCinema`.
+  - **Sun shafts:** sky brighter than 2.2 (HDR) near the sun is smeared towards it (32 taps with a random offset), so light pours through gaps between buildings. Measured: the sun is about 12, open sky about 0.5.
+  - **Lens flare:** five soft coloured rings along the line from the sun through the screen centre, a glow, and a thin horizontal streak. Shown only while the sun disc itself is visible (5 taps at the sun) and in front of you. Fades as the sun leaves the screen or sets, and is off indoors.
+  - **Speed blur:** from 90 km/h (full at 260) the picture smears outwards from the centre while the middle stays sharp, and the vignette darkens a little.
+  - **Also:** a faint colour fringe in the corners (only when slow) and a very fine moving film grain.
+  - **Cost** on the owner's Mac: about 1.5 ms per frame for the sun effects and 0.6 ms for the blur. The whole High post chain was about 15.5 ms at that size.
+- **Car reflections** (`atmosphere/cityReflections.ts`): cars used to reflect a white studio room. They now reflect the real sky colours, the sun, a skyline of buildings along the horizon (windows lit at night) and asphalt below. It is rebuilt only when the sun moves or night falls, which means once after loading at the fixed hour. `StreetLifeView.setReflections` hands the new map out.
+- **Car paint** (`loadTexturedModel`):
+  - The body paint is now a clear-coated `MeshPhysicalMaterial` (a sharp mirror layer over the colour).
+  - Glass is smooth. Chrome is real metal. Some models name parts in Portuguese: `vidro` = glass, `cromado` = chrome.
+  - These parts reflect 2–2.4× more than tyres and trim (`userData.reflect`).
+- **Tyre smoke fixes:** hitting another car no longer counts as hard braking (you must be pressing brake), and a launch makes a light puff instead of a cloud (0.65 → 0.35).
+- Not done: a true per-object motion blur (this one smears outwards from the screen centre); volumetric fog. Medium (phones) has none of the cinema pass. Not tested on a phone.
+
 ## Skid marks, tyre smoke, sky, HUD, characters (2026-11-19)
 
 - **Skid marks and tyre smoke** (`game/tyreFx.ts`, driven from `game.ts` after the drive hint). Only for the vehicle you drive.

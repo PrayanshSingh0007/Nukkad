@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -44,6 +43,7 @@ import { createGameScene } from './scene.ts';
 import { Sound } from '../audio/sound.ts';
 import { SpeedLines } from './speedLines.ts';
 import { TyreFx } from './tyreFx.ts';
+import { CityReflections } from '../atmosphere/cityReflections.ts';
 
 /**
  * A simple gearbox for the engine note: gears get longer as you go up, the revs climb through
@@ -77,26 +77,107 @@ export interface GameOptions {
 }
 
 /**
- * The finishing pass on High, like a film grade: a touch more contrast and colour, warm
- * highlights and cool shadows, and slightly darker corners (vignette). Works on the HDR
- * picture before tone mapping.
+ * The finishing pass on High, like a camera and a film grade. Works on the HDR picture before
+ * tone mapping. In order:
+ * - speed blur: at high speed the picture smears outwards from the centre (not in the middle,
+ *   where you look); when slow, a faint colour fringe in the corners like a real lens;
+ * - sun shafts: bright sky near the sun is smeared towards it, so light pours through gaps
+ *   between buildings and trees; nothing when the sun is hidden or behind you;
+ * - lens flare: soft coloured rings along the line from the sun through the centre, a glow
+ *   and a thin horizontal streak, only while the sun itself is visible;
+ * - grade: a touch more contrast and colour, warm highlights and cool shadows, vignette,
+ *   and a very fine moving film grain.
  */
-const GRADE_SHADER = {
-  uniforms: { tDiffuse: { value: null } },
+const CINEMA_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uSunAmt: { value: 0 },
+    uBlur: { value: 0 },
+    uTime: { value: 0 },
+    uAspect: { value: 1 },
+    uThreshold: { value: 2.2 },
+  },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
     uniform sampler2D tDiffuse;
+    uniform vec2 uSun;
+    uniform float uSunAmt;
+    uniform float uBlur;
+    uniform float uTime;
+    uniform float uAspect;
+    uniform float uThreshold;
     varying vec2 vUv;
+    const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    // Only the very bright parts (sun and the sky right around it), capped.
+    vec3 bright(vec2 uv) {
+      vec3 s = texture2D(tDiffuse, clamp(uv, 0.001, 0.999)).rgb;
+      float l = dot(s, LUMA);
+      return min(s * (max(l - uThreshold, 0.0) / max(l, 0.001)), vec3(6.0));
+    }
+    float ring(vec2 p, vec2 c, float r) { vec2 d = p - c; d.x *= uAspect; return smoothstep(r, r * 0.55, length(d)); }
     void main() {
-      vec4 texel = texture2D(tDiffuse, vUv);
-      vec3 c = texel.rgb;
-      float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      vec2 toC = vUv - 0.5;
+      float r2 = dot(toC, toC);
+      vec3 c;
+      if (uBlur > 0.001) {
+        vec3 acc = vec3(0.0);
+        float len = uBlur * 0.085 * smoothstep(0.01, 0.22, r2);
+        float j = hash(vUv * 517.0 + uTime) / 10.0;
+        for (int i = 0; i < 10; i++) acc += texture2D(tDiffuse, vUv - toC * len * (float(i) / 10.0 + j)).rgb;
+        c = acc / 10.0;
+      } else {
+        c = texture2D(tDiffuse, vUv).rgb;
+      }
+      // The fringe uses unblurred samples, so it fades out as the speed blur comes in.
+      float caMix = 0.8 * (1.0 - smoothstep(0.0, 0.25, uBlur));
+      if (caMix > 0.0) {
+        float ca = 0.004 * r2;
+        c.r = mix(c.r, texture2D(tDiffuse, vUv + toC * ca).r, caMix);
+        c.b = mix(c.b, texture2D(tDiffuse, vUv - toC * ca).b, caMix);
+      }
+
+      if (uSunAmt > 0.001) {
+        // Shafts: march from this pixel towards the sun, adding up bright sky on the way.
+        vec2 delta = (uSun - vUv) / 32.0;
+        vec2 uv = vUv + delta * hash(vUv * 731.0 + uTime);
+        float decay = 1.0;
+        vec3 shafts = vec3(0.0);
+        for (int i = 0; i < 32; i++) {
+          shafts += bright(uv) * decay;
+          decay *= 0.955;
+          uv += delta;
+        }
+        vec2 fromSun = (vUv - uSun) * vec2(uAspect, 1.0);
+        float near = 1.0 - smoothstep(0.0, 1.1, length(fromSun));
+        c += shafts / 32.0 * 1.1 * uSunAmt * near * vec3(1.0, 0.85, 0.62);
+
+        // Flare: only while the sun disc itself is in view (not behind a building).
+        vec3 seen = bright(uSun) + bright(uSun + vec2(0.01, 0.0)) + bright(uSun - vec2(0.01, 0.0)) + bright(uSun + vec2(0.0, 0.012)) + bright(uSun - vec2(0.0, 0.012));
+        float vis = clamp(dot(seen, LUMA) * 0.12, 0.0, 1.0) * uSunAmt;
+        if (vis > 0.001) {
+          vec2 axis = vec2(0.5) - uSun;
+          vec3 flare = vec3(0.0);
+          flare += ring(vUv, uSun + axis * 0.5, 0.035) * vec3(0.4, 0.55, 1.0) * 0.4;
+          flare += ring(vUv, uSun + axis * 0.8, 0.07) * vec3(0.45, 1.0, 0.65) * 0.17;
+          flare += ring(vUv, uSun + axis * 1.2, 0.022) * vec3(1.0, 0.75, 0.45) * 0.55;
+          flare += ring(vUv, uSun + axis * 1.55, 0.13) * vec3(0.6, 0.55, 1.0) * 0.11;
+          flare += ring(vUv, uSun + axis * 2.0, 0.05) * vec3(1.0, 0.55, 0.35) * 0.26;
+          float streak = exp(-abs(fromSun.y) * 260.0) * exp(-abs(fromSun.x) * 2.6);
+          float glow = exp(-length(fromSun) * 7.0);
+          flare += vec3(1.0, 0.86, 0.68) * (streak * 0.9 + glow * 0.45);
+          c += flare * vis;
+        }
+      }
+
+      float luma = dot(c, LUMA);
       c = mix(vec3(luma), c, 1.12);                                   // colour
       c = mix(c, c * c * (3.0 - 2.0 * min(c, vec3(1.0))), 0.12);       // gentle contrast below white
       c *= mix(vec3(0.96, 0.99, 1.05), vec3(1.04, 1.0, 0.95), smoothstep(0.05, 0.8, luma)); // cool shadows, warm lights
-      vec2 q = vUv - 0.5;
-      c *= 1.0 - dot(q, q) * 0.38;                                     // vignette
-      gl_FragColor = vec4(max(c, vec3(0.0)), texel.a);
+      c *= 1.0 - r2 * (0.38 + uBlur * 0.3);                            // vignette, stronger at speed
+      c *= 1.0 + (hash(vUv * vec2(1931.0, 1213.0) + fract(uTime * 7.13)) - 0.5) * 0.045; // film grain
+      gl_FragColor = vec4(max(c, vec3(0.0)), 1.0);
     }`,
 };
 
@@ -122,9 +203,12 @@ export class Game {
   private streetLife: StreetLifeView | null = null;
   private traffic: TrafficView | null = null;
   private walkers: PedestrianView | null = null;
-  private readonly reflections: THREE.Texture;
+  private readonly reflections: CityReflections;
   /** High only: renders through a glow pass. */
   private composer: EffectComposer | null = null;
+  private cinema: ShaderPass | null = null;
+  private cinemaKmh = 0;
+  private readonly sunOnScreen = new THREE.Vector3();
   private ready: ReadyMessage | null = null;
   private streamer: Streamer | null = null;
   private player: LocalPlayer | null = null;
@@ -181,10 +265,8 @@ export class Game {
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
     this.view3d.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.view3d.scene.add(this.view3d.sun.target);
-    // Soft studio light for reflections on car paint and glass only. Built once, ~1 MB on the GPU.
-    const pmrem = new THREE.PMREMGenerator(this.view3d.renderer);
-    this.reflections = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmrem.dispose();
+    // What car paint and glass reflect: the sky, the sun and a city skyline (~1 MB on the GPU).
+    this.reflections = new CityReflections(this.view3d.renderer);
     this.overlay = new DebugOverlay(
       options.overlay,
       options.logo,
@@ -573,7 +655,7 @@ export class Game {
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
-      this.streetLife = new StreetLifeView(ready.props, this.reflections);
+      this.streetLife = new StreetLifeView(ready.props, this.reflections.texture);
       const streetLife = this.streetLife;
       this.remotes.vehicleModels = (model) => streetLife.modelByName(model);
       this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name) => streetLife.modelByName(name), (name, variant) => streetLife.paintFor(name, variant));
@@ -661,11 +743,30 @@ export class Game {
     });
   }
 
+  /** Where the sun is on screen and how fast you go, for the cinema pass. */
+  private updateCinema(now: number): void {
+    const u = this.cinema?.uniforms;
+    if (!u) return;
+    const camera = this.view3d.camera;
+    const sunDir = this.atmosphere.sky.uniforms.uSunDir.value;
+    const p = this.sunOnScreen.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
+    const facing = camera.getWorldDirection(new THREE.Vector3()).dot(sunDir);
+    u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+    // Fades out as the sun leaves the screen, sets, or when you are indoors.
+    const off = Math.max(Math.abs(p.x), Math.abs(p.y)) - 1;
+    const up = THREE.MathUtils.smoothstep(sunDir.y, -0.02, 0.12);
+    u.uSunAmt.value = facing > 0 && !this.interior ? (1 - THREE.MathUtils.smoothstep(off, 0, 0.8)) * up * (1 - this.atmosphere.night) : 0;
+    u.uBlur.value = this.player?.vehicle ? THREE.MathUtils.smoothstep(this.cinemaKmh, 90, 260) * 0.9 : 0;
+    u.uTime.value = (now / 1000) % 1000;
+    u.uAspect.value = camera.aspect;
+  }
+
   /** The glow pass (High). Bright things over the threshold get a soft halo. */
   private applyBloom(on: boolean): void {
     if (!on) {
       this.composer?.dispose();
       this.composer = null;
+      this.cinema = null;
       return;
     }
     if (this.composer) return;
@@ -682,7 +783,8 @@ export class Game {
     ao.blendIntensity = 0.9;
     composer.addPass(ao);
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 1.25));
-    composer.addPass(new ShaderPass(GRADE_SHADER));
+    this.cinema = new ShaderPass(CINEMA_SHADER);
+    composer.addPass(this.cinema);
     composer.addPass(new OutputPass());
     this.composer = composer;
     this.appliedPixelRatio = 0; // sizes are set on the next frame
@@ -767,8 +869,10 @@ export class Game {
           skid = Math.max(
             Math.min(1, player.slip * 1.3),
             player.handbrake && speed > 4 ? 0.75 : 0,
-            player.longAccel < -6 && speed > 6 ? Math.min(1, (-player.longAccel - 6) / 5) : 0,
-            player.throttle > 0.8 && speed > 0.5 && speed < 13 && player.longAccel > 6 && riding.maxSpeed > 30 ? 0.65 : 0,
+            // Hard braking only when you brake (a bump into another car also slows you sharply).
+            player.throttle < -0.5 && player.longAccel < -6 && speed > 6 ? Math.min(1, (-player.longAccel - 6) / 5) : 0,
+            // A launch leaves marks and a little smoke, not a cloud.
+            player.throttle > 0.8 && speed > 0.5 && speed < 13 && player.longAccel > 6 && riding.maxSpeed > 30 ? 0.35 : 0,
           );
         }
         const wheels: { x: number; y: number; z: number }[] = [];
@@ -854,6 +958,7 @@ export class Game {
         camera.position.y += (Math.sin(t * 41.3) * 0.8 + Math.sin(t * 17.9) * 0.5) * amount;
       }
       this.speedLines.update(vehicle ? kmh : 0, dt);
+      this.cinemaKmh = kmh;
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);
@@ -863,6 +968,10 @@ export class Game {
     }
 
     this.atmosphere.update(dt, this.view3d.camera);
+    const skyU = this.atmosphere.sky.uniforms;
+    if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night)) {
+      this.streetLife?.setReflections(this.reflections.texture);
+    }
     if (this.interior) {
       // Indoors: lit by the room's lamps, not the sun (same lights, other strengths — no shader rebuild).
       this.view3d.sun.intensity = 0.7;
@@ -895,7 +1004,10 @@ export class Game {
       this.composer?.setSize(window.innerWidth, window.innerHeight);
       this.appliedPixelRatio = pixelRatio;
     }
-    if (this.composer) this.composer.render(dt);
+    if (this.composer) {
+      this.updateCinema(now);
+      this.composer.render(dt);
+    }
     else this.view3d.renderer.render(this.view3d.scene, this.view3d.camera);
     this.meter.frame(dtMs);
   }

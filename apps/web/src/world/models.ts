@@ -286,16 +286,24 @@ export function loadTexturedModel(path: string, fit: TexturedFit): Promise<Textu
         let painted = false;
         const material = sources.map((m, index) => {
           const source = m as THREE.MeshStandardMaterial;
-          const own = new THREE.MeshStandardMaterial({
+          // Paint gets a clear coat (a sharp mirror layer over the colour, like real car paint);
+          // glass is smooth. Both reflect the sky and the city strongly (`userData.reflect`).
+          // (Some models name parts in Portuguese or Italian: vidro/vetro = glass, cromado = chrome.)
+          const glass = /glass|window|windshield|windscreen|vidro|vetro/i.test(source.name) || (source.transparent && source.opacity < 0.9);
+          const chrome = !glass && /chrome|cromado|cromo/i.test(source.name);
+          const shiny = !glass && !chrome && (isPaint(m) || index === body);
+          const settings: THREE.MeshStandardMaterialParameters = {
             map: source.map ?? null,
             color: source.color ?? new THREE.Color(1, 1, 1),
-            roughness: Math.max(0.3, source.roughness ?? 0.5),
-            metalness: Math.min(0.6, source.metalness ?? 0.1),
+            roughness: glass ? 0.05 : chrome ? 0.12 : shiny ? THREE.MathUtils.clamp(source.roughness ?? 0.5, 0.35, 0.6) : Math.max(0.3, source.roughness ?? 0.5),
+            metalness: glass ? 0 : chrome ? 1 : Math.min(0.6, source.metalness ?? 0.1),
             transparent: source.transparent,
             opacity: source.opacity,
             alphaTest: source.alphaTest,
             side: source.side,
-          });
+          };
+          const own = shiny ? new THREE.MeshPhysicalMaterial({ ...settings, clearcoat: 1, clearcoatRoughness: 0.06 }) : new THREE.MeshStandardMaterial(settings);
+          own.userData.reflect = glass ? 2.2 : chrome ? 2.4 : shiny ? 2 : 1;
           if (own.map) own.map.colorSpace = THREE.SRGBColorSpace;
           own.name = source.name;
           // 'auto': only the body takes paint; the other parts keep their own colours.

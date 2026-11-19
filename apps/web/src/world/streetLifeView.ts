@@ -308,9 +308,17 @@ export class StreetLifeView {
 
   /** Reflections are dimmer at night. */
   setNight(night: number): void {
-    this.material.envMapIntensity = 0.1 + 0.3 * (1 - night); // gentle: the studio reflection washes colours out
-    // Kenney's light colours already look bright; their reflections are kept softer.
-    for (const kind of this.kinds) for (const m of [...(kind.material ?? []), ...(kind.lodMaterial ?? [])]) m.envMapIntensity = this.material.envMapIntensity * 1.2;
+    this.material.envMapIntensity = 0.1 + 0.3 * (1 - night); // gentle: rough parts would wash out
+    // Clear-coated paint and glass (`userData.reflect`, set in `loadTexturedModel`) mirror the
+    // sky and the city much more strongly than tyres, trim and interiors.
+    for (const kind of this.kinds)
+      for (const m of [...(kind.material ?? []), ...(kind.lodMaterial ?? [])]) m.envMapIntensity = this.material.envMapIntensity * 1.2 * ((m.userData.reflect as number | undefined) ?? 1);
+  }
+
+  /** A new reflection map (the sun moved or night fell). */
+  setReflections(texture: THREE.Texture): void {
+    this.material.envMap = texture;
+    for (const kind of this.kinds) for (const m of [...(kind.material ?? []), ...(kind.lodMaterial ?? [])]) m.envMap = texture;
   }
 
   /** The nearest parked vehicle within `reach` metres whose model is loaded, or null. */
