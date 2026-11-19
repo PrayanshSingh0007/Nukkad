@@ -4,10 +4,12 @@ export const PACK_VERSION = 13;
 /** Half the side of an area in metres. 600 → a 1.2 km square (the default for the API and the tests). */
 export const DEFAULT_HALF_SIZE = 600;
 /**
- * What the game asks for: 1800 → a 3.6 km square. Big enough that the Bellandur test area
- * reaches the real Outer Ring Road (1.6 km from its centre) for fast driving.
+ * What the game shows: the square the owner marked on a map (2026-11-17). It runs from the
+ * Outer Ring Road at Ecospace / Sakra hospital (top-left) to Sarjapur Road (bottom), about
+ * 2.8 km on a side. Centre and size were worked out from landmarks; the data is OpenStreetMap.
  */
-export const GAME_HALF_SIZE = 1800;
+export const GAME_AREA = { lat: 12.922, lng: 77.692 } as const;
+export const GAME_HALF_SIZE = 1350;
 export const MIN_HALF_SIZE = 150;
 export const MAX_HALF_SIZE = 1800;
 

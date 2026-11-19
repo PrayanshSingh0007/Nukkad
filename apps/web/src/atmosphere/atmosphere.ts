@@ -66,6 +66,7 @@ function lookAt(elevationDeg: number): Look {
   return LOOKS[LOOKS.length - 1];
 }
 
+
 export class Atmosphere {
   readonly sky = new Sky();
   /** 0 = day … 1 = night. */
@@ -73,7 +74,7 @@ export class Atmosphere {
   /** The place's local clock, for the overlay. */
   clock = '';
   /** Direction the light comes from (sun by day, moon by night), unit length. */
-  readonly lightDir = new THREE.Vector3(0, 1, 0);
+  readonly lightDir = new THREE.Vector3(0, 2, 0);
   /**
    * Hours on the place's clock to show instead of now. The owner wants it always day, so it
    * starts at a fixed afternoon (DAY_HOUR) instead of following the real clock; the debug slider

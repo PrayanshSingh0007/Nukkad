@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ROOM_ID_PATTERN, TEST_AREA, cleanName, isValidLatLng } from '@nukkad/shared';
+import { GAME_AREA, ROOM_ID_PATTERN, cleanName, isValidLatLng } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { Game } from '../game/game.ts';
 import { startingQuality } from '../game/quality.ts';
@@ -27,7 +27,7 @@ function startSpot(): [number, number] {
   const params = new URLSearchParams(location.search);
   const lat = Number(params.get('lat'));
   const lng = Number(params.get('lng'));
-  return params.has('lat') && isValidLatLng(lat, lng) ? [lat, lng] : [TEST_AREA.lat, TEST_AREA.lng];
+  return params.has('lat') && isValidLatLng(lat, lng) ? [lat, lng] : [GAME_AREA.lat, GAME_AREA.lng];
 }
 
 function startGame(id: string, lat: number, lng: number, name: string, look: AvatarLook): Game {

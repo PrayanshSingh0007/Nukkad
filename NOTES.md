@@ -22,10 +22,17 @@ The owner can no longer use the model that did most of this work, so this sectio
 
 **Next steps, in the order the owner cares about:**
 1. **BMW M5 F90 and M4 CSL** are downloaded but not in the game: they are too heavy (250k and 84k triangles after `slim.mjs`). Open Blender (the MCP add-on listens on 9876), import, add a Decimate modifier per mesh to reach about 20k triangles, export GLB, then run `tools/vehicles/slim.mjs`. The originals were in the session's temp folder and are gone; re-download from Sketchfab (owner must be signed in and must approve): M5 `5478e978bd634337adc8e3dc413fbfa3` (Res1n), M4 CSL `26d05968e63b4fc28205cbb9abb0ea41` (BlackSnow02). Remove badges (materials named logo/badge) and credit them in CREDITS.md.
-2. **Phone test.** Nothing since the 3.6 km map, the Indian cars or the speed changes has been tried on a phone. The owner copies a report with 5 taps on the logo. If it is too slow: lower `GAME_HALF_SIZE` to 1200, lower `NEAR_FULL`, or lower traffic counts in `world.worker.ts`.
+2. **Phone test.** Nothing since the bigger map (now the owner's 2.7 km square), the Indian cars or the speed changes has been tried on a phone. The owner copies a report with 5 taps on the logo. If it is too slow: lower traffic, lower `NEAR_FULL`, or lower traffic counts in `world.worker.ts`.
 3. **Fortuner, Innova, Swift, Scorpio:** no clean free models exist (see "Indian car models" below). Do not use BHP3D or other game rips.
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
+
+## The owner's square (2026-11-19)
+
+- The owner marked the area they want on a map: from the Outer Ring Road at Ecospace / Sakra hospital (top-left) down to Sarjapur Road (bottom), Bellandur–Doddakannelli–Kadubeesanahalli. The game now always shows exactly that: `GAME_AREA = { lat: 12.922, lng: 77.692 }`, `GAME_HALF_SIZE = 1350` (2.7 km square), in `packages/shared/src/constants.ts`. `Root.tsx` starts there unless the URL has `?lat=&lng=`.
+- Inside it: 4,158 buildings, 1,720 road lines, 2.7 km of Outer Ring Road (392 m of flyover), 1.7 km of Sarjapura Road, New Horizon College Road, Kadubeesanahalli Main Road, Gear School Road. Preparing the world takes about 1.4 s on the owner's Mac (was 2.9 s for the 3.6 km map).
+- The owner's map picture was only used to see which area they meant; all data is still OpenStreetMap.
+- `TEST_AREA` (the old centre) is still used by the debug page and the tests.
 
 ## Real Outer Ring Road, modern BMWs (2026-11-17)
 
