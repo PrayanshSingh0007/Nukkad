@@ -93,9 +93,14 @@ describe('building mesh', () => {
   it('puts a terrace wall around flat roofs of homes (both faces, no windows)', () => {
     const house: PackBuilding = { ...box, kind: 'house' };
     const builder = new MeshBuilder(3);
-    appendBuilding(builder, house, terrain);
+    appendBuilding(builder, house, terrain, false, false);
     expect(builder.triangleCount).toBe(10 + 16 + 10); // + the stair room on the terrace
     expect(buildingTriangleEstimate(house)).toBe(36);
+    // With floor ledges and the roof cornice: 6 triangles per wall per level (2 levels here).
+    const withLedges = new MeshBuilder(3);
+    appendBuilding(withLedges, house, terrain);
+    expect(withLedges.triangleCount).toBe(36 + 6 * 4 * 2);
+    expect(buildingTriangleEstimate(house, true)).toBe(withLedges.triangleCount);
     const mesh = builder.finish() as MeshData;
     const ys = Array.from({ length: mesh.positions.length / 3 }, (_, v) => mesh.positions[v * 3 + 1]);
     expect(Math.max(...ys)).toBeCloseTo(heightAt(terrain, 0, 0) + 6.5 + 2.5); // top of the stair room

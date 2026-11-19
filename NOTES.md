@@ -27,6 +27,18 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Cinematic pass: light, AO, ledges, haze, road wear (2026-11-19)
+
+- **Lighting** (`atmosphere.ts` LOOKS): day sun 3.2–3.4 (was 2.3–2.6) and warmer; sky fill 1.5–1.6 (was 1.9–2.1) and cooler. Lit walls against shade now read clearly. Fill was briefly 1.25–1.35, but that made tree canopies nearly black.
+- **Ambient occlusion** (High only): `GTAOPass` between the render and the bloom in `applyBloom`. Radius 1.6 m, 12 samples, blend 0.9. It adds contact shadows at wall bases and corners and under cars. Measured about 7.5–10 ms per frame on the owner's Mac.
+- **Floor ledges and roof cornices** (`buildingMesh.ts` `addLedge`): a 30 cm concrete band at every floor slab (capped at 8) and a 42 cm cornice at the roof, on homes, flats, shops and offices (not glass towers, industrial or floating parts).
+  - Built only in near chunks. If a chunk is nearly full (30k triangles), the building is drawn without ledges rather than skipped.
+  - Cost: 6 triangles per wall per level. The pipeline test's full-detail cap was raised from 150k to 300k for the whole test area; only chunks near you use full detail.
+- **Walls** (facade shader): large patches of faded and darker plaster plus small blotches, and a darker grey plinth at the foot of the wall.
+- **Haze:** fog now starts at 15 % of the view distance (was 45 %), and the day horizon is a warmer grey. Distant buildings fade, which gives depth.
+- **Roads:** on roads wider than 5.5 m, each 3.3 m lane gets its own wheel tracks and an oil line down its middle. Every road gets sandy dust drifting in along the kerbs and large soft tone patches.
+- Not done: the M5 and M4 CSL (need Blender); roof surface detail; skid marks, smoke and motion blur. Medium quality (phones) gets the lighting, ledges, haze, walls and roads, but not the AO or colour-grade pass. Not tested on a phone.
+
 ## The owner's square (2026-11-19)
 
 - The owner marked the area they want on a map: from the Outer Ring Road at Ecospace / Sakra hospital (top-left) down to Sarjapur Road (bottom), Bellandur–Doddakannelli–Kadubeesanahalli. The game now always shows exactly that: `GAME_AREA = { lat: 12.922, lng: 77.692 }`, `GAME_HALF_SIZE = 1350` (2.7 km square), in `packages/shared/src/constants.ts`. `Root.tsx` starts there unless the URL has `?lat=&lng=`.

@@ -52,13 +52,18 @@ export function buildChunk(world: PreparedWorld, cx: number, cz: number, lod: Ch
   let skippedBuildings = 0;
   for (const building of bucket.buildings) {
     if (far && Math.abs(signedArea(building.ring)) < FAR_MIN_BUILDING_M2 * 100) continue; // pack units are dm²
-    const cost = buildingTriangleEstimate(building);
+    // Up close a building gets floor ledges; when the chunk is nearly full it is drawn without
+    // them rather than left out.
+    const plain = buildingTriangleEstimate(building);
+    const full = far ? plain : buildingTriangleEstimate(building, true);
+    const ledges = !far && planned + full <= budget;
+    const cost = ledges ? full : plain;
     if (planned + cost > budget) {
       skippedBuildings++;
       continue;
     }
     planned += cost;
-    appendBuilding(buildings, building, world.terrain, far);
+    appendBuilding(buildings, building, world.terrain, far, ledges);
   }
 
   // Gated societies: walls only up close (from far away they are hidden behind trees), gates always.

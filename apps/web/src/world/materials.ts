@@ -134,6 +134,15 @@ const FACADE_GLSL = /* glsl */ `
     wall *= 1.0 - (0.1 + 0.22 * underSill) * streak * fine * above * (style == 2 ? 0.0 : 1.0);
     // Grime near the ground.
     wall *= 0.8 + 0.2 * smoothstep(-0.2, 0.45, vWin.y);
+    // Weathered paint: big soft patches of faded and darker plaster (sun and monsoon), never flat.
+    if (style != 2) {
+      float patchy = nkNoise(vec2(vWin.x * 0.31 + vColor.r * 13.0, vWin.y * 0.43 + vColor.g * 7.0));
+      float blotch = nkNoise(vec2(vWin.x * 1.7 + vColor.b * 5.0, vWin.y * 1.3));
+      wall *= 0.88 + 0.18 * patchy - 0.06 * smoothstep(0.55, 0.9, blotch) * fine;
+      // The plinth: the foot of the wall painted a darker grey, as on most Bengaluru buildings.
+      float plinth = 1.0 - smoothstep(0.1, 0.11 + fw.y, vWin.y);
+      wall = mix(wall, vec3(0.3, 0.29, 0.27) * (0.85 + 0.15 * patchy), plinth * above * 0.9);
+    }
 
     // ---- The opening: frame, sill, sunshade.
     float open = nkRect(cell, box, fw) * fade * above;
@@ -271,6 +280,19 @@ const ROAD_GLSL = /* glsl */ `
     // ---- Bengaluru road wear (only up close, where it can be seen) ----
     float nearR = 1.0 - smoothstep(0.08, 0.4, fwidth(vRoad.y));
     vec2 rp = vec2(vRoad.x, vRoad.y);
+    // Wide roads: every 3.3 m lane has its own pair of polished wheel tracks and an oil line
+    // down the middle, where engines drip at signals.
+    if (vRoad.z > 2.75) {
+      float lx = mod(vRoad.x + vRoad.z, 3.3) - 1.65;
+      float tracks = 1.0 - smoothstep(0.18, 0.45, abs(abs(lx) - 0.85));
+      float oil = (1.0 - smoothstep(0.05, 0.4, abs(lx))) * (0.45 + 0.55 * nkNoise(vec2(vRoad.x * 2.0, vRoad.y * 0.12)));
+      diffuseColor.rgb *= 1.0 - 0.07 * tracks - 0.11 * oil;
+    }
+    // Dust drifts in along the kerbs: the road edges are paler and sandy.
+    float dusty = smoothstep(vRoad.z - 1.3, vRoad.z - 0.1, across) * (0.55 + 0.45 * nkNoise(rp * 0.6));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.43, 0.39, 0.33), dusty * 0.38);
+    // Big soft tone patches, so a long road is never one flat grey.
+    diffuseColor.rgb *= 0.92 + 0.15 * nkNoise(rp * vec2(0.09, 0.025));
     // Tar patches: darker, fresher rectangles where the road was dug up and filled.
     vec2 pc = floor(rp / vec2(2.6, 7.0));
     float ph = nkHash(pc + 41.0);

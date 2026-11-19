@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
@@ -611,7 +612,7 @@ export class Game {
     const quality = QUALITY[this.level];
     const fog = this.view3d.scene.fog as THREE.Fog;
     fog.far = quality.viewDistance;
-    fog.near = quality.viewDistance * 0.45;
+    fog.near = quality.viewDistance * 0.15; // a light city haze from fairly close: depth, like a real Bengaluru afternoon
     this.view3d.camera.far = quality.viewDistance + 80;
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
@@ -670,6 +671,13 @@ export class Game {
     const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
     const composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
+    // Ambient occlusion: the soft darkening where walls meet the ground, in corners and under
+    // cars, which is most of what makes a scene look solid instead of flat.
+    const ao = new GTAOPass(scene, camera, size.x, size.y);
+    ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.2, scale: 1.15, samples: 12, distanceFallOff: 0.6, screenSpaceRadius: false });
+    ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+    ao.blendIntensity = 0.9;
+    composer.addPass(ao);
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 1.25));
     composer.addPass(new ShaderPass(GRADE_SHADER));
     composer.addPass(new OutputPass());

@@ -39,9 +39,10 @@ const LOOKS: Look[] = [
   look(-18, '#060b1a', '#16203a', '#9db2f2', 0.6, '#3a4a78', '#262a38', 0.95),
   look(-8, '#0b1430', '#26304f', '#a3b6f2', 0.6, '#42507c', '#2a2c38', 1.0),
   look(-2, '#25386a', '#c97a62', '#ff9a66', 0.55, '#6c7aa0', '#40383a', 1.1),
-  look(4, '#4f78bf', '#f2b98c', '#ffb072', 1.6, '#b8c4e0', '#6e6152', 1.5),
-  look(15, '#5d93da', '#cfe1f2', '#ffe6c4', 2.3, '#d6e4fa', '#8a8070', 1.9),
-  look(40, '#4f8fe0', '#c8e2f8', '#fff4e3', 2.6, '#dcebff', '#8f8672', 2.1),
+  look(4, '#4f78bf', '#f2b98c', '#ffb072', 2.0, '#9fb2dc', '#6e6152', 1.15),
+  // Day: a strong warm sun against a softer, cooler sky fill, so lit walls and shade read clearly.
+  look(15, '#4f8ad8', '#e6ddcc', '#ffd9a8', 3.2, '#b9cdf2', '#7d705c', 1.5),
+  look(40, '#4787dc', '#dde0dd', '#ffeccf', 3.4, '#c3d6f7', '#857a66', 1.6),
 ];
 
 function lookAt(elevationDeg: number): Look {

@@ -60,7 +60,7 @@ export function facadeStyle(building: PackBuilding): number {
 }
 
 /** Triangles a building adds: 2 per wall edge + roof (+ underside when it floats). */
-export function buildingTriangleEstimate(building: PackBuilding): number {
+export function buildingTriangleEstimate(building: PackBuilding, withLedges = false): number {
   let points = building.ring.length / 2;
   let holes = 0;
   for (const hole of building.holes ?? []) {
@@ -69,7 +69,9 @@ export function buildingTriangleEstimate(building: PackBuilding): number {
   }
   const cap = points - 2 + 2 * holes;
   // Walls + roof (+ underside) + parapet (4 per outer edge; counted for far versions too, to be safe).
-  return 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length + 10 : 0);
+  const base = 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length + 10 : 0);
+  // Ledges: 6 triangles per outer edge per level (only up close).
+  return base + (withLedges && hasLedges(building) ? 3 * building.ring.length * ledgeLevels(building) : 0);
 }
 
 /**
@@ -150,6 +152,75 @@ function addParapet(mesh: MeshBuilder, ring: number[], y: number, color: Rgb): v
 }
 
 /**
+ * Floor ledges and the roof cornice: the concrete bands that stick out of almost every
+ * Bengaluru building at each floor slab. They throw a real shadow line across the wall,
+ * which is what makes a facade read as solid instead of a painted box.
+ */
+const LEDGE_OUT_M = 0.3;
+const LEDGE_THICK_M = 0.14;
+const CORNICE_OUT_M = 0.42;
+const CORNICE_THICK_M = 0.24;
+const MAX_LEDGE_LEVELS = 8;
+const MIN_LEDGE_WALL_M = 1.5;
+
+export function hasLedges(building: PackBuilding): boolean {
+  if (building.minH || building.material === 'glass') return false;
+  const style = facadeStyle(building);
+  return style !== 2 && style !== 5 && PARAPET_KINDS.has(building.kind);
+}
+
+/** Floor slabs between floors (up to a cap) plus the cornice at the roof. */
+export function ledgeLevels(building: PackBuilding): number {
+  return Math.min(MAX_LEDGE_LEVELS, Math.max(0, building.floors - 1)) + 1;
+}
+
+function addLedge(mesh: MeshBuilder, ring: number[], y: number, out: number, thick: number, color: Rgb, under: Rgb): void {
+  const n = ring.length;
+  const y0 = y - thick;
+  for (let i = 0; i < n; i += 2) {
+    const j = (i + 2) % n;
+    const dx = ring[j] - ring[i];
+    const dz = ring[j + 1] - ring[i + 1];
+    const length = Math.hypot(dx, dz);
+    if (length < MIN_LEDGE_WALL_M) continue;
+    const ux = dx / length;
+    const uz = dz / length;
+    const nx = uz;
+    const nz = -ux;
+    // Run past both corners by the overhang, so neighbouring ledges meet at outside corners.
+    const ax = ring[i] - ux * out;
+    const az = ring[i + 1] - uz * out;
+    const bx = ring[j] + ux * out;
+    const bz = ring[j + 1] + uz * out;
+    const oax = ax + nx * out;
+    const oaz = az + nz * out;
+    const obx = bx + nx * out;
+    const obz = bz + nz * out;
+    // Top.
+    let a = mesh.addVertex(ax, y, az, 0, 1, 0, color, 0, 0, 0);
+    let b = mesh.addVertex(bx, y, bz, 0, 1, 0, color, 0, 0, 0);
+    let c = mesh.addVertex(obx, y, obz, 0, 1, 0, color, 0, 0, 0);
+    let d = mesh.addVertex(oax, y, oaz, 0, 1, 0, color, 0, 0, 0);
+    mesh.addTriangleFacing(a, b, c, true);
+    mesh.addTriangleFacing(a, c, d, true);
+    // Underside (darker: the soffit is in its own shade).
+    a = mesh.addVertex(ax, y0, az, 0, -1, 0, under, 0, 0, 0);
+    b = mesh.addVertex(bx, y0, bz, 0, -1, 0, under, 0, 0, 0);
+    c = mesh.addVertex(obx, y0, obz, 0, -1, 0, under, 0, 0, 0);
+    d = mesh.addVertex(oax, y0, oaz, 0, -1, 0, under, 0, 0, 0);
+    mesh.addTriangleFacing(a, b, c, false);
+    mesh.addTriangleFacing(a, c, d, false);
+    // Front lip, facing out (same winding as the walls).
+    a = mesh.addVertex(oax, y0, oaz, nx, 0, nz, color, 0, 0, 0);
+    b = mesh.addVertex(obx, y0, obz, nx, 0, nz, color, 0, 0, 0);
+    c = mesh.addVertex(obx, y, obz, nx, 0, nz, color, 0, 0, 0);
+    d = mesh.addVertex(oax, y, oaz, nx, 0, nz, color, 0, 0, 0);
+    mesh.addTriangle(a, c, b);
+    mesh.addTriangle(a, d, c);
+  }
+}
+
+/**
  * The little room on the terrace where the stairs come up (and, on big blocks, the lift room).
  * A box near the middle of the roof, lined up with the longest wall; skipped if it does not fit.
  */
@@ -218,7 +289,7 @@ const FAR_SIMPLIFY_M = 1.5;
  * Adds one building (walls + flat roof) to a chunk's building mesh.
  * `far` = the simplified version for far away: rougher outline, no courtyards.
  */
-export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrain: TerrainGrid, far = false): void {
+export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrain: TerrainGrid, far = false, ledges = !far): void {
   const exact = toMetres(building.ring);
   const ring = far ? simplifyRing(exact, FAR_SIMPLIFY_M) : exact;
   const holes = far ? [] : (building.holes ?? []).map(toMetres);
@@ -256,6 +327,14 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   };
   addCap(top, true, roof);
   if (floats) addCap(bottom, false, wall);
+  if (!far && ledges && hasLedges(building)) {
+    // Ledges a shade lighter than the wall (fresh paint on the edge), soffits darker.
+    const edge: Rgb = [Math.min(255, Math.round(wall[0] * 1.06)), Math.min(255, Math.round(wall[1] * 1.06)), Math.min(255, Math.round(wall[2] * 1.06))];
+    const under: Rgb = [Math.round(wall[0] * 0.72), Math.round(wall[1] * 0.72), Math.round(wall[2] * 0.72)];
+    const levels = ledgeLevels(building) - 1;
+    for (let k = 1; k <= levels; k++) addLedge(mesh, ring, ground + k * floorHeight, LEDGE_OUT_M, LEDGE_THICK_M, edge, under);
+    addLedge(mesh, ring, top, CORNICE_OUT_M, CORNICE_THICK_M, edge, under);
+  }
   if (!far && hasParapet(building)) {
     addParapet(mesh, ring, top, wall);
     addRoofRoom(mesh, building, ring, top, wall);
