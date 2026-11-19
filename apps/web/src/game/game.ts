@@ -43,6 +43,7 @@ import { createGameScene } from './scene.ts';
 import { Sound } from '../audio/sound.ts';
 import { SpeedLines } from './speedLines.ts';
 import { TyreFx } from './tyreFx.ts';
+import { CarLights } from './carLights.ts';
 import { CityReflections } from '../atmosphere/cityReflections.ts';
 
 /**
@@ -251,6 +252,7 @@ export class Game {
   private cameraLag = 0;
   private readonly speedLines: SpeedLines;
   private readonly tyreFx = new TyreFx();
+  private readonly carLights = new CarLights();
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -522,6 +524,7 @@ export class Game {
       this.driving = null;
       this.driveMesh?.removeFromParent();
       this.driveMesh = null;
+      this.carLights.detach();
       player.avatar.object.visible = true;
       this.onRiding?.(false);
       return;
@@ -544,6 +547,8 @@ export class Game {
     mesh.rotation.order = 'YXZ';
     this.driveMesh = mesh;
     this.view3d.scene.add(mesh);
+    if (!model.geometry.boundingBox) model.geometry.computeBoundingBox();
+    if (model.geometry.boundingBox) this.carLights.attach(mesh, model.geometry.boundingBox, spec.leans === true);
     this.onRiding?.(true);
   }
 
@@ -858,6 +863,7 @@ export class Game {
       if (this.driveMesh) {
         this.driveMesh.position.set(player.x, player.y, player.z);
         this.driveMesh.rotation.set(player.bodyPitch, player.heading, player.lean + player.bodyRoll);
+        this.carLights.update(player.rideSpeed, player.brake, player.handbrake, this.atmosphere.night);
       }
       this.updateDriveHint();
       const riding = player.vehicle;
@@ -870,9 +876,9 @@ export class Game {
             Math.min(1, player.slip * 1.3),
             player.handbrake && speed > 4 ? 0.75 : 0,
             // Hard braking only when you brake (a bump into another car also slows you sharply).
-            player.throttle < -0.5 && player.longAccel < -6 && speed > 6 ? Math.min(1, (-player.longAccel - 6) / 5) : 0,
-            // A launch leaves marks and a little smoke, not a cloud.
-            player.throttle > 0.8 && speed > 0.5 && speed < 13 && player.longAccel > 6 && riding.maxSpeed > 30 ? 0.35 : 0,
+            player.brake > 0.5 && player.longAccel < -6 && speed > 6 ? Math.min(1, (-player.longAccel - 6) / 5) : 0,
+            // A launch leaves light marks but no smoke (smoke starts above 0.2).
+            player.throttle > 0.8 && speed > 0.5 && speed < 5 && player.longAccel > 6 && riding.maxSpeed > 30 ? 0.18 : 0,
           );
         }
         const wheels: { x: number; y: number; z: number }[] = [];

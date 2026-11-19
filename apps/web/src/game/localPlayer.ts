@@ -41,6 +41,8 @@ export class LocalPlayer {
   longAccel = 0;
   /** Throttle you are giving (0–1), for the engine sound. */
   throttle = 0;
+  /** How hard you brake (0–1): the stick against the way you are rolling. For brake lights and marks. */
+  brake = 0;
   /** How much the tyres are sliding sideways (0 = gripping, 1 = full drift). */
   slip = 0;
   private yawVelocity = 0;
@@ -234,6 +236,7 @@ export class LocalPlayer {
     if (this.handbrake && throttle <= 0.05) v -= Math.sign(v) * Math.min(Math.abs(v), 2 * STEP_S);
     this.rideSpeed = Math.min(vehicle.maxSpeed, Math.max(-vehicle.reverse, v));
     this.throttle = Math.max(0, throttle);
+    this.brake = (throttle < -0.05 && before > 0.3) || (throttle > 0.05 && before < -0.3) ? Math.abs(throttle) : 0;
 
     // The turn: bicycle model, less lock at speed, capped by tyre grip, with yaw inertia.
     const absShare = Math.min(1, Math.abs(this.rideSpeed) / vehicle.maxSpeed);
