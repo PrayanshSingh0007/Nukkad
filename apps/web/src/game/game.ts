@@ -43,6 +43,7 @@ import type { QualityLevel, QualitySource } from './quality.ts';
 import { createGameScene } from './scene.ts';
 import { Sound } from '../audio/sound.ts';
 import { SpeedLines } from './speedLines.ts';
+import { TyreFx } from './tyreFx.ts';
 
 /**
  * A simple gearbox for the engine note: gears get longer as you go up, the revs climb through
@@ -165,6 +166,7 @@ export class Game {
   /** Camera pull-back from acceleration (metres; negative = pushed in by braking). */
   private cameraLag = 0;
   private readonly speedLines: SpeedLines;
+  private readonly tyreFx = new TyreFx();
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -174,6 +176,7 @@ export class Game {
     this.input = new PlayerInput(options.canvas, options.stick);
     this.rig = new CameraRig(this.view3d.camera);
     this.speedLines = new SpeedLines(options.canvas.parentElement ?? document.body);
+    this.view3d.scene.add(this.tyreFx.group);
     this.remotes = new RemotePlayers(this.view3d.scene);
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
     this.view3d.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -756,6 +759,36 @@ export class Game {
       }
       this.updateDriveHint();
       const riding = player.vehicle;
+      // Tyres: skid marks, smoke and screech when sliding, drifting, braking hard or launching.
+      {
+        const speed = Math.abs(player.rideSpeed);
+        let skid = 0;
+        if (riding && player.body.grounded) {
+          skid = Math.max(
+            Math.min(1, player.slip * 1.3),
+            player.handbrake && speed > 4 ? 0.75 : 0,
+            player.longAccel < -6 && speed > 6 ? Math.min(1, (-player.longAccel - 6) / 5) : 0,
+            player.throttle > 0.8 && speed > 0.5 && speed < 13 && player.longAccel > 6 && riding.maxSpeed > 30 ? 0.65 : 0,
+          );
+        }
+        const wheels: { x: number; y: number; z: number }[] = [];
+        if (riding) {
+          const fx = -Math.sin(player.heading);
+          const fz = -Math.cos(player.heading);
+          const back = riding.wheelbase * 0.5;
+          const side = riding.leans ? 0 : riding.radius * 0.85;
+          const bx = player.x - fx * back;
+          const bz = player.z - fz * back;
+          if (side === 0) wheels.push({ x: bx, y: player.y, z: bz });
+          else wheels.push({ x: bx - fz * side, y: player.y, z: bz + fx * side }, { x: bx + fz * side, y: player.y, z: bz - fx * side });
+        }
+        const [vx, vz] = player.velocity;
+        const size = this.view3d.renderer.getDrawingBufferSize(new THREE.Vector2());
+        this.tyreFx.setViewport(size.y, this.view3d.camera.fov);
+        this.tyreFx.setLight(new THREE.Color(1, 1, 1).multiplyScalar(1 - this.atmosphere.night * 0.75));
+        this.tyreFx.update(dt, wheels, skid, vx, vz);
+        this.sound.skid(skid);
+      }
       this.sound.engine(riding ? engineRpm(riding, Math.abs(player.rideSpeed)) : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine', player.throttle);
       this.speedClock += dt;
       if (this.speedClock > 0.1) {

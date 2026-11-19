@@ -44,6 +44,10 @@ export class LocalPlayer {
   /** How much the tyres are sliding sideways (0 = gripping, 1 = full drift). */
   slip = 0;
   private yawVelocity = 0;
+  /** The body's actual ground velocity, m/s (for tyre smoke). */
+  get velocity(): [number, number] {
+    return [this.velocityX, this.velocityZ];
+  }
   private readonly physics: PhysicsWorld;
   private readonly limit: number;
   private velocityX = 0;

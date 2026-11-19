@@ -19,6 +19,8 @@ export class Sound {
   private engineGain: GainNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
   private engineOscs: OscillatorNode[] = [];
+  private skidGain: GainNode | null = null;
+  private skidFilter: BiquadFilterNode | null = null;
   muted = false;
 
   /** Call from a tap or key press. Safe to call many times. */
@@ -78,6 +80,34 @@ export class Sound {
       osc.start();
       this.engineOscs.push(osc);
     }
+    // Tyre screech: loud noise squeezed through a narrow band, so it sings like rubber.
+    const noise = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const source = context.createBufferSource();
+    source.buffer = noise;
+    source.loop = true;
+    this.skidFilter = context.createBiquadFilter();
+    this.skidFilter.type = 'bandpass';
+    this.skidFilter.frequency.value = 1300;
+    this.skidFilter.Q.value = 9;
+    this.skidGain = context.createGain();
+    this.skidGain.gain.value = 0;
+    source.connect(this.skidFilter).connect(this.skidGain).connect(this.master);
+    source.start();
+  }
+
+  /** Tyre screech, 0 (silent) to 1 (full slide). Fades out by itself if not refreshed. */
+  skid(amount: number): void {
+    const context = this.context;
+    if (!context || !this.skidGain || !this.skidFilter) return;
+    const now = context.currentTime;
+    const a = this.muted ? 0 : Math.min(1, Math.max(0, amount));
+    const gain = this.skidGain.gain;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(a > 0.12 ? 0.05 + a * 0.22 : 0, now, a > 0.12 ? 0.03 : 0.08);
+    gain.setTargetAtTime(0, now + 0.35, 0.1);
+    this.skidFilter.frequency.setTargetAtTime(1100 + a * 500 + Math.random() * 120, now, 0.05);
   }
 
   /** Press (true) or release (false) the horn. */

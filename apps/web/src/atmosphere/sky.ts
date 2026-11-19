@@ -47,23 +47,38 @@ const fragmentShader = /* glsl */ `
   void main() {
     vec3 dir = normalize(vDir);
     float up = max(dir.y, 0.0);
-    vec3 color = mix(uHorizon, uTop, pow(up, 0.55));
+    // Deep blue overhead fading into a pale, slightly warm haze band at the horizon.
+    vec3 color = mix(uHorizon, uTop, pow(up, 0.45));
+    color = mix(color, uHorizon * vec3(1.04, 1.0, 0.94), (1.0 - smoothstep(0.0, 0.12, up)) * 0.5);
     if (dir.y < 0.0) color = mix(uHorizon, uHorizon * 0.7, min(1.0, -dir.y * 4.0));
 
     float sun = dot(dir, uSunDir);
-    color += uSunColor * (smoothstep(0.9993, 0.9997, sun) * 4.0 + pow(max(sun, 0.0), 64.0) * 0.35);
+    float sunUp = max(sun, 0.0);
+    // Sun disc, a tight glow and a wide warm haze around it (light scattered by the city's air).
+    color += uSunColor * (smoothstep(0.9993, 0.9997, sun) * 5.0 + pow(sunUp, 64.0) * 0.45 + pow(sunUp, 6.0) * 0.18 + pow(sunUp, 2.0) * 0.06);
 
-    // Clouds: a flat layer high above, drifting slowly; puffy by day, dim grey at night.
-    if (dir.y > 0.02) {
-      vec2 cp = dir.xz / (dir.y + 0.12) * 1.4 + vec2(uTime * 0.006, uTime * 0.002);
+    if (dir.y > 0.015) {
+      vec2 base = dir.xz / (dir.y + 0.12);
+      float fadeOut = smoothstep(0.015, 0.2, dir.y); // thin out into the horizon haze
+      vec3 lit = mix(vec3(1.0, 0.985, 0.95), uSunColor, 0.3) * (1.0 - uNight * 0.86);
+      vec3 shade = mix(uHorizon * 0.82, vec3(0.5, 0.55, 0.65), 0.55) * (1.0 - uNight * 0.8);
+
+      // High cirrus: thin streaks stretched along the wind.
+      vec2 cq = base * vec2(0.6, 2.4) + vec2(uTime * 0.004, 0.0);
+      float cirrus = smoothstep(0.55, 0.85, fbm(cq * 1.3)) * 0.35;
+      color = mix(color, lit, cirrus * fadeOut);
+
+      // Cumulus: puffy clouds. Density towards the sun gives them shaded bellies and bright tops.
+      vec2 cp = base * 1.4 + vec2(uTime * 0.006, uTime * 0.002);
       float cover = fbm(cp);
-      float body = smoothstep(0.5, 0.78, cover);
-      float thick = smoothstep(0.55, 0.95, fbm(cp + uSunDir.xz * 0.06)); // denser towards the sun = shaded side
-      vec3 lit = mix(vec3(1.0, 0.99, 0.96), uSunColor, 0.25) * (1.0 - uNight * 0.86);
-      vec3 shade = mix(uHorizon, vec3(0.62, 0.66, 0.74), 0.5) * (1.0 - uNight * 0.8);
-      vec3 cloud = mix(lit, shade, thick * 0.6);
-      float fadeOut = smoothstep(0.02, 0.22, dir.y); // thin out towards the horizon haze
-      color = mix(color, cloud, body * fadeOut * 0.92);
+      float body = smoothstep(0.5, 0.74, cover);
+      vec2 toSun = normalize(uSunDir.xz + 1e-4) * 0.07;
+      float shadowing = smoothstep(0.5, 0.85, fbm(cp + toSun)) * 0.55 + smoothstep(0.5, 0.85, fbm(cp + toSun * 2.2)) * 0.45;
+      vec3 cloud = mix(lit, shade, shadowing * 0.75);
+      // Silver lining: thin cloud edges glow when you look towards the sun.
+      float edge = body * (1.0 - smoothstep(0.55, 0.9, cover));
+      cloud += uSunColor * edge * pow(sunUp, 4.0) * 0.9;
+      color = mix(color, cloud, body * fadeOut * 0.95);
     }
 
     float moon = dot(dir, uMoonDir);

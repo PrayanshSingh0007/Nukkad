@@ -27,6 +27,23 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Skid marks, tyre smoke, sky, HUD, characters (2026-11-19)
+
+- **Skid marks and tyre smoke** (`game/tyreFx.ts`, driven from `game.ts` after the drive hint). Only for the vehicle you drive.
+  - How hard the tyres slide (0–1) is the strongest of four things: sideways slip, the handbrake above 4 m/s, hard braking (`longAccel < -6`), or a launch in a fast car.
+  - Marks are laid behind each rear tyre (one for bikes). They are one dynamic mesh, a ring buffer of 900 quads (about 300 m of marks); the oldest are replaced first.
+  - Smoke is one draw call of up to 220 soft puffs that swell, rise and fade over about 2 s, darker at night.
+  - A tyre-squeal noise (`sound.skid`) follows the same amount.
+  - Checked in the browser: a short handbrake slide on a motorbike laid 20 mark segments and 30 live puffs, and the smoke is clearly visible. Marks are dark rubber on dark asphalt, so they show best on lighter concrete.
+- **Sky** (`atmosphere/sky.ts`): deeper blue at the top, a warm band at the horizon, a brighter sun disc with three layers of glow, thin cirrus streaks, and cumulus clouds that are shaded on the side away from the sun with a bright edge when the sun is behind them.
+- **HUD** (`ui.css` "AAA HUD skin", `Speedometer.tsx`):
+  - Buttons and the minimap are dark frosted glass with uppercase lettering. Ride is a warm gradient with a glow.
+  - The speedometer is bigger and has tick marks, a red zone and a blue → yellow → red needle arc.
+  - Cover screen and panels are also restyled.
+  - Fixed while doing this: in a street vehicle the "Get out" button sat under the Horn button. It now takes the hidden Ride button's spot, and Drift moves left.
+- **Characters** (`player/avatar/people.ts`): a soft cool rim light around everyone's outline, a warm glow at the edges of skin (a cheap stand-in for light passing through skin), and a sheen on hair. Subtle; no new models.
+- Not done: motion blur; skid marks for other people's and traffic cars; marks are not saved and disappear when you reload. Not tested on a phone.
+
 ## Cinematic pass: light, AO, ledges, haze, road wear (2026-11-19)
 
 - **Lighting** (`atmosphere.ts` LOOKS): day sun 3.2–3.4 (was 2.3–2.6) and warmer; sky fill 1.5–1.6 (was 1.9–2.1) and cooler. Lit walls against shade now read clearly. Fill was briefly 1.25–1.35, but that made tree canopies nearly black.

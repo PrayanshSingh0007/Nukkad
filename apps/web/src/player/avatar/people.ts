@@ -200,9 +200,20 @@ roughnessFactor = mix(roughnessFactor, 0.88, nkCloth);`,
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
 normal = normalize(mix(normal, nonPerturbedNormal, nkCloth * 0.9));`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `{
+  // Film-style edge light: a soft cool rim that separates people from the street behind them,
+  // and on bare skin a warm glow at the edges where light passes through (cheap subsurface).
+  float nkRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+  outgoingLight += vec3(0.72, 0.8, 1.0) * nkRim * 0.2;
+  outgoingLight += diffuseColor.rgb * vec3(0.95, 0.42, 0.3) * (1.0 - nkCloth) * nkRim * 0.3;
+}
+#include <opaque_fragment>`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-people-1';
+  material.customProgramCacheKey = () => 'nukkad-people-2';
 };
 
 const hairShader = (material: THREE.MeshStandardMaterial, color: { value: THREE.Color }): void => {
@@ -214,9 +225,14 @@ const hairShader = (material: THREE.MeshStandardMaterial, color: { value: THREE.
         '#include <map_fragment>',
         `#include <map_fragment>
 { float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)); diffuseColor.rgb = uHair * (0.45 + l * 1.4); }`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `outgoingLight += vec3(0.75, 0.8, 0.9) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0) * 0.18; // hair sheen at the edges
+#include <opaque_fragment>`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-hair-1';
+  material.customProgramCacheKey = () => 'nukkad-hair-2';
 };
 
 const ACTIONS = { idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', sprint: 'Sprint_Loop', air: 'Jump_Loop', drive: 'Driving_Loop', sit: 'Sitting_Idle_Loop', dance: 'Dance_Loop', wave: 'Interact', talk: 'Idle_Talking_Loop' } as const;

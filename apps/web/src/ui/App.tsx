@@ -118,7 +118,7 @@ export function App({ game, initialLook, roomId }: Props) {
       {status.phase === 'playing' && mapOpen && <BigMap game={game} onClose={() => setMapOpen(false)} />}
       {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
       {status.phase === 'playing' && !panelOpen && driveLabel && (
-        <button type="button" className="driveButton" onClick={() => game.toggleDrive()}>
+        <button type="button" className={driveLabel === 'Get out' ? 'driveButton out' : 'driveButton'} onClick={() => game.toggleDrive()}>
           {driveLabel}
         </button>
       )}
