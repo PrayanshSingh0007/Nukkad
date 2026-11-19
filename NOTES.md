@@ -27,6 +27,42 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Big AAA pass: day cycle, rain, speed-up, lights, sound, roofs (2026-11-19)
+
+- **Speed (owner: "really laggy").** Measured in the browser pane at 2048×1536 on High: 23 ms per frame. The costs were AO about 12 ms, shadows about 7, bloom about 6 and the cinema pass about 4.
+  - High now caps sharpness at 1.5× (`quality.ts`).
+  - AO runs at half resolution and bloom at a quarter (wrapped `setSize` in `applyBloom`).
+  - Sun shafts use 22 taps and skip pixels far from the sun.
+  - The governor softens the picture above 20 ms and sharpens below 14 ms (was 36 / 22).
+  - Result: about 11–12 ms in the same view. Not measured on the owner's full-screen window or a phone.
+- **Running day** (`cycleHour` in `atmosphere.ts`, test `cycle.test.ts`). The owner now wants time to pass (earlier they wanted a fixed afternoon).
+  - Per real minute: 6:00–16:00 runs at 1 game hour, 16:00–19:00 at half an hour (6 minutes of golden hour, sunset and dusk), and 19:00–6:00 at 3 hours (about 4 minutes of night).
+  - It comes from `Date.now()`, so everyone sees the same time. The debug slider still overrides it (`hourSlider`).
+  - A clock under the minimap shows the time, the part of the day and the weather, with Kannada below (ಬೆಳಗ್ಗೆ / ಮಧ್ಯಾಹ್ನ / ಸಂಜೆ / ರಾತ್ರಿ, ಮಳೆ).
+- **Rain and storms** (`atmosphere/weather.ts`):
+  - **Schedule:** `rainAt` cuts time into 7-minute spells; about 1 in 3 is rainy (0.45–1), with 90 s fades. Shared by everyone. `?rain=0…1` in the address forces it (Root keeps it on the room address).
+  - **Rain:** `RainView` is 7,000 line streaks in a box that follows the camera; drops stay put in the world.
+  - **Sky:** the sky, fog and reflections go overcast grey, clouds close in and the sun disc and sun effects disappear. The sun is about 70 % dimmer.
+  - **Surfaces:** roads darken and turn glossy, puddles collect with drop rings (`WET_GLSL`), and walls and soil darken.
+  - **Storms:** above 0.65 there is lightning (a double flicker lighting the street) and rolling thunder after a delay that grows with distance.
+  - **Sound:** rain hiss, muffled indoors. Birds stop.
+  - **Tyres:** in the wet they leave few marks and no smoke.
+- **Window glass** mirrors the real sky colours, clouds and a skyline of the buildings opposite. Each pane is tilted slightly differently. The reflection is added as light, so shaded walls still have bright windows.
+- **Car lamps** (`game/carLights.ts`): red brake lights (brake or handbrake), white reversing lights, and tail and head lamps at night, on the car you drive only.
+  - They are glowing points, not sprites: GTAO skips points, while sprites came out as dark squares.
+  - `LocalPlayer.brake` is new: `throttle` is never below 0, which had also turned off hard-braking skid marks.
+- **Arrival shot:** a 4.5 s drone shot glides down from 55 m to the normal camera. Moving or dragging cuts it short.
+- **Loading screen** (`LoadingScreen.tsx`): a dusk skyline, a progress bar that only moves on real stages, and control tips.
+- **City sound** (`sound.ts`, all made in code): a traffic hum that swells, distant horns panned left and right, birds by day, wind at speed, rain and thunder. Everything outdoors is muffled indoors. Checked that it runs (4 horns and 2 bird calls in 15 s); nobody has listened to it yet.
+- **Roofs:** solar water heaters on about 45 % of homes and flats where they fit (`hasSolarHeater` / `solarSpot`; 16 triangles, counted exactly in the chunk estimate, with a test). The terrace shader adds rain stains, damp green patches, newer waterproofing and tile joints.
+- **Street name card** (`StreetBanner.tsx`, `worldgen/areas/streets.ts` `StreetFinder` with a test): "Now on <road>" slides in when you turn onto a named OpenStreetMap road and stay a second. At junctions the wider road wins.
+- **Ideas from benglooru.com ("Namma Benglooru", another Bengaluru game; bengalooru.com is a parked domain):** we took only ideas: local Kannada touches, golden hour and rain as the showpiece, and named streets. We did not copy their theatre-marquee branding, flags, tagline, images, footage or code.
+- **Button fixes:** "Get out" was under Horn, and "Go inside / Get in" was under Emote. Both now have their own spots.
+- **Not done:**
+  - Better character and bike models need new downloads and the owner's OK. Candidates: Sketchfab "Bajaj pulsar 150" (CC BY, 14k faces, @ShreyanshChaurasia_12), "pulsar 135 ls" (CC BY, 24k faces), Royal Enfield Classic 350 (CC BY, 733k faces, much too heavy without Blender).
+  - Quaternius' Regular (non-superhero) bodies are only in the paid Source pack; the free pack has Superhero bodies only. Our code already narrows them.
+  - Traffic cars have no lights at night. Nothing in this pass is tested on a phone.
+
 ## Cinema pass: sun shafts, lens flare, speed blur, car reflections (2026-11-19)
 
 - **One "cinema" post pass on High** (`CINEMA_SHADER` in `game.ts`; it replaces the old grade pass and keeps its grade and vignette). Uniforms are set each frame in `updateCinema`.

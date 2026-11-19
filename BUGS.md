@@ -17,6 +17,16 @@ Template:
 
 ## Open
 
+### B-030 Water tanks seen floating at a distance
+- Type: looks wrong
+- Status: open (seen once, 2026-11-19)
+- Notes: two black roof water tanks hung in the air far away while standing near the edge of the loaded area. Either their buildings had not streamed in yet, or they belong to buildings `clearMainRoads` removed (it clears trees, lamps and benches on the road, but tanks come from the roof props). Check which.
+
+### B-031 Two 502 errors in the console on each load (dev only)
+- Type: noise (dev only)
+- Status: open, harmless
+- Notes: the Vite proxy logs `ECONNREFUSED 127.0.0.1:8787` for old `/api/rooms/<id>` requests while the dev server restarts after file edits. The game itself loads fine.
+
 ### B-001 Towers, domes and other special roofs are drawn as plain blocks
 - Type: cosmetic
 - Status: open (known v1 limit: flat roofs only)
