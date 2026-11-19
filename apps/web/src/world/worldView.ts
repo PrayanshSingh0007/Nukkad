@@ -357,6 +357,11 @@ export class WorldView {
     this.materials.lightDir.value.copy(dir);
   }
 
+  /** 0 = dry … 1 = downpour: wet roads, puddles, darker walls. */
+  setRain(rain: number): void {
+    this.materials.rain.value = rain;
+  }
+
   /** The sky's colours, for what window glass mirrors. */
   setSky(top: THREE.Color, horizon: THREE.Color): void {
     this.materials.sky.uSkyTop.value.copy(top);

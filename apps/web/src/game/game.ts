@@ -45,6 +45,7 @@ import { SpeedLines } from './speedLines.ts';
 import { TyreFx } from './tyreFx.ts';
 import { CarLights } from './carLights.ts';
 import { CityReflections } from '../atmosphere/cityReflections.ts';
+import { RainView, rainAt } from '../atmosphere/weather.ts';
 
 /**
  * A simple gearbox for the engine note: gears get longer as you go up, the revs climb through
@@ -263,6 +264,12 @@ export class Game {
   private readonly speedLines: SpeedLines;
   private readonly tyreFx = new TyreFx();
   private readonly carLights = new CarLights();
+  private readonly rainView = new RainView();
+  /** `?rain=0…1` in the address fixes the weather (for testing); null = the shared weather. */
+  private readonly rainOverride: number | null = null;
+  private rain = 0;
+  private lightning = 0;
+  private nextLightning = 0;
 
   constructor(options: GameOptions) {
     this.look = options.look;
@@ -273,6 +280,9 @@ export class Game {
     this.rig = new CameraRig(this.view3d.camera);
     this.speedLines = new SpeedLines(options.canvas.parentElement ?? document.body);
     this.view3d.scene.add(this.tyreFx.group);
+    this.view3d.scene.add(this.rainView.lines);
+    const rainParam = new URLSearchParams(location.search).get('rain');
+    this.rainOverride = rainParam === null ? null : Math.min(1, Math.max(0, Number(rainParam) || 0));
     this.remotes = new RemotePlayers(this.view3d.scene);
     this.atmosphere = new Atmosphere(this.view3d.scene, this.view3d.sun, this.view3d.ambient);
     this.view3d.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -786,7 +796,25 @@ export class Game {
     const hour = this.atmosphere.override ?? 12;
     const h = Math.floor(hour);
     const m = Math.floor((hour - h) * 60);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · ${partOfDay(hour)}`;
+    const weather = this.rain > 0.7 ? ' · Storm' : this.rain > 0.25 ? ' · Rain' : '';
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · ${partOfDay(hour)}${weather}`;
+  }
+
+  /** In heavy rain, lightning now and then: a double flicker, and thunder a moment later. */
+  private updateLightning(now: number, dt: number): void {
+    if (this.rain > 0.65 && !this.interior) {
+      if (this.nextLightning === 0) this.nextLightning = now + 4000 + Math.random() * 8000;
+      if (now > this.nextLightning) {
+        this.lightning = 1;
+        const delay = 0.3 + Math.random() * 2.8; // the further away, the later the thunder
+        this.sound.thunder(delay, 1 - delay / 3.1);
+        this.nextLightning = now + 9000 + Math.random() * 20000;
+      }
+    } else this.nextLightning = 0;
+    // Fades fast, with a second flicker as it dies down.
+    this.lightning = Math.max(0, this.lightning - dt * 5);
+    const flicker = this.lightning > 0.55 || (this.lightning > 0.15 && this.lightning < 0.35) ? this.lightning : this.lightning * 0.25;
+    if (!this.interior) this.atmosphere.flash(flicker);
   }
 
   /** Where the sun is on screen and how fast you go, for the cinema pass. */
@@ -801,7 +829,7 @@ export class Game {
     // Fades out as the sun leaves the screen, sets, or when you are indoors.
     const off = Math.max(Math.abs(p.x), Math.abs(p.y)) - 1;
     const up = THREE.MathUtils.smoothstep(sunDir.y, -0.02, 0.12);
-    u.uSunAmt.value = facing > 0 && !this.interior ? (1 - THREE.MathUtils.smoothstep(off, 0, 0.8)) * up * (1 - this.atmosphere.night) : 0;
+    u.uSunAmt.value = facing > 0 && !this.interior ? (1 - THREE.MathUtils.smoothstep(off, 0, 0.8)) * up * (1 - this.atmosphere.night) * (1 - this.rain) : 0;
     u.uBlur.value = this.player?.vehicle ? THREE.MathUtils.smoothstep(this.cinemaKmh, 90, 260) * 0.9 : 0;
     u.uTime.value = (now / 1000) % 1000;
     u.uAspect.value = camera.aspect;
@@ -946,7 +974,8 @@ export class Game {
         const size = this.view3d.renderer.getDrawingBufferSize(new THREE.Vector2());
         this.tyreFx.setViewport(size.y, this.view3d.camera.fov);
         this.tyreFx.setLight(new THREE.Color(1, 1, 1).multiplyScalar(1 - this.atmosphere.night * 0.75));
-        this.tyreFx.update(dt, wheels, skid, vx, vz);
+        // Wet roads: tyres slide on water instead of smoking and leave hardly any rubber.
+        this.tyreFx.update(dt, wheels, skid * (1 - 0.8 * this.rain), vx, vz);
         this.sound.skid(skid);
       }
       this.sound.engine(riding ? engineRpm(riding, Math.abs(player.rideSpeed)) : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine', player.throttle);
@@ -1016,7 +1045,8 @@ export class Game {
       this.speedLines.update(vehicle ? kmh : 0, dt);
       this.cinemaKmh = kmh;
       this.introShot(player, dt);
-      this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0);
+      this.rainView.update(dt, this.interior ? 0 : this.rain, this.view3d.camera, this.atmosphere.sky.uniforms.uHorizon.value);
+      this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0, this.rain);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);
@@ -1026,9 +1056,13 @@ export class Game {
     }
 
     this.atmosphere.override = this.hourSlider ?? cycleHour(Date.now());
+    this.rain = this.rainOverride ?? rainAt(Date.now());
+    this.atmosphere.rain = this.rain;
     this.atmosphere.update(dt, this.view3d.camera);
+    this.updateLightning(now, dt);
+    world?.setRain(this.rain);
     const skyU = this.atmosphere.sky.uniforms;
-    if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night)) {
+    if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
     }
     if (this.interior) {

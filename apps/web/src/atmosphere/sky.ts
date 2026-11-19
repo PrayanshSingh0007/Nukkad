@@ -22,6 +22,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uMoonDir;
   uniform float uNight;
   uniform float uTime;
+  uniform float uRain;
+  uniform float uFlash;
   varying vec3 vDir;
 
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -55,13 +57,13 @@ const fragmentShader = /* glsl */ `
     float sun = dot(dir, uSunDir);
     float sunUp = max(sun, 0.0);
     // Sun disc, a tight glow and a wide warm haze around it (light scattered by the city's air).
-    color += uSunColor * (smoothstep(0.9993, 0.9997, sun) * 5.0 + pow(sunUp, 64.0) * 0.45 + pow(sunUp, 6.0) * 0.18 + pow(sunUp, 2.0) * 0.06);
+    color += uSunColor * (smoothstep(0.9993, 0.9997, sun) * 5.0 + pow(sunUp, 64.0) * 0.45 + pow(sunUp, 6.0) * 0.18 + pow(sunUp, 2.0) * 0.06) * (1.0 - uRain * 0.92);
 
     if (dir.y > 0.015) {
       vec2 base = dir.xz / (dir.y + 0.12);
       float fadeOut = smoothstep(0.015, 0.2, dir.y); // thin out into the horizon haze
-      vec3 lit = mix(vec3(1.0, 0.985, 0.95), uSunColor, 0.3) * (1.0 - uNight * 0.86);
-      vec3 shade = mix(uHorizon * 0.82, vec3(0.5, 0.55, 0.65), 0.55) * (1.0 - uNight * 0.8);
+      vec3 lit = mix(vec3(1.0, 0.985, 0.95), uSunColor, 0.3) * (1.0 - uNight * 0.86) * (1.0 - uRain * 0.45);
+      vec3 shade = mix(uHorizon * 0.82, vec3(0.5, 0.55, 0.65), 0.55) * (1.0 - uNight * 0.8) * (1.0 - uRain * 0.5);
 
       // High cirrus: thin streaks stretched along the wind.
       vec2 cq = base * vec2(0.6, 2.4) + vec2(uTime * 0.004, 0.0);
@@ -71,7 +73,7 @@ const fragmentShader = /* glsl */ `
       // Cumulus: puffy clouds. Density towards the sun gives them shaded bellies and bright tops.
       vec2 cp = base * 1.4 + vec2(uTime * 0.006, uTime * 0.002);
       float cover = fbm(cp);
-      float body = smoothstep(0.5, 0.74, cover);
+      float body = smoothstep(0.5 - uRain * 0.36, 0.74 - uRain * 0.3, cover); // rain: the sky closes over
       vec2 toSun = normalize(uSunDir.xz + 1e-4) * 0.07;
       float shadowing = smoothstep(0.5, 0.85, fbm(cp + toSun)) * 0.55 + smoothstep(0.5, 0.85, fbm(cp + toSun * 2.2)) * 0.45;
       vec3 cloud = mix(lit, shade, shadowing * 0.75);
@@ -79,6 +81,8 @@ const fragmentShader = /* glsl */ `
       float edge = body * (1.0 - smoothstep(0.55, 0.9, cover));
       cloud += uSunColor * edge * pow(sunUp, 4.0) * 0.9;
       color = mix(color, cloud, body * fadeOut * 0.95);
+      // Lightning lights the cloud bellies from inside.
+      color += vec3(0.75, 0.8, 1.0) * uFlash * (0.4 + body) * fadeOut;
     }
 
     float moon = dot(dir, uMoonDir);
@@ -86,7 +90,7 @@ const fragmentShader = /* glsl */ `
 
     vec3 cell = floor(dir * 220.0);
     float star = step(0.9975, hash(cell)) * smoothstep(0.02, 0.25, dir.y);
-    color += vec3(star) * smoothstep(0.7, 1.0, uNight) * 0.9; // stars only once it is properly dark
+    color += vec3(star) * smoothstep(0.7, 1.0, uNight) * 0.9 * (1.0 - uRain); // stars only once it is properly dark
 
     gl_FragColor = vec4(color, 1.0);
     #include <colorspace_fragment>
@@ -103,6 +107,10 @@ export class Sky {
     uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
     uNight: { value: 0 },
     uTime: { value: 0 },
+    /** 0 = clear … 1 = storm: clouds close in and darken, the sun disappears. */
+    uRain: { value: 0 },
+    /** Lightning: a brief white flash in the clouds. */
+    uFlash: { value: 0 },
   };
 
   constructor() {

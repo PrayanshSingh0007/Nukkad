@@ -1,8 +1,8 @@
 /**
  * Sounds made in code with the browser's Web Audio (no audio files to download or credit):
  * a horn per vehicle, an engine hum that rises with speed, tyre screech, and the city around
- * you (a low traffic hum that swells, far-off horns, birds by day, wind at speed; muffled
- * indoors). Only you hear them — they are not sent to friends. Audio can only start after a
+ * you (a low traffic hum that swells, far-off horns, birds by day, wind at speed, rain and
+ * thunder; muffled indoors). Only you hear them — they are not sent to friends. Audio can only start after a
  * tap or key press (browser rule).
  */
 type HornVoice = 'scooter' | 'car' | 'heavy';
@@ -28,6 +28,8 @@ export class Sound {
   private humGain: GainNode | null = null;
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
+  private rainGain: GainNode | null = null;
+  private brownNoise: AudioBuffer | null = null;
   private swell = 0;
   private nextHorn = 0;
   private nextBird = 0;
@@ -131,6 +133,22 @@ export class Sound {
     this.humGain.gain.value = 0;
     hum.connect(humFilter).connect(this.humGain).connect(this.outdoorFilter);
     hum.start();
+    this.brownNoise = brown;
+    // Rain: a soft hiss (noise with the deep and the shrill parts taken out).
+    const rainSource = context.createBufferSource();
+    rainSource.buffer = noise;
+    rainSource.loop = true;
+    rainSource.playbackRate.value = 0.8;
+    const rainLow = context.createBiquadFilter();
+    rainLow.type = 'highpass';
+    rainLow.frequency.value = 500;
+    const rainHigh = context.createBiquadFilter();
+    rainHigh.type = 'lowpass';
+    rainHigh.frequency.value = 5500;
+    this.rainGain = context.createGain();
+    this.rainGain.gain.value = 0;
+    rainSource.connect(rainLow).connect(rainHigh).connect(this.rainGain).connect(this.outdoorFilter);
+    rainSource.start();
     // Wind past the car at speed: soft broadband noise.
     const wind = context.createBufferSource();
     wind.buffer = noise;
@@ -148,9 +166,9 @@ export class Sound {
 
   /**
    * The city around you; call every frame while playing. `night` 0–1 (fewer horns, no birds),
-   * `indoors` muffles it, `kmh` = your speed in a vehicle (wind).
+   * `indoors` muffles it, `kmh` = your speed in a vehicle (wind), `rain` 0–1.
    */
-  ambience(dt: number, night: number, indoors: boolean, kmh: number): void {
+  ambience(dt: number, night: number, indoors: boolean, kmh: number, rain = 0): void {
     const context = this.context;
     if (!context || !this.humGain || !this.outdoorFilter || !this.outdoorGain || !this.windGain || !this.windFilter) return;
     const now = context.currentTime;
@@ -170,6 +188,12 @@ export class Sound {
     this.windGain.gain.cancelScheduledValues(now);
     this.windGain.gain.setTargetAtTime(0.16 * w * w * quiet, now, 0.2);
     this.windGain.gain.setTargetAtTime(0, now + 0.35, 0.2); // stops if the frames stop
+    if (this.rainGain) {
+      const g = this.rainGain.gain;
+      g.cancelScheduledValues(now);
+      g.setTargetAtTime(0.2 * Math.pow(rain, 0.8) * quiet, now, 0.5);
+      g.setTargetAtTime(0, now + 0.5, 0.3); // watchdog
+    }
     this.windFilter.frequency.cancelScheduledValues(now);
     this.windFilter.frequency.setTargetAtTime(450 + 1100 * w, now, 0.2);
     if (this.muted) return;
@@ -177,10 +201,46 @@ export class Sound {
       if (this.nextHorn > 0) this.distantHorn(now);
       this.nextHorn = now + 2 + Math.random() * (night > 0.5 ? 16 : 6);
     }
-    if (day > 0.4 && now > this.nextBird) {
+    if (day > 0.4 && rain < 0.3 && now > this.nextBird) {
       if (this.nextBird > 0) this.birdCall(now);
       this.nextBird = now + 1.5 + Math.random() * 7;
     }
+  }
+
+  /**
+   * Thunder after a lightning flash: a crack (if close) and a long low rumble that rolls
+   * around. `delay` seconds (light arrives first), `near` 0–1.
+   */
+  thunder(delay: number, near: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || !this.brownNoise || this.muted) return;
+    const start = context.currentTime + delay;
+    const source = context.createBufferSource();
+    source.buffer = this.brownNoise;
+    source.playbackRate.value = 0.35 + Math.random() * 0.15;
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 180 + near * 500;
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const level = 0.35 + near * 0.45;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(level, start + 0.05 + (1 - near) * 0.4);
+    // Rolling: a few swells as the sound comes back from the clouds.
+    let t = start + 0.4;
+    for (let i = 0; i < 4; i++) {
+      gain.gain.linearRampToValueAtTime(level * (0.35 + Math.random() * 0.5), t);
+      t += 0.4 + Math.random() * 0.6;
+    }
+    gain.gain.linearRampToValueAtTime(0, t + 1.5);
+    source.connect(filter).connect(gain).connect(this.outdoorFilter);
+    source.start(start);
+    source.stop(t + 1.6);
+    source.onended = () => {
+      source.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
   }
 
   /** Somebody honking a street or two away: one to three short beeps, left or right. */

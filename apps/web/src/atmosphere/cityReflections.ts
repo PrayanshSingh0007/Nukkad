@@ -3,8 +3,8 @@ import * as THREE from 'three';
 /**
  * What shiny things (car paint, car glass) reflect: the real sky colours from the atmosphere,
  * a band of city buildings along the horizon, the sun, and grey asphalt below. Built with a
- * PMREM (blurred for rough surfaces) and rebuilt only when the sun moves or night falls, which
- * at the game's fixed hour means once after loading.
+ * PMREM (blurred for rough surfaces) and rebuilt only when the sun has moved a few degrees, night
+ * falls or the rain changes (every ten seconds or so as the game's day runs).
  */
 export class CityReflections {
   texture: THREE.Texture;
@@ -12,6 +12,7 @@ export class CityReflections {
   private readonly material: THREE.ShaderMaterial;
   private readonly builtSun = new THREE.Vector3(0, 1, 0);
   private builtNight = -1;
+  private builtRain = 0;
   private readonly renderer: THREE.WebGLRenderer;
 
   constructor(renderer: THREE.WebGLRenderer) {
@@ -67,11 +68,12 @@ export class CityReflections {
    * Rebuilds when the sun has moved or the night level changed. Returns true when the texture
    * is new (the old one is disposed, so callers must hand the new one out right away).
    */
-  update(sunDir: THREE.Vector3, sunColor: THREE.Color, top: THREE.Color, horizon: THREE.Color, night: number): boolean {
-    if (this.builtNight >= 0 && sunDir.angleTo(this.builtSun) < 0.05 && Math.abs(night - this.builtNight) < 0.08) return false;
+  update(sunDir: THREE.Vector3, sunColor: THREE.Color, top: THREE.Color, horizon: THREE.Color, night: number, rain = 0): boolean {
+    if (this.builtNight >= 0 && sunDir.angleTo(this.builtSun) < 0.05 && Math.abs(night - this.builtNight) < 0.08 && Math.abs(rain - this.builtRain) < 0.1) return false;
     const u = this.material.uniforms;
     u.uSunDir.value.copy(sunDir);
-    u.uSunColor.value.copy(sunColor);
+    u.uSunColor.value.copy(sunColor).multiplyScalar(1 - rain * 0.95); // overcast: no sun to mirror
+    this.builtRain = rain;
     u.uTop.value.copy(top);
     u.uHorizon.value.copy(horizon);
     u.uNight.value = night;

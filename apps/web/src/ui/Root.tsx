@@ -98,7 +98,9 @@ export function Root() {
     try {
       const [lat, lng] = spot ? [spot.lat, spot.lng] : startSpot();
       const room = await createRoom(lat, lng);
-      history.replaceState(null, '', `/r/${room.id}`);
+      // Keep a ?rain= test setting (see Game) when the address becomes the room's.
+      const rainParam = new URLSearchParams(location.search).get('rain');
+      history.replaceState(null, '', `/r/${room.id}${rainParam === null ? '' : `?rain=${encodeURIComponent(rainParam)}`}`);
       play(room.id, room.lat, room.lng);
     } catch (error) {
       setScreen({ kind: 'home', busy: false, error: (error as Error).message });

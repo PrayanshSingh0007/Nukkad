@@ -107,6 +107,10 @@ export class Atmosphere {
   clock = '';
   /** Direction the light comes from (sun by day, moon by night), unit length. */
   readonly lightDir = new THREE.Vector3(0, 2, 0);
+  /** 0 = dry … 1 = downpour; set by the game from the weather. */
+  rain = 0;
+  private baseAmbient = 1;
+  private readonly grey = new THREE.Color();
   /**
    * Hours on the place's clock to show instead of now. The game sets it every frame from its
    * own day (`cycleHour`) or the debug slider. null = follow the real local time.
@@ -162,22 +166,34 @@ export class Atmosphere {
     this.night = THREE.MathUtils.smoothstep(-degrees, -2, 6);
 
     const u = this.sky.uniforms;
-    u.uTop.value.copy(l.top);
-    u.uHorizon.value.copy(l.horizon);
+    // Rain: an overcast grey sky (its colours also tint the fog and every reflection).
+    const r = this.rain;
+    const overcastTop = this.grey.setRGB(0.36, 0.39, 0.44).multiplyScalar(1 - this.night * 0.88);
+    u.uTop.value.copy(l.top).lerp(overcastTop, r * 0.8);
+    const overcastHorizon = this.grey.setRGB(0.55, 0.57, 0.6).multiplyScalar(1 - this.night * 0.85);
+    u.uHorizon.value.copy(l.horizon).lerp(overcastHorizon, r * 0.75);
+    u.uRain.value = r;
     u.uSunDir.value.copy(sunDir);
     u.uSunColor.value.copy(l.light).multiplyScalar(degrees > -3 ? 1 : 0);
     u.uMoonDir.value.copy(moonDir);
     u.uNight.value = this.night;
 
-    this.fog.color.copy(l.horizon);
+    this.fog.color.copy(u.uHorizon.value);
     this.sun.color.copy(l.light);
-    this.sun.intensity = l.lightPower;
+    this.sun.intensity = l.lightPower * (1 - r * 0.72);
     this.lightDir.copy(degrees > -4 ? sunDir : moonDir);
     // Very low light would make endless shadows; lift it a little.
     if (this.lightDir.y < 0.25) this.lightDir.setY(0.25).normalize();
-    this.ambient.color.copy(l.ambientSky);
+    this.ambient.color.copy(l.ambientSky).lerp(this.grey.setRGB(0.7, 0.73, 0.78), r * 0.6);
     this.ambient.groundColor.copy(l.ambientGround);
-    this.ambient.intensity = l.ambientPower;
+    this.ambient.intensity = l.ambientPower * (1 - r * 0.2);
+    this.baseAmbient = this.ambient.intensity;
+  }
+
+  /** Lightning (0–1, per frame): a flash in the clouds that lights the whole street. */
+  flash(amount: number): void {
+    this.sky.uniforms.uFlash.value = amount;
+    this.ambient.intensity = this.baseAmbient + amount * 4;
   }
 
   dispose(): void {
