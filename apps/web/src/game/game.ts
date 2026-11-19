@@ -9,7 +9,7 @@ import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_C
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
-import { Atmosphere, DAY_HOUR } from '../atmosphere/atmosphere.ts';
+import { Atmosphere, cycleHour, partOfDay } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
 import { StatsMeter, formatStats } from '../debug/statsHud.ts';
@@ -212,6 +212,8 @@ export class Game {
   private composer: EffectComposer | null = null;
   private cinema: ShaderPass | null = null;
   private cinemaKmh = 0;
+  /** The debug overlay's time slider (null = the game's own running day). */
+  private hourSlider: number | null = null;
   private introLeft = 0;
   private introAngle = 0;
   private readonly introFrom = new THREE.Vector3();
@@ -285,7 +287,7 @@ export class Game {
         saveQuality(level);
         this.setQuality(level);
       },
-      (hour) => (this.atmosphere.override = hour ?? DAY_HOUR),
+      (hour) => (this.hourSlider = hour),
     );
     this.meter = new StatsMeter(this.view3d.renderer, (stats) => {
       const lines = formatStats(stats, this.debugLines());
@@ -779,6 +781,14 @@ export class Game {
     camera.position.copy(look);
   }
 
+  /** The time on the game's clock, e.g. "18:05 · Evening". */
+  clockText(): string {
+    const hour = this.atmosphere.override ?? 12;
+    const h = Math.floor(hour);
+    const m = Math.floor((hour - h) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · ${partOfDay(hour)}`;
+  }
+
   /** Where the sun is on screen and how fast you go, for the cinema pass. */
   private updateCinema(now: number): void {
     const u = this.cinema?.uniforms;
@@ -1015,6 +1025,7 @@ export class Game {
       }
     }
 
+    this.atmosphere.override = this.hourSlider ?? cycleHour(Date.now());
     this.atmosphere.update(dt, this.view3d.camera);
     const skyU = this.atmosphere.sky.uniforms;
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night)) {
@@ -1071,7 +1082,7 @@ export class Game {
       `traffic ${this.traffic?.count ?? 0} routes · `+`street life shown ${this.streetLife?.shown ?? 0} · solid ${physics?.boxCount ?? 0}`,
       `chunks near ${counts.near} · far ${counts.far} · building ${counts.building} · colliders ${physics?.colliderChunkCount ?? 0}`,
       `chunk ${cx},${cz} · x ${player.x.toFixed(0)} z ${player.z.toFixed(0)} y ${player.y.toFixed(1)} · ${player.speed.toFixed(1)} m/s`,
-      `local time ${this.atmosphere.clock}${this.atmosphere.override === null ? '' : ' (slider)'} · night ${this.atmosphere.night.toFixed(2)}`,
+      `game time ${this.clockText()}${this.hourSlider === null ? '' : ' (slider)'} · night ${this.atmosphere.night.toFixed(2)}`,
       `net ${this.netStatus} · ping ${Math.round(this.net?.rtt ?? 0)} ms · others ${this.remotes.count} · draw delay ${Math.round(this.remotes.clock.delay)} ms`,
       `${ready.info.id} · pack ${Math.round((ready.info.downloadBytes || ready.info.packBytes) / 1024)} KB · ready in ${(this.timeToPlayMs / 1000).toFixed(1)} s`,
     ];

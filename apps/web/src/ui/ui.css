@@ -986,3 +986,27 @@ button {
     transform: translateY(4px);
   }
 }
+
+/* The game clock under the minimap. */
+.gameClock {
+  position: fixed;
+  left: calc(12px + env(safe-area-inset-left));
+  top: calc(228px + env(safe-area-inset-top));
+  width: 168px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f4f7fb;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .gameClock {
+    top: calc(178px + env(safe-area-inset-top));
+    width: 120px;
+    font-size: 10px;
+  }
+}

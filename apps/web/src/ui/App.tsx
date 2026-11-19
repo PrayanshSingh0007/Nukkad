@@ -8,6 +8,7 @@ import { Speedometer } from './Speedometer.tsx';
 import { MiniMap } from './MiniMap.tsx';
 import { BigMap } from './BigMap.tsx';
 import { LoadingScreen } from './LoadingScreen.tsx';
+import { GameClock } from './GameClock.tsx';
 import { setAutojoin } from './api.ts';
 
 interface Props {
@@ -106,6 +107,7 @@ export function App({ game, initialLook, roomId }: Props) {
       )}
       {toast && <div className="toast">{toast}</div>}
       {status.phase === 'playing' && !panelOpen && !mapOpen && <MiniMap game={game} onOpen={() => setMapOpen(true)} />}
+      {status.phase === 'playing' && !panelOpen && !mapOpen && <GameClock game={game} />}
       {status.phase === 'playing' && mapOpen && <BigMap game={game} onClose={() => setMapOpen(false)} />}
       {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
       {status.phase === 'playing' && !panelOpen && driveLabel && (

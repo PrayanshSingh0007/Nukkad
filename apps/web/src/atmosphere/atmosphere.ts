@@ -1,8 +1,39 @@
 import * as THREE from 'three';
 import { localHour, skyDirection, sunPosition } from '@nukkad/shared';
 
-/** The fixed time of day the game shows (4 pm: bright, with soft long shadows). */
+/** The hour shown before the game clock takes over (and in tests). */
 export const DAY_HOUR = 16;
+
+/**
+ * The game's own day, so you see morning, afternoon, sunset and night go by. It comes from the
+ * wall clock, so everyone sees the same time. Game hours per real minute:
+ * - 6:00–16:00 at 1 (10 minutes of day);
+ * - 16:00–19:00 at 0.5 (6 minutes of golden hour, sunset and dusk — the best light);
+ * - 19:00–6:00 at 3 (about 3½ minutes of night).
+ */
+const DAY_PARTS: [from: number, to: number, hoursPerMinute: number][] = [
+  [6, 16, 1],
+  [16, 19, 0.5],
+  [19, 30, 3],
+];
+const CYCLE_MINUTES = DAY_PARTS.reduce((sum, [from, to, rate]) => sum + (to - from) / rate, 0);
+export function cycleHour(ms: number): number {
+  let p = (ms / 60000) % CYCLE_MINUTES;
+  for (const [from, to, rate] of DAY_PARTS) {
+    const minutes = (to - from) / rate;
+    if (p < minutes) return (from + p * rate) % 24;
+    p -= minutes;
+  }
+  return 6;
+}
+
+/** "Morning", "Afternoon", "Evening" or "Night" for an hour of the day. */
+export function partOfDay(hour: number): string {
+  if (hour >= 5 && hour < 12) return 'Morning';
+  if (hour >= 12 && hour < 16.5) return 'Afternoon';
+  if (hour >= 16.5 && hour < 19.5) return 'Evening';
+  return 'Night';
+}
 import { Sky } from './sky.ts';
 
 /**
@@ -77,9 +108,8 @@ export class Atmosphere {
   /** Direction the light comes from (sun by day, moon by night), unit length. */
   readonly lightDir = new THREE.Vector3(0, 2, 0);
   /**
-   * Hours on the place's clock to show instead of now. The owner wants it always day, so it
-   * starts at a fixed afternoon (DAY_HOUR) instead of following the real clock; the debug slider
-   * can still move it. null = follow the real local time.
+   * Hours on the place's clock to show instead of now. The game sets it every frame from its
+   * own day (`cycleHour`) or the debug slider. null = follow the real local time.
    */
   override: number | null = DAY_HOUR;
   private readonly sun: THREE.DirectionalLight;
