@@ -1,5 +1,5 @@
 import type { PackPlace, PackStats } from '@nukkad/shared';
-import type { ChunkData, ChunkLod, Door, MeshData, StreetLabel, PropSet, TerrainMesh, TrafficRoute } from '@nukkad/worldgen';
+import type { ChunkData, ChunkLod, Door, MeshData, NamedRoad, StreetLabel, PropSet, TerrainMesh, TrafficRoute } from '@nukkad/worldgen';
 
 /** The typed messages between the page (main thread) and the world worker. */
 
@@ -43,6 +43,8 @@ export interface ReadyMessage {
   groundMap: { size: number; pixels: Uint8Array };
   /** The on-screen map picture (north at the top). */
   miniMap: { size: number; pixels: Uint8Array; streets: StreetLabel[] };
+  /** Named roads (metres), for the street name on screen. */
+  roads: NamedRoad[];
   water: MeshData | null;
   props: PropSet;
   places: PackPlace[];

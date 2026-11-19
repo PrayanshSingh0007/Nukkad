@@ -1010,3 +1010,75 @@ button {
     font-size: 10px;
   }
 }
+
+.gameClock .kannada {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #ffd25a;
+}
+
+/* Street name card: slides in at the lower left when you turn onto a named road. */
+.streetBanner {
+  position: fixed;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 18px 12px 14px;
+  border-left: 4px solid var(--accent-a);
+  border-radius: 4px 12px 12px 4px;
+  background: linear-gradient(90deg, rgba(10, 14, 22, 0.82), rgba(10, 14, 22, 0.35));
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  pointer-events: none;
+  animation: streetIn 4.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  max-width: min(60vw, 380px);
+}
+
+.streetBanner .streetLabel {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-a);
+}
+
+.streetBanner .streetName {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes streetIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  8% {
+    opacity: 1;
+    transform: none;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .streetBanner {
+    bottom: calc(150px + env(safe-area-inset-bottom));
+  }
+
+  .streetBanner .streetName {
+    font-size: 17px;
+  }
+}

@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
-import { BENCH_STRIDE, heightAt } from '@nukkad/worldgen';
+import { BENCH_STRIDE, StreetFinder, heightAt } from '@nukkad/worldgen';
 import { Atmosphere, cycleHour, partOfDay } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
@@ -255,6 +255,13 @@ export class Game {
   private interior: Interior | null = null;
   /** Called with a short message for the player ("Inside: Mango Hypermarket"). */
   onToast: ((text: string) => void) | null = null;
+  /** The named road you have just arrived on (null = off the named roads). */
+  onStreet: ((name: string | null) => void) | null = null;
+  private streets: StreetFinder | null = null;
+  private street: string | null = null;
+  private streetCandidate: string | null = null;
+  private streetSince = 0;
+  private streetCheckAt = 0;
   private driveMesh: THREE.InstancedMesh | null = null;
   private driveHint: string | null = null;
   private lastDragAt = 0;
@@ -681,6 +688,7 @@ export class Game {
       });
       this.view3d.scene.add(this.world.group);
       this.streetLife = new StreetLifeView(ready.props, this.reflections.texture);
+      this.streets = new StreetFinder(ready.roads);
       const streetLife = this.streetLife;
       this.remotes.vehicleModels = (model) => streetLife.modelByName(model);
       this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name) => streetLife.modelByName(name), (name, variant) => streetLife.paintFor(name, variant));
@@ -798,6 +806,25 @@ export class Game {
     const m = Math.floor((hour - h) * 60);
     const weather = this.rain > 0.7 ? ' · Storm' : this.rain > 0.25 ? ' · Rain' : '';
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} · ${partOfDay(hour)}${weather}`;
+  }
+
+  /**
+   * The street name card: twice a second, which named road you are on. A new one has to hold
+   * for a second (so crossing a junction does not flash names) before the card shows it.
+   */
+  private updateStreet(player: LocalPlayer, now: number): void {
+    if (!this.streets || now < this.streetCheckAt) return;
+    this.streetCheckAt = now + 500;
+    const here = this.interior ? null : this.streets.at(player.x, player.z);
+    if (here !== this.streetCandidate) {
+      this.streetCandidate = here;
+      this.streetSince = now;
+      return;
+    }
+    if (here !== this.street && here !== null && now - this.streetSince >= 1000) {
+      this.street = here;
+      this.onStreet?.(here);
+    }
   }
 
   /** In heavy rain, lightning now and then: a double flicker, and thunder a moment later. */
@@ -1045,6 +1072,7 @@ export class Game {
       this.speedLines.update(vehicle ? kmh : 0, dt);
       this.cinemaKmh = kmh;
       this.introShot(player, dt);
+      this.updateStreet(player, now);
       this.rainView.update(dt, this.interior ? 0 : this.rain, this.view3d.camera, this.atmosphere.sky.uniforms.uHorizon.value);
       this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0, this.rain);
 

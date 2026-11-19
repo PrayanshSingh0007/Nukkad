@@ -1,6 +1,6 @@
 import { PACK_VERSION, decodePack } from '@nukkad/shared';
 import type { WirePack } from '@nukkad/shared';
-import { GROUND_MAP_SIZE, MINI_MAP_SIZE, clearMainRoads, paintMiniMap, streetLabels, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
+import { GROUND_MAP_SIZE, MINI_MAP_SIZE, clearMainRoads, paintMiniMap, streetLabels, namedRoads, buildTrafficRoutes, buildWalkRoutes, findSpawn, buildChunk, buildTerrainMesh, buildWaterMesh, meshBuffers, paintGroundMap, prepareWorld } from '@nukkad/worldgen';
 import type { ChunkLod, PreparedWorld } from '@nukkad/worldgen';
 import type { FromWorker, ToWorker } from './protocol.ts';
 
@@ -82,6 +82,7 @@ async function load(url: string): Promise<void> {
       terrainHeights: { size: world.terrain.size, cell: world.terrain.cell, half: world.terrain.half, base: world.terrain.base, heights },
       groundMap: { size: GROUND_MAP_SIZE, pixels },
       miniMap: { size: MINI_MAP_SIZE, pixels: miniMap, streets: streetLabels(pack) },
+      roads: namedRoads(pack),
       water,
       props,
       places: pack.places,

@@ -8,6 +8,8 @@ export type { TerrainGrid, TerrainMesh } from './terrain/grid.ts';
 export { GROUND_MAP_SIZE, paintGroundMap } from './areas/groundMap.ts';
 export { MINI_MAP_SIZE, paintMiniMap, streetLabels } from './areas/miniMap.ts';
 export type { StreetLabel } from './areas/miniMap.ts';
+export { StreetFinder, namedRoads } from './areas/streets.ts';
+export type { NamedRoad } from './areas/streets.ts';
 export { buildWaterMesh } from './areas/water.ts';
 export { prepareWorld } from './chunk/prepare.ts';
 export { clearMainRoads } from './roads/clearRoads.ts';

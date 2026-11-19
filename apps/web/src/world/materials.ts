@@ -327,7 +327,7 @@ const WET_GLSL = /* glsl */ `
   vec3 nkWet = vec3(0.0);
   if (uRain > 0.01) {
     vec3 Vw = normalize(vNkWorld - cameraPosition);
-    float grazing = pow(1.0 - clamp(-Vw.y, 0.0, 1.0), 4.0);
+    float grazing = pow(1.0 - clamp(-Vw.y, 0.0, 1.0), 6.0);
     vec2 wp = vNkWorld.xz;
     float puddle = smoothstep(0.5, 0.64, nkNoise(wp * 0.22) * 0.7 + nkNoise(wp * 1.1) * 0.3) * smoothstep(0.2, 0.7, uRain);
     // Rings from drops, only in puddles: each third-of-a-metre cell gets a drop at its own
@@ -339,9 +339,10 @@ const WET_GLSL = /* glsl */ `
     float ring = (1.0 - smoothstep(0.0, 0.03, abs(length(inCell) - phase * 0.3))) * (1.0 - phase) * (1.0 - phase);
     ring *= smoothstep(0.4, 0.8, puddle) * step(0.35, nkHash(cellW + 4.1));
     float wet = smoothstep(0.0, 0.35, uRain);
-    diffuseColor.rgb *= 1.0 - 0.42 * wet - 0.3 * puddle;
-    vec3 mirrored = mix(uSkyHorizon, uSkyTop, 0.25) * (1.0 - uNight * 0.85);
-    nkWet = mirrored * (grazing * 0.6 * wet + puddle * (0.32 + 0.6 * grazing) + ring * 0.18 * uRain);
+    diffuseColor.rgb *= 1.0 - 0.45 * wet - 0.35 * puddle;
+    // A mirror of the sky, dimmed: a wet road reads as dark and glossy, silvery only far off.
+    vec3 mirrored = mix(uSkyHorizon, uSkyTop, 0.4) * 0.6 * (1.0 - uNight * 0.85);
+    nkWet = mirrored * (grazing * 0.4 * wet + puddle * (0.1 + 0.45 * grazing) + ring * 0.25 * uRain);
   }
 `;
 
