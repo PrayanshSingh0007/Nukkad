@@ -28,7 +28,7 @@ export interface QualitySettings {
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
   low: { level: 'low', maxPixelRatio: 1, viewDistance: 200, nearRing: 1, maxTrees: 300, antialias: false, shadowSize: 0, shadowRange: 0, streetLifeRadius: 50, nearPeople: 0, photo: false, bloom: false },
   medium: { level: 'medium', maxPixelRatio: 1.5, viewDistance: 350, nearRing: 1, maxTrees: 1000, antialias: false, shadowSize: 1024, shadowRange: 35, streetLifeRadius: 80, nearPeople: 4, photo: true, bloom: false },
-  high: { level: 'high', maxPixelRatio: 2, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70, streetLifeRadius: 140, nearPeople: 8, photo: true, bloom: true },
+  high: { level: 'high', maxPixelRatio: 1.5, viewDistance: 600, nearRing: 2, maxTrees: 2500, antialias: true, shadowSize: 2048, shadowRange: 70, streetLifeRadius: 140, nearPeople: 8, photo: true, bloom: true },
 };
 
 const KEY = 'nukkad.quality';
@@ -66,8 +66,8 @@ export function saveQuality(level: QualityLevel): void {
 }
 
 /**
- * Watches frame times and lowers (or raises) the render scale: if frames are slow for 2 s
- * the picture gets 10 % less sharp (not below 0.6); with headroom it climbs back (PLAN §8.1).
+ * Watches frame times and lowers (or raises) the render scale: if frames are slower than 50 fps
+ * for 2 s the picture gets 10 % less sharp (not below 0.6); with headroom it climbs back (PLAN §8.1).
  * Also runs the start-up benchmark: a guessed level steps down while the game cannot reach 30 fps.
  */
 export class FrameGovernor {
@@ -96,8 +96,10 @@ export class FrameGovernor {
         return 'down';
       }
     }
-    if (average > 36) this.renderScale = Math.max(0.6, this.renderScale * 0.9);
-    else if (average < 22) this.renderScale = Math.min(1, this.renderScale / 0.9);
+    // Aim for a smooth 50–60 fps: soften the picture a little when frames take over 20 ms,
+    // sharpen it again when there is clear headroom (under 14 ms).
+    if (average > 20) this.renderScale = Math.max(0.6, this.renderScale * 0.9);
+    else if (average < 14) this.renderScale = Math.min(1, this.renderScale / 0.9);
     return null;
   }
 }

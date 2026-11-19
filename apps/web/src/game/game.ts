@@ -82,7 +82,7 @@ export interface GameOptions {
  * tone mapping. In order:
  * - speed blur: at high speed the picture smears outwards from the centre (not in the middle,
  *   where you look); when slow, a faint colour fringe in the corners like a real lens;
- * - sun shafts: bright sky near the sun is smeared towards it, so light pours through gaps
+ * - sun shafts: bright sky near the sun is smeared towards it (22 taps), so light pours through gaps
  *   between buildings and trees; nothing when the sun is hidden or behind you;
  * - lens flare: soft coloured rings along the line from the sun through the centre, a glow
  *   and a thin horizontal streak, only while the sun itself is visible;
@@ -141,18 +141,20 @@ const CINEMA_SHADER = {
 
       if (uSunAmt > 0.001) {
         // Shafts: march from this pixel towards the sun, adding up bright sky on the way.
-        vec2 delta = (uSun - vUv) / 32.0;
-        vec2 uv = vUv + delta * hash(vUv * 731.0 + uTime);
-        float decay = 1.0;
-        vec3 shafts = vec3(0.0);
-        for (int i = 0; i < 32; i++) {
-          shafts += bright(uv) * decay;
-          decay *= 0.955;
-          uv += delta;
-        }
         vec2 fromSun = (vUv - uSun) * vec2(uAspect, 1.0);
         float near = 1.0 - smoothstep(0.0, 1.1, length(fromSun));
-        c += shafts / 32.0 * 1.1 * uSunAmt * near * vec3(1.0, 0.85, 0.62);
+        if (near > 0.0) {
+          vec2 delta = (uSun - vUv) / 22.0;
+          vec2 uv = vUv + delta * hash(vUv * 731.0 + uTime);
+          float decay = 1.0;
+          vec3 shafts = vec3(0.0);
+          for (int i = 0; i < 22; i++) {
+            shafts += bright(uv) * decay;
+            decay *= 0.935;
+            uv += delta;
+          }
+          c += shafts / 22.0 * 1.15 * uSunAmt * near * vec3(1.0, 0.85, 0.62);
+        }
 
         // Flare: only while the sun disc itself is in view (not behind a building).
         vec3 seen = bright(uSun) + bright(uSun + vec2(0.01, 0.0)) + bright(uSun - vec2(0.01, 0.0)) + bright(uSun + vec2(0.0, 0.012)) + bright(uSun - vec2(0.0, 0.012));
@@ -815,8 +817,15 @@ export class Game {
     ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.2, scale: 1.15, samples: 12, distanceFallOff: 0.6, screenSpaceRadius: false });
     ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
     ao.blendIntensity = 0.9;
+    // Half resolution: AO is soft anyway, and at full size it cost ~12 ms a frame on a Retina Mac.
+    const aoSize = ao.setSize.bind(ao);
+    ao.setSize = (width: number, height: number) => aoSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
     composer.addPass(ao);
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 1.25));
+    // Bloom from a quarter-size picture (its blur hides the difference; ~6 ms → ~2 ms).
+    const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 4, size.y / 4), 0.22, 0.4, 1.25);
+    const bloomSize = bloom.setSize.bind(bloom);
+    bloom.setSize = (width: number, height: number) => bloomSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+    composer.addPass(bloom);
     this.cinema = new ShaderPass(CINEMA_SHADER);
     composer.addPass(this.cinema);
     composer.addPass(new OutputPass());
