@@ -135,7 +135,8 @@ const KENNEY: Record<string, { files: string[]; width: number }> = {
 const SKETCHFAB: Record<string, TexturedFit> = {
   auto: { length: 2.7, turn: 0, paint: [{ hue: 155, range: 22, minSat: 0.2, ref: 0.047 }] },
   two_wheeler: { length: 1.8, turn: 0, paint: [{ hue: 150, range: 25, minSat: 0.1, ref: 0.286 }, { hue: 0, range: 360, minSat: 0, maxSat: 0.2, minVal: 0.62, ref: 0.55 }] },
-  motorbike: { length: 2.15, turn: Math.PI, paint: [{ hue: 358, range: 18, minSat: 0.35, ref: 0.041 }] },
+  // Bajaj Pulsar 150 (2.05 m long), flat colours: the body parts take each copy's paint.
+  motorbike: { length: 2.05, turn: Math.PI, paint: 'auto', paintMaterial: /^Body_Paint/ },
   bus: { length: 11.2, turn: Math.PI, paint: [{ hue: 205, range: 20, minSat: 0.2, ref: 0.071 }] },
 };
 /** Our own Blender models (tools/blender/vehicles.py) are the fallback if a download is missing. */

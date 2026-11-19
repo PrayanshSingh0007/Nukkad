@@ -58,8 +58,12 @@ The owner can no longer use the model that did most of this work, so this sectio
 - **Street name card** (`StreetBanner.tsx`, `worldgen/areas/streets.ts` `StreetFinder` with a test): "Now on <road>" slides in when you turn onto a named OpenStreetMap road and stay a second. At junctions the wider road wins.
 - **Ideas from benglooru.com ("Namma Benglooru", another Bengaluru game; bengalooru.com is a parked domain):** we took only ideas: local Kannada touches, golden hour and rain as the showpiece, and named streets. We did not copy their theatre-marquee branding, flags, tagline, images, footage or code.
 - **Button fixes:** "Get out" was under Horn, and "Go inside / Get in" was under Emote. Both now have their own spots.
+- **New motorbike (2026-11-19, owner's OK):** Sketchfab "Bajaj pulsar 150" by @ShreyanshChaurasia_12 (CC BY, 2.7 MB download, 14k triangles, 236 KB in the game).
+  - Its textures were product photos, including another maker's bike. All were removed (`tools/vehicles/repaint.mjs`) and the SketchUp edge lines dropped.
+  - Its three photo-wrapped parts were split by position on the bike (`tools/vehicles/pulsar-regions.mjs`) into tyres, rims, hubs, engine, exhaust, fork, bars, seat, frame and painted body. The body takes each copy's paint.
+  - Settings: `turn: Math.PI`; the rider's seat, bars and pegs were re-placed for its 0.79 m seat (`vehicleSpecs.ts`). Checked: it rides forward, and the rider sits on the seat with hands on the bars.
 - **Not done:**
-  - Better character and bike models need new downloads and the owner's OK. Candidates: Sketchfab "Bajaj pulsar 150" (CC BY, 14k faces, @ShreyanshChaurasia_12), "pulsar 135 ls" (CC BY, 24k faces), Royal Enfield Classic 350 (CC BY, 733k faces, much too heavy without Blender).
+  - A better character model needs new downloads and the owner's OK. Candidates: Sketchfab "Bajaj pulsar 150" (CC BY, 14k faces, @ShreyanshChaurasia_12), "pulsar 135 ls" (CC BY, 24k faces), Royal Enfield Classic 350 (CC BY, 733k faces, much too heavy without Blender).
   - Quaternius' Regular (non-superhero) bodies are only in the paid Source pack; the free pack has Superhero bodies only. Our code already narrows them.
   - Traffic cars have no lights at night. Nothing in this pass is tested on a phone.
 

@@ -88,7 +88,7 @@ Licence: Creative Commons Attribution 4.0, https://creativecommons.org/licenses/
 
 - `models/sketchfab/auto.glb`: "Autorikshaw - Indian Tuk Tuk" by bhagathartworks, https://sketchfab.com/models/5775d012693741008acff9dad410e92d
 - `models/sketchfab/two_wheeler.glb`: "Indian Scooter 3d model low poly" by Shiveloper, https://sketchfab.com/models/0162842f5bda4ef3b30972fd634c10bb
-- `models/sketchfab/motorbike.glb`: "3D Bullet Bike For Cartoons Free Download" by ProfessionalModels, https://sketchfab.com/models/c40024caf9cd42859097e17dbd890efc
+- `models/sketchfab/motorbike.glb` (since 2026-11-19): "Bajaj pulsar 150" by @ShreyanshChaurasia_12, https://sketchfab.com/3d-models/bajaj-pulsar-150-06fac75c72ed4780a19034447c81e72c — CC Attribution 4.0, downloaded 2026-11-19 with the owner's OK (free, 2.7 MB). Changes made by us: **all of its textures removed** (they were product photos, including another maker's bike) and replaced with flat colours (`tools/vehicles/repaint.mjs`), the drawing's edge lines dropped, re-scaled and re-oriented, body repainted per copy. No logos remain. (Before 2026-11-19 this file was "3D Bullet Bike For Cartoons Free Download" by ProfessionalModels, https://sketchfab.com/models/c40024caf9cd42859097e17dbd890efc.)
 - `models/sketchfab/bus.glb`: "Indian Bus 1" by playmode280513, https://sketchfab.com/models/a76faa90aa424a44aa28449c11133ea2
 
 ## Cars from Sketchfab (CC-BY 4.0)
