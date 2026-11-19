@@ -59,7 +59,7 @@ function addWorldPosition(shader: THREE.WebGLProgramParametersWithUniforms, surf
 
 /** Walls get painted plaster, roofs get worn concrete — in world space, keeping the map colours. */
 const BUILDING_PHOTO_GLSL = /* glsl */ `
-  if (uTexOn > 0.5) {
+  if (uTexOn > 0.5 && vWin.z > -1.5) { // not on solar glass or metal parts
     vec3 n = normalize(vNkNormal);
     if (abs(n.y) > 0.6) {
       vec3 t = texture2D(uRoof, vNkWorld.xz / 5.0).rgb / uRoofAvg;
@@ -273,6 +273,33 @@ const FACADE_GLSL = /* glsl */ `
     float glint = pow(max(dot(R, uLightDir), 0.0), 90.0) * day * (kind == 1 ? 0.0 : 1.0) * (1.0 - shutter);
     nkEmit += vec3(1.0, 0.93, 0.8) * glint * glassMask * 2.2;
     nkEmit += reflection * glassMask * uSkyGain;
+  } else if (vWin.z < -0.5) { // roof things: -1 terrace, -2 solar glass, -3 metal
+    vec3 nrmR = normalize(vNkNormal);
+    vec3 Vr = normalize(vNkWorld - cameraPosition);
+    if (vWin.z < -1.5 && vWin.z > -2.5) {
+      // Solar heater glass: dark blue cells that mirror the sky and flash in the sun.
+      vec3 Rr = reflect(Vr, nrmR);
+      float fr = mix(0.08, 1.0, pow(1.0 - max(0.02, -dot(Vr, nrmR)), 4.0));
+      vec2 cellP = fract(vNkWorld.xz * vec2(3.0, 4.0));
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.45), step(0.93, max(cellP.x, cellP.y)) * 0.5);
+      nkEmit = mix(uSkyHorizon, uSkyTop, clamp(Rr.y, 0.0, 1.0)) * fr * 0.6 * (1.0 - uNight * 0.9);
+      nkEmit += vec3(1.0, 0.93, 0.8) * pow(max(dot(Rr, uLightDir), 0.0), 120.0) * 3.0 * (1.0 - uNight);
+    } else if (vWin.z > -1.5 && nrmR.y > 0.6) {
+      // Terrace: rain stains (a little green where it stays damp), dust, patches of newer
+      // waterproofing and the faint grid of the square roof tiles up close.
+      vec2 p = vNkWorld.xz;
+      float stain = smoothstep(0.55, 0.85, nkNoise(p * 0.18) * 0.7 + nkNoise(p * 0.6) * 0.3);
+      float coat = step(0.78, nkNoise(floor(p / 2.4) * 0.37 + 11.0));
+      vec2 fwR = fwidth(p);
+      vec2 tile = fract(p / 0.6);
+      float joint = (1.0 - smoothstep(0.0, 0.04 + fwR.x * 1.5, min(tile.x, tile.y))) * (1.0 - smoothstep(0.05, 0.25, max(fwR.x, fwR.y)));
+      vec3 c = diffuseColor.rgb;
+      c *= 1.0 - stain * 0.28;
+      c = mix(c, c * vec3(0.9, 0.97, 0.88), stain * 0.6);
+      c = mix(c, vec3(0.78, 0.76, 0.72), coat * 0.35);
+      c *= 1.0 - joint * 0.12;
+      diffuseColor.rgb = c;
+    }
   }
 `;
 
@@ -376,7 +403,7 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-6';
+  material.customProgramCacheKey = () => 'nukkad-facades-7';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {

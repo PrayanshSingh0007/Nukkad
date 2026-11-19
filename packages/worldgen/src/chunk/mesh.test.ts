@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PackBuilding, PackTerrain } from '@nukkad/shared';
 import { fillPolygon } from '../areas/groundMap.ts';
-import { appendBuilding, buildingTriangleEstimate } from '../buildings/buildingMesh.ts';
+import { appendBuilding, buildingTriangleEstimate, hasSolarHeater } from '../buildings/buildingMesh.ts';
 import { MeshBuilder } from '../mesh/meshBuilder.ts';
 import type { MeshData } from '../mesh/meshBuilder.ts';
 import { buildRibbon } from '../roads/ribbon.ts';
@@ -94,7 +94,8 @@ describe('building mesh', () => {
     const house: PackBuilding = { ...box, kind: 'house' };
     const builder = new MeshBuilder(3);
     appendBuilding(builder, house, terrain, false, false);
-    expect(builder.triangleCount).toBe(10 + 16 + 10); // + the stair room on the terrace
+    // Walls and roof + terrace wall + the stair room, and a solar water heater on some homes.
+    expect(builder.triangleCount).toBe(10 + 16 + 10); // this small box has no room for a solar heater
     expect(buildingTriangleEstimate(house)).toBe(36);
     // With floor ledges and the roof cornice: 6 triangles per wall per level (2 levels here).
     const withLedges = new MeshBuilder(3);
@@ -108,6 +109,24 @@ describe('building mesh', () => {
     const plain = new MeshBuilder(3);
     appendBuilding(plain, glass, terrain);
     expect(plain.triangleCount).toBe(10); // glass towers have no terrace wall
+  });
+
+  it('puts a solar water heater on some bigger home roofs, counted in the estimate', () => {
+    const ring = [-120, -80, 120, -80, 120, 80, -120, 80]; // 24 × 16 m (pack units are decimetres)
+    const homes = Array.from({ length: 40 }, (_, id): PackBuilding => ({ ...box, id, ring, kind: 'house' }));
+    const withHeater = homes.filter(hasSolarHeater);
+    expect(withHeater.length).toBeGreaterThan(8);
+    expect(withHeater.length).toBeLessThan(32);
+    for (const home of homes) {
+      const builder = new MeshBuilder(3);
+      appendBuilding(builder, home, terrain, false, false);
+      expect(buildingTriangleEstimate(home)).toBe(builder.triangleCount);
+    }
+    const one = new MeshBuilder(3);
+    appendBuilding(one, withHeater[0], terrain, false, false);
+    const plain = new MeshBuilder(3);
+    appendBuilding(plain, homes.find((h) => !hasSolarHeater(h)) as PackBuilding, terrain, false, false);
+    expect(one.triangleCount - plain.triangleCount).toBe(16);
   });
 
   it('gives floating parts an underside', () => {

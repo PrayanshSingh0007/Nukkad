@@ -68,8 +68,13 @@ export function buildingTriangleEstimate(building: PackBuilding, withLedges = fa
     holes++;
   }
   const cap = points - 2 + 2 * holes;
-  // Walls + roof (+ underside) + parapet (4 per outer edge; counted for far versions too, to be safe).
-  const base = 2 * points + (building.minH ? 2 * cap : cap) + (hasParapet(building) ? 2 * building.ring.length + 10 : 0);
+  // Walls + roof (+ underside) + parapet (4 per outer edge) + stair room + solar heater (counted
+  // for far versions too, to be safe).
+  const base =
+    2 * points +
+    (building.minH ? 2 * cap : cap) +
+    (hasParapet(building) ? 2 * building.ring.length + 10 : 0) +
+    (hasSolarHeater(building) && solarSpot(toMetres(building.ring)) ? SOLAR_TRIANGLES : 0);
   // Ledges: 6 triangles per outer edge per level (only up close).
   return base + (withLedges && hasLedges(building) ? 3 * building.ring.length * ledgeLevels(building) : 0);
 }
@@ -282,6 +287,121 @@ function addRoofRoom(mesh: MeshBuilder, building: PackBuilding, ring: number[], 
   mesh.addTriangleFacing(first, first + 2, first + 3, true);
 }
 
+/** A flat four-cornered face whose front is the side `n` points to (winding chosen to match). */
+function addQuad(mesh: MeshBuilder, q: [number, number, number][], n: [number, number, number], color: Rgb, marker: number): void {
+  const first = mesh.vertexCount;
+  for (const [x, y, z] of q) mesh.addVertex(x, y, z, n[0], n[1], n[2], color, marker, marker, marker);
+  const [a, b, c] = q;
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  const facing = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+  if (facing >= 0) {
+    mesh.addTriangle(first, first + 1, first + 2);
+    mesh.addTriangle(first, first + 2, first + 3);
+  } else {
+    mesh.addTriangle(first, first + 2, first + 1);
+    mesh.addTriangle(first, first + 3, first + 2);
+  }
+}
+
+/** Shader markers for roof things (the facade data slot): plain roof, solar glass, metal. */
+export const ROOF_MARKER = -1;
+export const SOLAR_MARKER = -2;
+export const METAL_MARKER = -3;
+const SOLAR_KINDS = new Set(['house', 'apartments', 'generic']);
+const SOLAR_TILT = 0.26; // about 15°, facing south (+z), as Bengaluru's latitude suggests
+const SOLAR_TRIANGLES = 16;
+const SOLAR_HALF_W = 1.0;
+const SOLAR_HALF_D = 0.75;
+
+/** Does this roof get a solar water heater? About 45 % of homes and flats (seeded, so stable). */
+export function hasSolarHeater(building: PackBuilding): boolean {
+  return hasParapet(building) && SOLAR_KINDS.has(building.kind) && Math.imul(building.id, 2654435761) >>> 0 < 0.45 * 4294967296;
+}
+
+/**
+ * A solar water heater: a dark glass panel tilted to the south on a frame, with the white
+ * storage tank lying along its top edge. Placed away from the stair room; skipped if it does
+ * not fit on the roof.
+ */
+/** Where a solar heater fits on this roof (metres outline), away from the stair room; or null. */
+export function solarSpot(ring: number[]): [number, number] | null {
+  if (Math.abs(signedArea(ring)) < 50) return null;
+  const [cx, cz] = ringCentroid(ring);
+  for (const [dx, dz] of [
+    [4.4, 0],
+    [-4.4, 0],
+    [0, 4.4],
+    [0, -4.4],
+    [3.2, 3.2],
+    [-3.2, -3.2],
+  ]) {
+    const fits = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ].every(([sx, sz]) => pointInRing(cx + dx + sx * (SOLAR_HALF_W + 0.3), cz + dz + sz * (SOLAR_HALF_D + 0.3), ring));
+    if (fits) return [cx + dx, cz + dz];
+  }
+  return null;
+}
+
+function addSolarHeater(mesh: MeshBuilder, ring: number[], y: number): void {
+  const at = solarSpot(ring);
+  if (!at) return;
+  const halfW = SOLAR_HALF_W;
+  const halfD = SOLAR_HALF_D;
+  const [x, z] = at;
+  const low = y + 0.45;
+  const high = low + 2 * halfD * Math.sin(SOLAR_TILT);
+  const north = z - halfD;
+  const south = z + halfD;
+  const n: [number, number, number] = [0, Math.cos(SOLAR_TILT), Math.sin(SOLAR_TILT)];
+  const glass: Rgb = [24, 34, 58];
+  const metal: Rgb = [150, 152, 156];
+  const tank: Rgb = [226, 228, 230];
+  // Panel top (glass) and underside (frame).
+  const panel: [number, number, number][] = [
+    [x - halfW, low, south],
+    [x + halfW, low, south],
+    [x + halfW, high, north],
+    [x - halfW, high, north],
+  ];
+  addQuad(mesh, panel, n, glass, SOLAR_MARKER);
+  addQuad(mesh, panel, [0, -n[1], -n[2]], metal, METAL_MARKER);
+  // Back plate down to the roof, so it does not float.
+  addQuad(
+    mesh,
+    [
+      [x - halfW, y, north],
+      [x + halfW, y, north],
+      [x + halfW, high, north],
+      [x - halfW, high, north],
+    ],
+    [0, 0, -1],
+    metal,
+    METAL_MARKER,
+  );
+  // The tank: a box along the top edge (5 faces; the bottom is never seen).
+  const r = 0.27;
+  const t0 = high - 0.05;
+  const t1 = t0 + 2 * r;
+  const z0 = north - r;
+  const z1 = north + r;
+  const x0 = x - halfW - 0.08;
+  const x1 = x + halfW + 0.08;
+  addQuad(mesh, [[x0, t1, z0], [x1, t1, z0], [x1, t1, z1], [x0, t1, z1]], [0, 1, 0], tank, METAL_MARKER);
+  addQuad(mesh, [[x0, t0, z1], [x1, t0, z1], [x1, t1, z1], [x0, t1, z1]], [0, 0, 1], tank, METAL_MARKER);
+  addQuad(mesh, [[x0, t0, z0], [x1, t0, z0], [x1, t1, z0], [x0, t1, z0]], [0, 0, -1], tank, METAL_MARKER);
+  addQuad(mesh, [[x0, t0, z0], [x0, t0, z1], [x0, t1, z1], [x0, t1, z0]], [-1, 0, 0], tank, METAL_MARKER);
+  addQuad(mesh, [[x1, t0, z0], [x1, t0, z1], [x1, t1, z1], [x1, t1, z0]], [1, 0, 0], tank, METAL_MARKER);
+}
+
 /** Outline tolerance for far (LOD1) buildings, metres. */
 const FAR_SIMPLIFY_M = 1.5;
 
@@ -338,5 +458,6 @@ export function appendBuilding(mesh: MeshBuilder, building: PackBuilding, terrai
   if (!far && hasParapet(building)) {
     addParapet(mesh, ring, top, wall);
     addRoofRoom(mesh, building, ring, top, wall);
+    if (hasSolarHeater(building)) addSolarHeater(mesh, ring, top);
   }
 }
