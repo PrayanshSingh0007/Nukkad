@@ -979,6 +979,7 @@ export class Game {
     }
     world?.setNight(this.atmosphere.night);
     world?.setLightDir(this.atmosphere.lightDir);
+    world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
     world?.update(dt);
     if (player) {

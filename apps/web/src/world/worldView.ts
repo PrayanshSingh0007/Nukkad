@@ -357,6 +357,12 @@ export class WorldView {
     this.materials.lightDir.value.copy(dir);
   }
 
+  /** The sky's colours, for what window glass mirrors. */
+  setSky(top: THREE.Color, horizon: THREE.Color): void {
+    this.materials.sky.uSkyTop.value.copy(top);
+    this.materials.sky.uSkyHorizon.value.copy(horizon);
+  }
+
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
   setNight(night: number): void {
     this.materials.night.value = night;

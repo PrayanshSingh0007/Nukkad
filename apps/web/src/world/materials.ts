@@ -15,6 +15,8 @@ export interface WorldMaterials {
   time: { value: number };
   /** Where the light comes from (sun by day, moon at night), for glints on glass and water. */
   lightDir: { value: THREE.Vector3 };
+  /** The sky's colours, mirrored in window glass. */
+  sky: SkyUniforms;
   terrain: THREE.MeshLambertMaterial;
   buildings: THREE.MeshLambertMaterial;
   ground: THREE.MeshLambertMaterial;
@@ -22,6 +24,14 @@ export interface WorldMaterials {
   props: THREE.MeshLambertMaterial;
   trees: THREE.MeshLambertMaterial;
   all: THREE.Material[];
+}
+
+/** The sky's colours (copied from the atmosphere) for reflections in glass. */
+export interface SkyUniforms {
+  uSkyTop: { value: THREE.Color };
+  uSkyHorizon: { value: THREE.Color };
+  /** How strongly glass mirrors the sky (matched to the sky's real brightness). */
+  uSkyGain: { value: number };
 }
 
 /** Cheap 2D value noise (no textures). */
@@ -213,12 +223,29 @@ const FACADE_GLSL = /* glsl */ `
     vec3 lamp = kind == 3 ? vec3(0.85, 0.93, 1.0) : (kind == 2 ? vec3(1.0, 0.95, 0.85) : vec3(1.0, 0.78, 0.5));
     vec3 inside = mix(room, clothCol, cloth);
     inside = mix(inside, shutterCol, shutter);
-    // Sky in the glass: more at flat angles; balconies have no glass.
-    vec3 R = reflect(V, nrm);
-    vec3 skyRef = mix(vec3(0.62, 0.7, 0.78), vec3(0.2, 0.36, 0.66), clamp(R.y * 1.4, 0.0, 1.0)) * (0.07 + 0.93 * day);
+    // What the glass mirrors: the real sky colours with clouds, and the buildings across the
+    // street near the horizon. Each pane is tilted a hair differently (real glass is never
+    // perfectly flat), so neighbouring reflections break up. Balconies have no glass.
+    vec3 R = reflect(V, normalize(nrm + (vec3(nkH(id + 3.1), 0.0, nkH(id + 5.7)) - 0.5) * 0.06));
+    float el = R.y;
+    vec3 skyRef = mix(uSkyHorizon, uSkyTop, pow(clamp(el, 0.0, 1.0), 0.5));
+    vec2 cloudUv = R.xz / max(0.12, el) * 1.6;
+    float cloud = smoothstep(0.45, 0.85, nkNoise(cloudUv) * 0.65 + nkNoise(cloudUv * 2.7) * 0.35) * smoothstep(0.02, 0.2, el);
+    skyRef = mix(skyRef, uSkyHorizon * 1.25 + 0.08, cloud * 0.7);
+    // Opposite buildings: blocks of different heights, darker, with rows of their own windows.
+    float az = atan(R.z, R.x) * 30.0;
+    float block = floor(az);
+    float roofLine = 0.04 + 0.32 * nkH(vec2(block, 9.1)) * nkH(vec2(block, 2.3));
+    vec3 across = mix(vec3(0.26, 0.25, 0.24), vec3(0.5, 0.47, 0.42), nkH(vec2(block, 4.4))) * (uSkyHorizon * 0.7 + 0.12);
+    across *= 0.8 + 0.3 * step(0.45, fract(el * 22.0)) * step(0.35, fract(az * 2.5));
+    skyRef = el < roofLine ? across : skyRef;
+    skyRef *= 0.07 + 0.93 * day;
     float fres = kind == 1 ? 0.0 : mix(kind == 3 ? 0.42 : 0.16, 1.0, pow(1.0 - facing, 3.0));
     fres *= 1.0 - shutter;
-    vec3 glass = mix(inside * inLight, skyRef, fres);
+    // The room behind is lit like the wall; the reflection is light coming off the glass, so it
+    // is added as its own light and stays bright even when the wall is in shade.
+    vec3 glass = inside * inLight * (1.0 - fres);
+    vec3 reflection = skyRef * fres;
     // Shadow of the sunshade on the top of the pane (daytime).
     if (kind == 0) glass *= 1.0 - 0.45 * smoothstep(0.78, 0.9, v) * day;
     // Balcony railing at the front: bars you can see through, or a solid low wall.
@@ -235,6 +262,7 @@ const FACADE_GLSL = /* glsl */ `
     if (kind == 3) bar = max(1.0 - smoothstep(0.01, 0.01 + fw.x, abs(u - 0.5)), 1.0 - smoothstep(0.012, 0.012 + fw.y, abs(v - 0.32))) * fine;
     if (style == 4) bar = max(bar, step(0.82, fract(v * 7.0)) * fine * 0.8);
     glass = mix(glass, frame, bar * (1.0 - shutter));
+    reflection *= 1.0 - bar * (1.0 - shutter);
 
     diffuseColor.rgb = mix(wall, frame, open);
     diffuseColor.rgb = mix(diffuseColor.rgb, glass, glassMask);
@@ -244,6 +272,7 @@ const FACADE_GLSL = /* glsl */ `
     // The sun flashing off panes that face it.
     float glint = pow(max(dot(R, uLightDir), 0.0), 90.0) * day * (kind == 1 ? 0.0 : 1.0) * (1.0 - shutter);
     nkEmit += vec3(1.0, 0.93, 0.8) * glint * glassMask * 2.2;
+    nkEmit += reflection * glassMask * uSkyGain;
   }
 `;
 
@@ -333,20 +362,21 @@ const ROAD_GLSL = /* glsl */ `
   }
 `;
 
-function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms, lightDir: { value: THREE.Vector3 }): void {
+function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms, lightDir: { value: THREE.Vector3 }, sky: SkyUniforms): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = night;
     shader.uniforms.uLightDir = lightDir;
+    Object.assign(shader.uniforms, sky);
     addWorldPosition(shader, surfaces);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\nuniform vec3 uLightDir;\n${FACADE_PARS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\nuniform vec3 uLightDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHorizon;\nuniform float uSkyGain;\n${FACADE_PARS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-5';
+  material.customProgramCacheKey = () => 'nukkad-facades-6';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms): void {
@@ -475,10 +505,11 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const night = { value: 0 };
   const time = { value: 0 };
   const lightDir = { value: new THREE.Vector3(0.4, 0.8, 0.3) };
+  const sky: SkyUniforms = { uSkyTop: { value: new THREE.Color(0.25, 0.42, 0.8) }, uSkyHorizon: { value: new THREE.Color(0.7, 0.74, 0.8) }, uSkyGain: { value: 1 } };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   groundDetail(terrain, surfaces);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) facades(buildings, night, surfaces, lightDir);
+  if (windows) facades(buildings, night, surfaces, lightDir, sky);
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces);
@@ -489,5 +520,5 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
     ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
     : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time);
-  return { night, time, lightDir, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
+  return { night, time, lightDir, sky, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }

@@ -729,6 +729,11 @@ button {
   padding: 12px 18px;
 }
 
+/* On foot ("Get in", "Go inside") it sits above the Emote and Horn buttons. */
+.driveButton:not(.out) {
+  bottom: calc(182px + env(safe-area-inset-bottom));
+}
+
 /* In a vehicle the Ride button is hidden: "Get out" takes its place, under the horn. */
 .driveButton.out {
   bottom: calc(58px + env(safe-area-inset-bottom));
