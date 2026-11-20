@@ -1127,6 +1127,7 @@ export class Game {
     world?.setLightDir(this.atmosphere.lightDir);
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
+    this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.rain);
     world?.update(dt);
     if (player) {
       this.placeSun(player.x, player.y, player.z);
