@@ -120,6 +120,38 @@ async function loadTops(): Promise<{ mask: THREE.Texture; meanLum: number }[] | 
 }
 
 /**
+ * Light every realistic person shares: a rim of sky light around their outline (so people stand
+ * out from the street, the way film lighting does), strongest on the parts facing up, and the
+ * city's sky reflections for a little sheen on skin and hair.
+ */
+const RIM = { value: new THREE.Color(0, 0, 0) };
+let sharedEnv: THREE.Texture | null = null;
+let envStrength = 0.3;
+const living = new Set<RocketboxPerson>();
+
+/** Called every frame by the game: rim = the sky's colour (black indoors), env = the city's reflections. */
+export function setPeopleLight(rim: THREE.Color, env: THREE.Texture | null, night: number): void {
+  RIM.value.copy(rim);
+  const strength = 0.1 + 0.22 * (1 - night);
+  if (env === sharedEnv && Math.abs(strength - envStrength) < 0.01) return;
+  const rebuild = env !== sharedEnv;
+  sharedEnv = env;
+  envStrength = strength;
+  for (const person of living) person.relight(rebuild);
+}
+
+const RIM_PARS = /* glsl */ `
+  uniform vec3 uRim;
+`;
+const RIM_LIGHT = /* glsl */ `
+  {
+    float nkFacing = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+    float nkRim = pow(1.0 - nkFacing, 3.0) * (0.55 + 0.45 * normal.y);
+    outgoingLight += uRim * nkRim * (0.3 + 0.7 * diffuseColor.rgb);
+  }
+`;
+
+/**
  * Dyes the top: inside the mask, the fabric takes the new colour but keeps its own light and
  * shade (folds, seams, print) — its brightness relative to the top's average brightness.
  */
@@ -196,7 +228,8 @@ function prepare(scene: THREE.Group): THREE.Group {
         standard.transparent = false;
         standard.alphaTest = Math.max(0.5, standard.alphaTest);
       }
-      standard.roughness = 0.7;
+      // Face and hair a little glossier than clothes (skin has an oily sheen, hair a shine).
+      standard.roughness = /head/i.test(standard.name) ? 0.52 : standard.alphaTest > 0 ? 0.6 : 0.78;
       standard.metalness = 0;
     }
   });
@@ -246,7 +279,7 @@ export class RocketboxPerson {
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         this.materials.push(material);
         const top = assets.tops?.[this.avatar];
-        if (top && /body/i.test(material.name) && (material as THREE.MeshStandardMaterial).map) this.dyeable(material, top.mask, top.meanLum);
+        this.shade(material, top && /body/i.test(material.name) && (material as THREE.MeshStandardMaterial).map ? top : null);
       }
     });
     this.root.add(body);
@@ -266,6 +299,7 @@ export class RocketboxPerson {
     // Not everyone steps in time with everyone else.
     this.mixer.setTime(seed * 10);
     this.play('idle', 0);
+    living.add(this);
   }
 
   get female(): boolean {
@@ -281,18 +315,39 @@ export class RocketboxPerson {
     this.current = name;
   }
 
-  /** The body material learns to dye the top (one shader for every person). */
-  private dyeable(material: THREE.Material, mask: THREE.Texture, meanLum: number): void {
+  /** Rim light on every material, and on the body the top's dye (one shader each for everyone). */
+  private shade(material: THREE.Material, top: { mask: THREE.Texture; meanLum: number } | null): void {
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.uTopMask = { value: mask };
-      shader.uniforms.uTop = this.top.colour;
-      shader.uniforms.uTint = this.top.tint;
-      shader.uniforms.uMeanLum = { value: meanLum };
+      shader.uniforms.uRim = RIM;
+      let pars = RIM_PARS;
+      if (top) {
+        shader.uniforms.uTopMask = { value: top.mask };
+        shader.uniforms.uTop = this.top.colour;
+        shader.uniforms.uTint = this.top.tint;
+        shader.uniforms.uMeanLum = { value: top.meanLum };
+        pars += TOP_PARS;
+        shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n${TOP_DYE}`);
+      }
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\n${TOP_PARS}`)
-        .replace('#include <map_fragment>', `#include <map_fragment>\n${TOP_DYE}`);
+        .replace('#include <common>', `#include <common>\n${pars}`)
+        .replace('#include <opaque_fragment>', `${RIM_LIGHT}\n#include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => 'nukkad-rocketbox-top-1';
+    material.customProgramCacheKey = () => (top ? 'nukkad-rocketbox-2-top' : 'nukkad-rocketbox-2');
+    const standard = material as THREE.MeshStandardMaterial;
+    standard.envMap = sharedEnv;
+    standard.envMapIntensity = envStrength;
+  }
+
+  /** New sky reflections (rebuild: the reflection texture itself changed). */
+  relight(rebuild: boolean): void {
+    for (const material of this.materials) {
+      const standard = material as THREE.MeshStandardMaterial;
+      if (rebuild) {
+        if ((standard.envMap === null) !== (sharedEnv === null)) standard.needsUpdate = true;
+        standard.envMap = sharedEnv;
+      }
+      standard.envMapIntensity = envStrength;
+    }
   }
 
   /** The top's colour: 0 = as the person comes, 1–10 = OUTFIT_COLORS[tint − 1]. */
@@ -425,6 +480,7 @@ export class RocketboxPerson {
   }
 
   dispose(): void {
+    living.delete(this);
     this.mixer.stopAllAction();
     for (const material of this.materials) material.dispose();
     this.root.removeFromParent();

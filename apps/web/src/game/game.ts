@@ -17,6 +17,7 @@ import { NetClient } from '../net/netClient.ts';
 import type { NetStatus } from '../net/netClient.ts';
 import { RemotePlayers } from '../net/remotePlayers.ts';
 import { Avatar } from '../player/avatar/avatar.ts';
+import { setPeopleLight } from '../player/avatar/rocketbox.ts';
 import { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { CameraRig } from '../player/cameraRig.ts';
 import { PlayerInput } from '../player/input.ts';
@@ -189,6 +190,9 @@ const EDGE_MARGIN_M = 100; // the playable square ends this far inside the area
 const HYSTERESIS_M = 30;
 
 /** The game itself: loads a place, streams it around the player, and runs the frame loop. */
+/** The rim light colour handed to the realistic people each frame (reused). */
+const PEOPLE_RIM = new THREE.Color();
+
 export class Game {
   private readonly view3d: GameScene;
   private readonly input: PlayerInput;
@@ -1125,6 +1129,9 @@ export class Game {
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
     }
+    // Realistic people: a rim of sky light (none indoors) and the sky's reflections.
+    PEOPLE_RIM.copy(skyU.uHorizon.value).multiplyScalar(this.interior ? 0 : 0.55 * (1 - this.atmosphere.night * 0.4));
+    setPeopleLight(PEOPLE_RIM, this.reflections.texture, this.interior ? 1 : this.atmosphere.night);
     if (this.interior) {
       // Indoors: lit by the room's lamps, not the sun (same lights, other strengths — no shader rebuild).
       this.view3d.sun.intensity = 0.7;
