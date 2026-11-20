@@ -7,12 +7,15 @@ import { AreaError } from '../areas/areaService.ts';
 import type { AreaService } from '../areas/areaService.ts';
 import type { RoomManager } from '../realtime/rooms.ts';
 import type { Geocoder } from '../geocode/nominatim.ts';
+import type { WeatherService } from '../weather/openMeteo.ts';
 import { TokenBuckets } from '../security/tokenBuckets.ts';
 
 export interface AppOptions {
   areas: AreaService;
   rooms: RoomManager;
   geocoder?: Geocoder;
+  /** Real weather for the game areas (Open-Meteo). */
+  weather?: WeatherService;
   /** New rooms per IP: a burst, then this many per minute. */
   roomBurst?: number;
   roomsPerMinute?: number;
@@ -160,6 +163,32 @@ export function createApp(options: AppOptions): express.Express {
       res.json({ results, attribution: '© OpenStreetMap contributors' });
     } catch {
       sendError(res, 502, 'search_unavailable', 'The place search did not answer. Try again in a minute.');
+    }
+  });
+
+  /** GET /api/weather?lat=…&lng=… → the real weather over a game area (Open-Meteo, cached 10 min). */
+  const weatherAsks = new TokenBuckets(6, 6);
+  app.get('/api/weather', async (req: Request, res: Response) => {
+    const lat = queryNumber(req.query.lat);
+    const lng = queryNumber(req.query.lng);
+    if (!isValidLatLng(lat, lng)) {
+      sendError(res, 400, 'bad_request', 'lat and lng must be a real place.');
+      return;
+    }
+    if (!options.weather) {
+      sendError(res, 503, 'unavailable', 'Weather is not available on this server.');
+      return;
+    }
+    if (!weatherAsks.consume(req.ip ?? 'unknown')) {
+      sendError(res, 429, 'slow_down', 'Asking for the weather very often. Try again in a minute.');
+      return;
+    }
+    try {
+      const weather = await options.weather.current(lat, lng);
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({ ...weather, attribution: 'Weather data by Open-Meteo.com (CC BY 4.0)' });
+    } catch {
+      sendError(res, 502, 'weather_unavailable', 'The weather service did not answer.');
     }
   });
 

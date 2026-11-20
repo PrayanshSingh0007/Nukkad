@@ -15,6 +15,10 @@ Licence: Open Database License (ODbL) 1.0 — https://www.openstreetmap.org/copy
 - `tools/fixtures/a_12921_77695_600/overpass.json.gz` is a saved copy of OpenStreetMap data
   for the built-in test area and is under the same ODbL licence.
 
+## Weather data
+
+- The game's rain follows the real current weather over the game area: **Open-Meteo**, https://open-meteo.com — data licensed under Creative Commons Attribution 4.0 (CC BY 4.0). Credited on screen ("Weather: Open-Meteo.com", next to the map credit). Our server asks for the area's centre only (rounded to about 5 km, never a player's location) at most once per 10 minutes per place (`apps/server/src/weather/openMeteo.ts`).
+
 ## Elevation data
 
 **Terrain Tiles** (the "Terrarium" tiles created by Mapzen, hosted on AWS Open Data) — ground heights.

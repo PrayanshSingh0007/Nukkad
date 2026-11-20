@@ -4,6 +4,7 @@ import { loadConfig, osmUserAgent } from './config.ts';
 import { createApp } from './http/app.ts';
 import { RealtimeHub } from './realtime/hub.ts';
 import { Geocoder } from './geocode/nominatim.ts';
+import { WeatherService } from './weather/openMeteo.ts';
 import { RoomManager } from './realtime/rooms.ts';
 import { FileAreaStore } from './store/areaStore.ts';
 import type { AreaStore } from './store/areaStore.ts';
@@ -39,7 +40,8 @@ async function main(): Promise<void> {
   const rooms = new RoomManager(Date.now, roomStore);
   log(`rooms restored after restart: ${rooms.restore(await roomStore.loadAll())}`);
   const geocoder = new Geocoder({ userAgent: osmUserAgent(config) });
-  const app = createApp({ areas, rooms, geocoder, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy });
+  const weather = new WeatherService();
+  const app = createApp({ areas, rooms, geocoder, weather, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy });
   const hub = new RealtimeHub({ rooms, allowedOrigins: config.allowedOrigins, trustProxy: config.trustProxy, log });
   const server = app.listen(config.port, '0.0.0.0', (error?: Error) => {
     if (error) {

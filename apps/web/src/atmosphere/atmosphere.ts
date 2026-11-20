@@ -109,6 +109,8 @@ export class Atmosphere {
   readonly lightDir = new THREE.Vector3(0, 2, 0);
   /** 0 = dry … 1 = downpour; set by the game from the weather. */
   rain = 0;
+  /** 0 = clear … 1 = overcast (real cloud cover when known). */
+  cloud = 0;
   private baseAmbient = 1;
   private readonly grey = new THREE.Color();
   /**
@@ -167,7 +169,8 @@ export class Atmosphere {
 
     const u = this.sky.uniforms;
     // Rain: an overcast grey sky (its colours also tint the fog and every reflection).
-    const r = this.rain;
+    // Overcast: rain, or just a cloudy day (real cloud cover greys the sky a little).
+    const r = Math.max(this.rain, this.cloud * 0.45);
     const overcastTop = this.grey.setRGB(0.36, 0.39, 0.44).multiplyScalar(1 - this.night * 0.88);
     u.uTop.value.copy(l.top).lerp(overcastTop, r * 0.8);
     const overcastHorizon = this.grey.setRGB(0.55, 0.57, 0.6).multiplyScalar(1 - this.night * 0.85);

@@ -273,6 +273,9 @@ export class Game {
   /** `?rain=0…1` in the address fixes the weather (for testing); null = the shared weather. */
   private readonly rainOverride: number | null = null;
   private rain = 0;
+  /** The real weather over the area (Open-Meteo, via our server), or null when unknown. */
+  private realWeather: { rain: number; cloud: number } | null = null;
+  private weatherTimer = 0;
   private lightning = 0;
   private nextLightning = 0;
 
@@ -655,6 +658,10 @@ export class Game {
   /** Loads the place around (lat, lng) and drops the player at its nearest street corner. */
   async start(lat: number, lng: number, halfSize: number = GAME_HALF_SIZE): Promise<void> {
     this.loadStarted = performance.now();
+    // The real weather over this place, now and every 10 minutes.
+    void this.fetchWeather(lat, lng);
+    window.clearInterval(this.weatherTimer);
+    this.weatherTimer = window.setInterval(() => void this.fetchWeather(lat, lng), 10 * 60_000);
     this.setStatus('loading', 'Getting the map… a brand-new place can take up to a minute.');
     try {
       const client = new WorldClient();
@@ -824,6 +831,21 @@ export class Game {
     if (here !== this.street && here !== null && now - this.streetSince >= 1000) {
       this.street = here;
       this.onStreet?.(here);
+    }
+  }
+
+  /**
+   * Asks our server for the real weather over the area (Open-Meteo). If it cannot be had, the
+   * game falls back to its own rain spells (`rainAt`).
+   */
+  private async fetchWeather(lat: number, lng: number): Promise<void> {
+    try {
+      const response = await fetch(`/api/weather?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`);
+      if (!response.ok) throw new Error(String(response.status));
+      const body = (await response.json()) as { rain?: number; cloud?: number };
+      this.realWeather = { rain: Math.min(1, Math.max(0, Number(body.rain) || 0)), cloud: Math.min(1, Math.max(0, Number(body.cloud) || 0)) };
+    } catch {
+      this.realWeather = null;
     }
   }
 
@@ -1084,8 +1106,11 @@ export class Game {
     }
 
     this.atmosphere.override = this.hourSlider ?? cycleHour(Date.now());
-    this.rain = this.rainOverride ?? rainAt(Date.now());
+    // Real weather when we have it (eased in over ~20 s), else our own rain spells; ?rain= wins.
+    const wantRain = this.rainOverride ?? (this.realWeather ? this.realWeather.rain : rainAt(Date.now()));
+    this.rain = this.rainOverride !== null ? wantRain : this.rain + (wantRain - this.rain) * Math.min(1, dt / 20);
     this.atmosphere.rain = this.rain;
+    this.atmosphere.cloud = this.realWeather?.cloud ?? 0.25;
     this.atmosphere.update(dt, this.view3d.camera);
     this.updateLightning(now, dt);
     world?.setRain(this.rain);
