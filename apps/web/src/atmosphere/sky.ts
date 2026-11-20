@@ -90,7 +90,7 @@ const fragmentShader = /* glsl */ `
 
     vec3 cell = floor(dir * 220.0);
     float star = step(0.9975, hash(cell)) * smoothstep(0.02, 0.25, dir.y);
-    color += vec3(star) * smoothstep(0.7, 1.0, uNight) * 0.9 * (1.0 - uRain); // stars only once it is properly dark
+    color += vec3(star) * smoothstep(0.7, 1.0, uNight) * 0.9 * (1.0 - smoothstep(0.0, 0.25, uRain)); // stars only when it is properly dark and clear
 
     gl_FragColor = vec4(color, 1.0);
     #include <colorspace_fragment>

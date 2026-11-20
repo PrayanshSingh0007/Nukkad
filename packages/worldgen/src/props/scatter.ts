@@ -146,7 +146,20 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
 
   // 3. Street trees and street lamps (skipped where the map already has plenty of real ones).
   const inventTrees = pack.stats.mappedTrees < 300;
-  const inventLamps = pack.stats.mappedLamps < 30;
+  // Lamps: the map's own are few and far between (a couple of dozen in a whole district), so
+  // ours fill in unless the real ones already cover a good share of the lit streets.
+  let litStreetsM = 0;
+  for (const line of pack.lines) {
+    if (!LAMP_STREETS.has(line.kind)) continue;
+    const p = toMetres(line.pts);
+    for (let i = 2; i < p.length; i += 2) litStreetsM += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+  }
+  const inventLamps = pack.stats.mappedLamps < (0.3 * litStreetsM) / LAMP_SPACING_M;
+  const realLamps = lamps.slice();
+  const nearRealLamp = (x: number, z: number): boolean => {
+    for (let i = 0; i < realLamps.length; i += LAMP_STRIDE) if (Math.abs(realLamps[i] - x) < 12 && Math.abs(realLamps[i + 2] - z) < 12) return true;
+    return false;
+  };
   for (const line of pack.lines) {
     const pts = toMetres(line.pts);
     if (inventTrees && TREE_STREETS.has(line.kind) && line.w >= 5) {
@@ -166,7 +179,7 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
       walkLine(pts, hash01(line.id, 33) * LAMP_SPACING_M, LAMP_SPACING_M, (x, z, dirX, dirZ) => {
         const lx = x - dirZ * offset * side;
         const lz = z + dirX * offset * side;
-        if (occupancy.isBlocked(lx, lz, 0.4, 0.3)) return;
+        if (occupancy.isBlocked(lx, lz, 0.4, 0.3) || nearRealLamp(lx, lz)) return;
         // The lamp arm (the model's +x axis) points back towards the road.
         lamps.push(lx, heightAt(terrain, lx, lz), lz, Math.atan2(dirX * side, dirZ * side));
       });

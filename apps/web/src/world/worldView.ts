@@ -14,6 +14,11 @@ import { createSurfaceUniforms, loadSurfaces } from './surfaces.ts';
 
 /** At most this many trees of each kind cast shadows at once. */
 const SHADOW_TREES = 250;
+/**
+ * Old Bengaluru avenue trees are big: rain trees spread wide umbrellas over the road, gulmohars
+ * and neems stand tall. Per species (order of TREE_SPECIES), on top of each tree's own size.
+ */
+const SPECIES_GROWTH = [1.55, 1.05, 1, 1.2, 1.3, 1.1, 1, 1];
 
 export interface WorldViewOptions {
   /** How many trees to draw (the list is shuffled, so any prefix is evenly spread). */
@@ -57,6 +62,9 @@ export class WorldView {
   private grass: GrassView | null = null;
   private treeVariants = new Uint8Array(0);
   private lampHeads: THREE.MeshBasicMaterial | null = null;
+  private halos: THREE.Points | null = null;
+  private haloMaterial: THREE.PointsMaterial | null = null;
+  private rainLevel = 0;
   private glow: THREE.InstancedMesh | null = null;
   private glowMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly signs: Signs;
@@ -203,6 +211,8 @@ export class WorldView {
     });
     for (const material of this.materials.all) material.dispose();
     this.lampHeads?.dispose();
+    this.halos?.geometry.dispose();
+    this.haloMaterial?.dispose();
     this.signs.dispose();
     this.glowMaterial?.map?.dispose();
     this.glowMaterial?.dispose();
@@ -266,7 +276,7 @@ export class WorldView {
       for (let t = 0; t < treeCount; t++) {
         const o = t * TREE_STRIDE;
         if (this.treeVariants[t] !== variant) continue;
-        place(mesh, index, props.trees, o, props.trees[o + 3], props.trees[o + 4]);
+        place(mesh, index, props.trees, o, props.trees[o + 3] * (leafy > 0 ? (SPECIES_GROWTH[variant] ?? 1) : 1), props.trees[o + 4]);
         // Small seeded colour differences so a row of trees is not one flat green.
         const shade = props.trees[o + 6];
         mesh.setColorAt(index, tint.setRGB(0.82 + shade * 0.3, 0.9 + shade * 0.16, 0.8 + shade * 0.2));
@@ -324,6 +334,20 @@ export class WorldView {
     const pool = new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2);
     this.glow = new THREE.InstancedMesh(pool, this.glowMaterial, count);
     this.glow.visible = false;
+    // Halos: a soft glow around each lamp head at night, bigger in rain and haze (light
+    // scattering in the air). Points, so the ambient-occlusion pass skips them.
+    const haloPositions = new Float32Array(count * 3);
+    this.haloMaterial = new THREE.PointsMaterial({
+      map: this.glowMaterial.map,
+      color: 0xffcf8a,
+      size: 1.8,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: true,
+    });
 
     const matrix = new THREE.Matrix4();
     const rotation = new THREE.Quaternion();
@@ -339,7 +363,14 @@ export class WorldView {
       const pz = z - Math.sin(angle) * LAMP_HEAD_OFFSET;
       const py = heightAt(this.terrain, px, pz) + 0.14;
       this.glow.setMatrixAt(i, matrix.compose(new THREE.Vector3(px, py, pz), rotation, one));
+      haloPositions.set([px, y + 5.08, pz], i * 3);
     }
+    const haloGeometry = new THREE.BufferGeometry();
+    haloGeometry.setAttribute('position', new THREE.BufferAttribute(haloPositions, 3));
+    this.halos = new THREE.Points(haloGeometry, this.haloMaterial);
+    this.halos.visible = false;
+    this.halos.renderOrder = 2;
+    this.group.add(this.halos);
     for (const mesh of [heads, this.glow]) {
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
@@ -360,6 +391,7 @@ export class WorldView {
   /** 0 = dry … 1 = downpour: wet roads, puddles, darker walls. */
   setRain(rain: number): void {
     this.materials.rain.value = rain;
+    this.rainLevel = rain;
   }
 
   /** The sky's colours, for what window glass mirrors. */
@@ -372,10 +404,19 @@ export class WorldView {
   setNight(night: number): void {
     this.materials.night.value = night;
     this.signs.setNight(night);
-    this.lampHeads?.color.setRGB(0.85 + night * 0.15, 0.82 + night * 0.06, 0.75 - night * 0.2);
+    // At night the heads are brighter than white (HDR), so the bloom pass gives them a glow.
+    const lit = 1 + night * 5;
+    this.lampHeads?.color.setRGB((0.85 + night * 0.15) * lit, (0.82 + night * 0.06) * lit, (0.75 - night * 0.2) * lit);
+    const rain = this.rainLevel;
     if (this.glow && this.glowMaterial) {
       this.glow.visible = night > 0.05;
-      this.glowMaterial.opacity = night * 0.55;
+      // Wet ground throws more of the light back.
+      this.glowMaterial.opacity = night * (0.55 + 0.35 * rain);
+    }
+    if (this.halos && this.haloMaterial) {
+      this.halos.visible = night > 0.05;
+      this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);
+      this.haloMaterial.size = 1.8 + 1.4 * rain;
     }
   }
 
