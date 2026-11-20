@@ -48,7 +48,7 @@ function meshToGeometry(mesh: MeshData, extraName = 'aWin'): THREE.BufferGeometr
 export class WorldView {
   readonly group = new THREE.Group();
   readonly terrain: TerrainGrid;
-  readonly counts = { trees: 0, lamps: 0, benches: 0, gateLamps: 0 };
+  readonly counts = { trees: 0, lamps: 0, benches: 0, gateLamps: 0, cables: 0 };
   private readonly materials: WorldMaterials;
   private readonly groundMap: THREE.DataTexture;
   private readonly chunks = new Map<string, THREE.Group>();
@@ -68,6 +68,8 @@ export class WorldView {
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
   private globeHalos: THREE.Points | null = null;
   private globeHaloMaterial: THREE.PointsMaterial | null = null;
+  private cables: THREE.LineSegments | null = null;
+  private cableMaterial: THREE.LineBasicMaterial | null = null;
   private glow: THREE.InstancedMesh | null = null;
   private glowMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly signs: Signs;
@@ -219,6 +221,8 @@ export class WorldView {
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
+    this.cables?.geometry.dispose();
+    this.cableMaterial?.dispose();
     this.signs.dispose();
     this.glowMaterial?.map?.dispose();
     this.glowMaterial?.dispose();
@@ -303,6 +307,7 @@ export class WorldView {
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
+    this.addCables(props.cables);
     this.counts.benches = addSimple(models.bench, props.benches, BENCH_STRIDE);
   }
 
@@ -417,6 +422,50 @@ export class WorldView {
     this.globeHalos.renderOrder = 2;
     this.group.add(this.globeHalos);
     this.counts.gateLamps = count;
+  }
+
+  /**
+   * Overhead cables between neighbouring street poles, the way Bengaluru streets look: three
+   * wires per span at slightly different heights, each sagging in a curve (more on longer
+   * spans). Thin lines in one draw call; the ambient-occlusion pass skips lines.
+   */
+  private addCables(spans: Float32Array): void {
+    const count = spans.length / 6;
+    if (count === 0) return;
+    const SEGMENTS = 8;
+    const WIRES: [height: number, side: number, sag: number][] = [
+      [5.02, 0.12, 0.42],
+      [4.78, -0.1, 0.55],
+      [4.52, 0.04, 0.7],
+    ];
+    const positions = new Float32Array(count * WIRES.length * SEGMENTS * 2 * 3);
+    let o = 0;
+    for (let i = 0; i < count; i++) {
+      const [ax, ay, az, bx, by, bz] = spans.subarray(i * 6, i * 6 + 6);
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      const sx = -(bz - az) / length;
+      const sz = (bx - ax) / length;
+      for (const [height, side, sag] of WIRES) {
+        const droop = sag * (length / 32) * (0.85 + 0.3 * (((i * 7919) % 13) / 13));
+        const at = (t: number): [number, number, number] => [
+          ax + (bx - ax) * t + sx * side,
+          ay + (by - ay) * t + height - droop * 4 * t * (1 - t), // a parabola is close enough to the real catenary
+          az + (bz - az) * t + sz * side,
+        ];
+        for (let k = 0; k < SEGMENTS; k++) {
+          positions.set(at(k / SEGMENTS), o);
+          positions.set(at((k + 1) / SEGMENTS), o + 3);
+          o += 6;
+        }
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.computeBoundingSphere();
+    this.cableMaterial = new THREE.LineBasicMaterial({ color: 0x1a1b1d, fog: true, transparent: true, opacity: 0.85 });
+    this.cables = new THREE.LineSegments(geometry, this.cableMaterial);
+    this.group.add(this.cables);
+    this.counts.cables = count;
   }
 
   /** Moves water and wind. Call every frame. */

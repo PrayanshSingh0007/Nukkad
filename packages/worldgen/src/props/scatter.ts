@@ -24,6 +24,8 @@ export interface PropSet extends StreetLife {
   benches: Float32Array;
   /** Globe lamps on house gate pillars: x, y, z (the centre of the glass ball). */
   gateLamps: Float32Array;
+  /** Overhead cables between neighbouring street poles: [ax, ay, az, bx, by, bz] (pole feet). */
+  cables: Float32Array;
 }
 
 export const TREE_STRIDE = 7;
@@ -73,6 +75,35 @@ function walkLine(
     }
     travelled += length;
   }
+}
+
+/**
+ * The lamps, shuffled and capped like everything else, and the cables between poles that
+ * both survived the cap (so no cable ever ends in mid-air).
+ */
+function lampsAndCables(lamps: number[], spans: number[], seed: number): { lamps: Float32Array; cables: Float32Array } {
+  const count = lamps.length / LAMP_STRIDE;
+  const order = Array.from({ length: count }, (_, index) => index);
+  const random = makeRng(seed);
+  for (let i = count - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const kept = Math.min(count, MAX_LAMPS);
+  const out = new Float32Array(kept * LAMP_STRIDE);
+  const keep = new Set<number>();
+  for (let k = 0; k < kept; k++) {
+    keep.add(order[k]);
+    for (let s = 0; s < LAMP_STRIDE; s++) out[k * LAMP_STRIDE + s] = lamps[order[k] * LAMP_STRIDE + s];
+  }
+  const cables: number[] = [];
+  for (let i = 0; i + 1 < spans.length; i += 2) {
+    const a = spans[i];
+    const b = spans[i + 1];
+    if (!keep.has(a) || !keep.has(b)) continue;
+    cables.push(lamps[a * LAMP_STRIDE], lamps[a * LAMP_STRIDE + 1], lamps[a * LAMP_STRIDE + 2], lamps[b * LAMP_STRIDE], lamps[b * LAMP_STRIDE + 1], lamps[b * LAMP_STRIDE + 2]);
+  }
+  return { lamps: out, cables: new Float32Array(cables) };
 }
 
 /** Shuffles records of `stride` numbers with a seed and keeps at most `max` of them. */
@@ -157,6 +188,8 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
     for (let i = 2; i < p.length; i += 2) litStreetsM += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
   }
   const inventLamps = pack.stats.mappedLamps < (0.3 * litStreetsM) / LAMP_SPACING_M;
+  /** Pairs of neighbouring poles (indices into `lamps`) that carry overhead cables. */
+  const spans: number[] = [];
   const realLamps = lamps.slice();
   const nearRealLamp = (x: number, z: number): boolean => {
     for (let i = 0; i < realLamps.length; i += LAMP_STRIDE) if (Math.abs(realLamps[i] - x) < 12 && Math.abs(realLamps[i + 2] - z) < 12) return true;
@@ -178,12 +211,20 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
     if (inventLamps && LAMP_STREETS.has(line.kind)) {
       const offset = line.w / 2 + 0.5;
       const side = hash32(line.id, 32) % 2 === 0 ? 1 : -1;
+      let previous = -1;
       walkLine(pts, hash01(line.id, 33) * LAMP_SPACING_M, LAMP_SPACING_M, (x, z, dirX, dirZ) => {
         const lx = x - dirZ * offset * side;
         const lz = z + dirX * offset * side;
-        if (occupancy.isBlocked(lx, lz, 0.4, 0.3) || nearRealLamp(lx, lz)) return;
+        if (occupancy.isBlocked(lx, lz, 0.4, 0.3) || nearRealLamp(lx, lz)) {
+          previous = -1; // a gap in the poles breaks the cable run
+          return;
+        }
         // The lamp arm (the model's +x axis) points back towards the road.
+        const index = lamps.length / LAMP_STRIDE;
         lamps.push(lx, heightAt(terrain, lx, lz), lz, Math.atan2(dirX * side, dirZ * side));
+        // Bengaluru's street poles carry the power and cable lines from one pole to the next.
+        if (previous >= 0 && Math.hypot(lamps[previous * LAMP_STRIDE] - lx, lamps[previous * LAMP_STRIDE + 2] - lz) < LAMP_SPACING_M * 1.3) spans.push(previous, index);
+        previous = index;
       });
     }
   }
@@ -191,7 +232,7 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
   const seed = hash32(pack.buildings.length + pack.lines.length * 7919, 50);
   return {
     trees: shuffleAndCap(trees, TREE_STRIDE, MAX_TREES, seed),
-    lamps: shuffleAndCap(lamps, LAMP_STRIDE, MAX_LAMPS, seed + 1),
+    ...lampsAndCables(lamps, spans, seed + 1),
     benches: shuffleAndCap(benches, BENCH_STRIDE, MAX_BENCHES, seed + 2),
     ...placeStreetLife(pack, terrain, occupancy),
     tanks: placeRoofTanks(pack, terrain),
