@@ -284,7 +284,9 @@ const FACADE_GLSL = /* glsl */ `
     diffuseColor.rgb = mix(diffuseColor.rgb, glass, glassMask);
     // At night lit rooms shine by themselves (the sun is gone).
     vec3 glow = mix(room, clothCol * 0.75, cloth) * lamp * (1.0 - shutter) * (1.0 - bar);
-    nkEmit = glow * glassMask * lit * uNight * (kind == 1 ? 0.35 : 0.8) * (1.0 - fres * 0.6);
+    // Shops at night blaze like real ones (bright tube lights, goods on display) and are bright
+    // enough for the bloom to give the shopfront a glow on the street; homes stay softer.
+    nkEmit = glow * glassMask * lit * uNight * (kind == 1 ? 0.35 : (kind == 2 ? 2.4 : 0.8)) * (1.0 - fres * 0.6);
     // The sun flashing off panes that face it.
     float glint = pow(max(dot(R, uLightDir), 0.0), 90.0) * day * (kind == 1 ? 0.0 : 1.0) * (1.0 - shutter);
     nkEmit += vec3(1.0, 0.93, 0.8) * glint * glassMask * 2.2;
@@ -447,7 +449,7 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\ndiffuseColor.rgb *= 1.0 - 0.16 * uRain; // wet plaster\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-8';
+  material.customProgramCacheKey = () => 'nukkad-facades-9';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, weather: WeatherUniforms): void {
