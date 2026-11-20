@@ -41,6 +41,14 @@ export class Streamer {
     return { near, far, building: this.inFlight.size };
   }
 
+  /** Are the buildings at (x, z) on screen yet (near or far version)? */
+  hasChunkAt(x: number, z: number): boolean {
+    const { half, chunksPerSide, chunkSize } = this.settings;
+    const cx = Math.min(chunksPerSide - 1, Math.max(0, Math.floor((x + half) / chunkSize)));
+    const cz = Math.min(chunksPerSide - 1, Math.max(0, Math.floor((z + half) / chunkSize)));
+    return this.loaded.has(chunkKey(cx, cz));
+  }
+
   /** Call every frame with the player position and the camera's forward direction on the ground. */
   update(x: number, z: number, forwardX: number, forwardZ: number): void {
     this.plan = planChunks(x, z, this.loaded, this.settings);

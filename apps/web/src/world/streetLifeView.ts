@@ -249,8 +249,27 @@ export class StreetLifeView {
    * Refills what is drawn around (x, z). Returns the solid boxes near you when they
    * changed, otherwise null.
    */
+  /**
+   * Roof things (water tanks) wait for their building: without this they hang in the air while
+   * the chunk underneath is still being built (after a teleport or a fast drive).
+   */
+  roofReady: ((x: number, z: number) => boolean) | null = null;
+
+  /** Recompute what is shown soon (e.g. a chunk of buildings just appeared); at most twice a second. */
+  refresh(): void {
+    this.refreshWanted = true;
+  }
+  private refreshWanted = false;
+  private lastRefresh = 0;
+
   update(x: number, z: number): SolidBox[] | null {
+    const now = performance.now();
+    if (this.refreshWanted && now - this.lastRefresh > 500) {
+      this.refreshWanted = false;
+      this.lastAt = null;
+    }
     if (this.lastAt && Math.hypot(this.lastAt[0] - x, this.lastAt[1] - z) < 8) return null;
+    this.lastRefresh = now;
     this.lastAt = [x, z];
     const solids: SolidBox[] = [];
     const matrix = new THREE.Matrix4();
@@ -259,9 +278,10 @@ export class StreetLifeView {
     const one = new THREE.Vector3(1, 1, 1);
     const position = new THREE.Vector3();
     for (const kind of this.kinds) {
+      const onRoof = kind.name === 'water_tank' && this.roofReady !== null;
       const near = kind.items
         .map((item) => ({ item, d: Math.hypot(item.x - x, item.z - z) }))
-        .filter((entry) => entry.d < this.radius)
+        .filter((entry) => entry.d < this.radius && (!onRoof || (this.roofReady as (x: number, z: number) => boolean)(entry.item.x, entry.item.z)))
         .sort((a, b) => a.d - b.d);
       if (kind.half[0] > 0 && kind.mesh) { // never an invisible wall: solid only once the model is drawn
         for (const { item, d } of near) {

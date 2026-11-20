@@ -27,6 +27,24 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Real weather, new outfits, traffic lights at night (2026-11-20)
+
+- **Real Bengaluru weather.** The owner said "both, stop asking and keep doing".
+  - The server asks Open-Meteo (CC BY 4.0, no key) for the game area's current precipitation, weather code and cloud cover (`apps/server/src/weather/openMeteo.ts`, route `/api/weather`, tests).
+  - Requests: only the area centre, rounded to about 5 km, cached 10 minutes per place, rate-limited per IP; no identifying header.
+  - Mapping: weather codes and mm/h become a 0–1 rain strength (drizzle 0.25, rain 0.4–0.85, thunderstorm 1); cloud cover greys the sky a little even without rain.
+  - The game asks every 10 minutes and eases in over about 20 s. The game's own rain spells are used only if the service cannot be reached; `?rain=` still forces it.
+  - Credited on screen ("Weather: Open-Meteo.com" next to the OSM credit) and in CREDITS.md.
+  - Checked live: Bengaluru was dry with 15 % cloud at 16:15.
+- **Outfits** (owner: crop tops etc. for girls; kurtas, jeans etc. for boys).
+  - `OUTFITS` gained crop (crop top & jeans), skirt (top & knee skirt), dress (sleeveless), shirt (shirt & jeans) and shorts (tee & shorts). They were added at the end, so saved looks keep their meaning. Tee now comes with jeans.
+  - Every outfit stays open to every build (the existing design rule). `USUAL_OUTFITS` makes the street crowd, and a first-time look, wear outfits suited to the build: build 2 mostly crop tops, dresses and skirts; build 1 mostly shirts & jeans, tees, kurtas and shorts.
+  - People code: new garment cuts `crop` and `shorts` plus `armless` (`garments.ts`). Body paint masks: `uCrop` (bare midriff), `uArmless`, `uLegs` (trousers, shorts, or bare under a skirt). One pleated skirt builder (`SKIRTS`) serves the kurta, skirt and dress.
+  - Denim on jeans: twill ribs, thread colour variation, worn thighs (`uDenim`).
+  - The simple fallback avatar draws skirts and shorts as trousers.
+- **Traffic at night** (`trafficView.ts`): every nearby vehicle has headlights and red tail lights (glowing points; one lamp on two-wheelers) and a soft beam on the road ahead, stronger on wet roads. That is three extra draw calls in total.
+- **Floating roof tanks fixed** (B-030).
+
 ## House compound walls with gate lamps (2026-11-20)
 
 - Owner picked "compound walls", an idea from benglooru.com's footage. Built in code (`worldgen/buildings/houseCompounds.ts`, tests in `houseCompounds.test.ts`; geometry `appendHouseWalls` in `compoundMesh.ts`).

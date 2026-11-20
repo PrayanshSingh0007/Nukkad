@@ -712,7 +712,10 @@ export class Game {
       this.streamer = new Streamer(client, this.world, this.streamSettings());
       this.streamer.onChunk = () => {
         this.collidersComplete = false;
+        this.streetLife?.refresh(); // roof tanks appear with their buildings
       };
+      const streamer = this.streamer;
+      if (this.streetLife) this.streetLife.roofReady = (x, z) => streamer.hasChunkAt(x, z);
       this.setStatus('loading', 'Almost there…');
     } catch (error) {
       this.setStatus('error', error instanceof Error ? error.message : String(error));

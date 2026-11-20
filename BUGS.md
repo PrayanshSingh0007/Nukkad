@@ -17,11 +17,6 @@ Template:
 
 ## Open
 
-### B-030 Water tanks seen floating at a distance
-- Type: looks wrong
-- Status: open (seen once, 2026-11-19)
-- Notes: two black roof water tanks hung in the air far away while standing near the edge of the loaded area. Either their buildings had not streamed in yet, or they belong to buildings `clearMainRoads` removed (it clears trees, lamps and benches on the road, but tanks come from the roof props). Check which.
-
 ### B-031 Two 502 errors in the console on each load (dev only)
 - Type: noise (dev only)
 - Status: open, harmless
@@ -74,6 +69,12 @@ Template:
 - Notes: live positions are fine to lose; the room id + place must survive restarts.
 
 ## Fixed
+
+### B-030 Water tanks floating in the air
+- Type: looks wrong
+- Status: fixed 2026-11-20
+- Notes: roof tanks (street-life props) were drawn within 140 m whether or not their buildings had streamed in, so after a teleport or a fast drive they hung in the air. Tanks are now shown only over chunks that are on screen (`Streamer.hasChunkAt` → `StreetLifeView.roofReady`), and street life refreshes when chunks arrive, at most twice a second. Checked: 2 tanks right after a 420 m teleport (none floating), 36 once the buildings arrived.
+
 
 ### B-F03 After "Start a Nukkad" the invite screen covered the running game
 - Type: wrong behaviour
