@@ -471,10 +471,18 @@ export class Person {
   constructor(assets: Assets, look: AvatarLook) {
     const source = assets.bodies[look.build] ?? assets.bodies[0];
     const body = cloneSkinned(source) as THREE.Group;
-    // Scale to 1.75 m and face -z like the rest of the game.
+    // Scale to a real height and face -z like the rest of the game. People differ: women
+    // around 1.62 m and men around 1.73 m, each a few centimetres either way, some a little
+    // broader or slimmer (seeded from the look, so a person always looks the same to everyone).
     const box = new THREE.Box3().setFromObject(source);
-    const scale = 1.75 / Math.max(0.1, box.max.y - box.min.y);
-    body.scale.setScalar(scale);
+    const seed = ((look.skin * 7 + look.hair * 13 + look.hairColor * 17 + look.color * 23 + look.outfit * 29) % 97) / 97;
+    const seed2 = ((look.skin * 31 + look.hair * 5 + look.hairColor * 11 + look.color * 3 + look.outfit * 19) % 89) / 89;
+    const height = (look.build === 1 ? 1.62 : 1.73) + (seed - 0.5) * 0.14;
+    const scale = height / Math.max(0.1, box.max.y - box.min.y);
+    const girth = 0.95 + seed2 * 0.11;
+    body.scale.set(scale * girth, scale, scale * girth);
+    this.height = height;
+    this.girth = girth;
     body.position.y = -box.min.y * scale;
     body.rotation.y = Math.PI;
     this.root.add(body);
@@ -625,10 +633,12 @@ export class Person {
     if (!pelvis) return;
     body.updateMatrixWorld(true);
     const at = new THREE.Vector3().setFromMatrixPosition(pelvis.matrixWorld);
-    const top = profilePoints[0][1];
-    const length = top - profilePoints[profilePoints.length - 1][1];
+    // The shape is for a 1.75 m person: scale it to this one's height and build.
+    const k = this.height / 1.75;
+    const top = profilePoints[0][1] * k;
+    const length = top - profilePoints[profilePoints.length - 1][1] * k;
     const skirt = new THREE.LatheGeometry(
-      profilePoints.map(([r, y]) => new THREE.Vector2(r, y)),
+      profilePoints.map(([r, y]) => new THREE.Vector2(r * k * this.girth, y * k)),
       64,
     );
     // Soft pleats: the cloth waves in and out around the body, more towards the hem, the way
@@ -658,6 +668,9 @@ export class Person {
   }
 
   private skirtMaterial: THREE.MeshPhysicalMaterial | null = null;
+  /** This person's height (metres) and how broad they are (1 = average). */
+  private height = 1.75;
+  private girth = 1;
   private skirtIsLower = false;
 
   /** Colours only (body build, skin picture and hairstyle need a new Person). */

@@ -27,6 +27,22 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Street cables, shop glow, varied people; Rocketbox plan (2026-11-20)
+
+- **Overhead cables** (`scatter.ts` `lampsAndCables`, `worldView.ts` `addCables`):
+  - Three sagging wires (parabola, sag grows with span) run between neighbouring invented street poles on the same road, only where both poles survive the lamp cap. That is 710 spans in the owner's area.
+  - One `LineSegments` draw call; GTAO skips lines.
+- **Shopfronts** glow 2.4 × at night (homes 0.8 ×), bright enough for bloom.
+- **People vary:**
+  - Height: women around 1.62 m and men around 1.73 m, ±7 cm, seeded from the look so everyone sees the same person.
+  - Build: girth 0.95–1.06.
+  - Skirts and kurta skirts scale with the person.
+- **How benglooru.com's people look so good:** their credits page says all their people are the **Microsoft Rocketbox Avatar Library** (MIT, github.com/microsoft/Microsoft-Rocketbox, archived 2 Oct 2026), "rebound to our skeleton, heads swapped, skin, hair and clothes recoloured, logos painted out".
+  - What the library has: 115 realistic clothed, rigged avatars, each with hipoly/midpoly/lowpoly/ultralowpoly meshes in one FBX (about 0.6 MB). Textures are uncompressed 2048 px TGA: body, head and opacity colour are about 40 MB per avatar; normals and specular are another 36 MB, not needed.
+  - Matching animations: walk, run, stroll, idles, sitting, waving, dancing and talking for men and women (about 1–7 MB each).
+  - Candidates for Bengaluru streets: Female_Adult_01, 03, 13, 17 and Male_Adult_06, 08, 09, 16.
+  - Plan once the owner OKs the download (about 365 MB): convert in Blender to GLB with 1024 px WebP (about 1 MB each); use the Rocketbox clips natively (Bip01 skeleton) and keep the procedural riding and IK poses mapped to Bip01 bones; recolour clothes per look; drop the Quaternius bodies for street people first, then the player.
+
 ## Real weather, new outfits, traffic lights at night (2026-11-20)
 
 - **Real Bengaluru weather.** The owner said "both, stop asking and keep doing".
