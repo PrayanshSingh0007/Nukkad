@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, heightAt, trafficPose } from '@nukkad/worldgen';
 import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { SolidBox } from './streetLifeView.ts';
+import { TrafficDrivers } from './trafficDrivers.ts';
 
 type ModelSource = (name: string) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
@@ -81,6 +82,8 @@ export class TrafficView {
   private readonly tailMaterial: THREE.PointsMaterial;
   private readonly beams: THREE.InstancedMesh;
   private readonly beamMaterial: THREE.MeshBasicMaterial;
+  /** Someone at the wheel (or on the seat) of every moving vehicle. */
+  private readonly drivers: TrafficDrivers;
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paint: (name: string, variant: number) => THREE.Color | null) {
     this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0 }));
@@ -109,6 +112,8 @@ export class TrafficView {
     this.beams.frustumCulled = false;
     this.beams.visible = false;
     this.group.add(this.beams);
+    this.drivers = new TrafficDrivers(routes.length);
+    this.group.add(this.drivers.group);
   }
 
   /** 0 = day … 1 = night (lights on from dusk); rain makes the beams on the wet road stronger. */
@@ -163,6 +168,7 @@ export class TrafficView {
     const tailPos = (this.tails.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     let heads = 0;
     let beams = 0;
+    this.drivers.begin();
 
     for (const lane of this.lanes) {
       const route = lane.route;
@@ -191,6 +197,7 @@ export class TrafficView {
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, lane.y, pose.z), rotation, one));
+      this.drivers.place(route.kind, route.variant * 7 + Math.round(route.speed * 13), matrix);
       const name = VEHICLE_KINDS[route.kind];
       const paint = name === 'taxi' || name === 'ambulance' ? null : this.paint(name, route.variant);
       if (paint) mesh.setColorAt(i, paint);
@@ -224,6 +231,7 @@ export class TrafficView {
       this.beams.count = beams;
       this.beams.instanceMatrix.needsUpdate = true;
     }
+    this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
       mesh.count = counts.get(kind) ?? 0;
       mesh.instanceMatrix.needsUpdate = true;
@@ -245,6 +253,7 @@ export class TrafficView {
     this.tailMaterial.dispose();
     this.beams.dispose();
     this.beamMaterial.dispose();
+    this.drivers.dispose();
     this.group.removeFromParent();
   }
 }
