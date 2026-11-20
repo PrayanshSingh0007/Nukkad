@@ -92,6 +92,56 @@ export function peopleReady(): Assets | null {
 }
 
 /** Adds the per-vertex region and height the clothes shader needs (once per body). */
+/**
+ * The free bodies have "superhero" arms. Pull every arm vertex towards its bone's centre line
+ * (upper arms up to 14 %, forearms 10 %, blended at the joints), in the rest pose, so arms are ordinary and still bend
+ * cleanly (unlike scaling bones, nothing shears when the elbow moves). Clothes are cut from
+ * this body afterwards, so they fit.
+ */
+function slimArms(mesh: THREE.SkinnedMesh): void {
+  const geometry = mesh.geometry;
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const skinIndex = geometry.getAttribute('skinIndex');
+  const skinWeight = geometry.getAttribute('skinWeight');
+  const bones = mesh.skeleton.bones;
+  const toGeometry = mesh.bindMatrixInverse;
+  // A bone's origin in geometry space = bindMatrixInverse × (boneInverse)⁻¹ × origin.
+  const origin = (index: number): THREE.Vector3 => new THREE.Vector3().setFromMatrixPosition(mesh.skeleton.boneInverses[index].clone().invert()).applyMatrix4(toGeometry);
+  const indexOf = new Map(bones.map((bone, i) => [bone.name, i]));
+  const segments = new Map<number, { a: THREE.Vector3; b: THREE.Vector3; keep: (t: number) => number }>();
+  for (const side of ['l', 'r']) {
+    const [upper, lower, hand] = [`upperarm_${side}`, `lowerarm_${side}`, `hand_${side}`].map((name) => indexOf.get(name));
+    if (upper === undefined || lower === undefined || hand === undefined) return;
+    // keep(t): how much of the girth stays, t = 0 at the joint nearer the body, 1 at the far one.
+    // Blended so the shoulder, elbow and wrist stay continuous.
+    segments.set(upper, { a: origin(upper), b: origin(lower), keep: (t) => (t < 0.25 ? THREE.MathUtils.lerp(1, 0.86, t / 0.25) : THREE.MathUtils.lerp(0.86, 0.9, (t - 0.25) / 0.75)) });
+    segments.set(lower, { a: origin(lower), b: origin(hand), keep: (t) => (t < 0.85 ? 0.9 : THREE.MathUtils.lerp(0.9, 1, (t - 0.85) / 0.15)) });
+  }
+  const p = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  const line = new THREE.Line3();
+  for (let i = 0; i < position.count; i++) {
+    let best = 0;
+    let bestWeight = -1;
+    for (let k = 0; k < 4; k++) {
+      const w = skinWeight.getComponent(i, k);
+      if (w > bestWeight) {
+        bestWeight = w;
+        best = skinIndex.getComponent(i, k);
+      }
+    }
+    const segment = segments.get(best);
+    if (!segment) continue;
+    p.fromBufferAttribute(position, i);
+    line.set(segment.a, segment.b).closestPointToPoint(p, true, closest);
+    const keep = segment.keep(line.closestPointToPointParameter(p, true));
+    p.sub(closest).multiplyScalar(keep).add(closest);
+    position.setXYZ(i, p.x, p.y, p.z);
+  }
+  // Normals stay as they are: pulling in towards the centre line does not turn the surface.
+  position.needsUpdate = true;
+}
+
 function prepareBody(scene: THREE.Group): void {
   scene.updateMatrixWorld(true);
   scene.traverse((object) => {
@@ -103,6 +153,7 @@ function prepareBody(scene: THREE.Group): void {
     const skinWeight = geometry.getAttribute('skinWeight');
     const count = geometry.getAttribute('position').count;
     const bones = mesh.skeleton.bones;
+    slimArms(mesh);
     // Heights in the bound pose, in model space (works whatever the file's up axis was).
     mesh.updateMatrixWorld(true);
     const v = new THREE.Vector3();
@@ -139,6 +190,91 @@ function prepareBody(scene: THREE.Group): void {
     }
     geometry.setAttribute('aCloth', new THREE.BufferAttribute(region, 2));
   });
+}
+
+/**
+ * Real-looking cloth on the garment layers. The detail is fixed to the fabric (it uses the
+ * body's rest-pose position, so it moves with every animation):
+ * - folds that bunch where cloth gathers: elbows and the inside of the arms, knees, the ankles
+ *   (trousers stack on the shoes) and the waist, plus a gentle drape down the torso;
+ * - a fine weave up close, a darker waistband / hem and side seams;
+ * - folds shade their own valleys a little (cloth casts tiny shadows on itself).
+ * Bumps are made from the height of the folds with screen-space slopes (no textures).
+ */
+function fabric<T extends THREE.MeshStandardMaterial>(material: T, part: 'top' | 'pants'): T {
+  // Metres per geometry unit (set when the person is dressed; bodies may be in centimetres).
+  const unit = { value: 0.01 };
+  material.userData.fabUnit = unit;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uFabUnit = unit;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 aCloth;\nvarying vec2 vFab;\nvarying vec3 vRest;\nuniform float uFabUnit;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFab = aCloth;\nvRest = position * uFabUnit; // metres');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec2 vFab;
+varying vec3 vRest;
+float fabH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float fabN(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(fabH(i), fabH(i + vec2(1, 0)), f.x), mix(fabH(i + vec2(0, 1)), fabH(i + vec2(1, 1)), f.x), f.y); }
+float fabFolds;`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+{
+  float region = floor(vFab.x + 0.5);
+  float h = vFab.y;
+  // Coordinates on the body that follow the cloth: height, and the angle around the limb/torso.
+  float around = atan(vRest.z, vRest.x);
+  float y = h * 40.0;
+  float folds = 0.0;
+  ${part === 'pants' ? `
+  // Knees (h ≈ 0.28) and ankles (stacking above the shoes) bunch up; a soft vertical crease line.
+  float knee = exp(-pow((h - 0.29) * 22.0, 2.0));
+  float ankle = 1.0 - smoothstep(0.06, 0.16, h);
+  folds += (knee * 0.9 + ankle * 1.1) * (0.5 + 0.5 * sin(y * 5.5 + fabN(vec2(around * 3.0, y)) * 4.0));
+  folds += 0.25 * sin(around * 2.0 + fabN(vec2(y * 0.3, around)) * 2.0) * step(4.5, region);
+  // Waistband at the top of the trousers.
+  float band = smoothstep(0.515, 0.525, h) * (1.0 - smoothstep(0.555, 0.565, h));
+  diffuseColor.rgb *= 1.0 - band * 0.18;` : `
+  // Sleeves bunch at the elbow (where upper arm meets forearm) and the inside of the arm;
+  // the torso drapes in long soft verticals and creases at the waist.
+  float elbow = (step(abs(region - 2.0), 0.1) + step(abs(region - 3.0), 0.1)) * (0.6 + 0.4 * sin(vRest.x * 90.0 + fabN(vRest.yz * 60.0) * 5.0));
+  float drape = step(abs(region - 1.0), 0.1) * 0.5 * sin(around * 7.0 + fabN(vec2(around * 4.0, y * 0.2)) * 3.0);
+  float waist = (1.0 - smoothstep(0.0, 0.05, abs(h - 0.56))) * (0.5 + 0.5 * sin(around * 14.0));
+  folds += elbow * 0.8 + drape + waist * 0.7;
+  // Hem at the bottom edge of the top.
+  diffuseColor.rgb *= 1.0 - (1.0 - smoothstep(0.0, 0.02, h - ${'0.5'})) * step(abs(region - 4.0), 0.1) * 0.15;`}
+  // Side seams: a fine darker line down each side.
+  float seam = 1.0 - smoothstep(0.0, 0.025, abs(abs(around) - 1.5708));
+  diffuseColor.rgb *= 1.0 - seam * 0.12;
+  // Weave: fine grain, only close up (it would shimmer far away).
+  vec2 fw = fwidth(vRest.xy) * 400.0;
+  float close = 1.0 - smoothstep(0.4, 1.5, max(fw.x, fw.y));
+  float weave = (fabN(vRest.xy * 900.0) + fabN(vRest.zy * 900.0)) * 0.5;
+  diffuseColor.rgb *= 1.0 + (weave - 0.5) * 0.12 * close;
+  fabFolds = folds;
+  // Bump from the fold height: slopes on screen tilt the normal (no texture needed).
+  float hgt = folds * 0.004 + weave * 0.0004 * close;
+  vec3 dpx = dFdx(-vViewPosition);
+  vec3 dpy = dFdy(-vViewPosition);
+  float dhx = dFdx(hgt);
+  float dhy = dFdy(hgt);
+  vec3 r1 = cross(dpy, normal);
+  vec3 r2 = cross(normal, dpx);
+  float det = dot(dpx, r1);
+  vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+  normal = normalize(abs(det) * normal - grad);
+  // Valleys of the folds sit a little in their own shadow.
+  diffuseColor.rgb *= 1.0 - clamp(-folds, 0.0, 1.0) * 0.08 - clamp(folds, 0.0, 1.5) * 0.04;
+}`,
+      );
+  };
+  material.customProgramCacheKey = () => `nukkad-fabric-${part}-1`;
+  return material;
 }
 
 /** Skin tones 0–2 use the light skin picture, 3–5 the dark one, each with a small tint. */
@@ -379,8 +515,8 @@ export class Person {
     this.play('idle', 0);
   }
 
-  private readonly shirt = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 });
-  private readonly pants = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
+  private readonly shirt = fabric(new THREE.MeshPhysicalMaterial({ roughness: 0.9, metalness: 0, sheen: 0.6, sheenRoughness: 0.55 }), 'top');
+  private readonly pants = fabric(new THREE.MeshPhysicalMaterial({ roughness: 0.92, metalness: 0, sheen: 0.45, sheenRoughness: 0.6 }), 'pants');
 
   /** Real cloth layers over the body, and a loose skirt for the kurta. */
   private dress(bodyMesh: THREE.SkinnedMesh, body: THREE.Group, look: AvatarLook): void {
@@ -408,6 +544,7 @@ export class Person {
       mesh.frustumCulled = false;
       bodyMesh.parent?.add(mesh);
     }
+    for (const material of [this.shirt, this.pants]) (material.userData.fabUnit as { value: number }).value = metres;
     this.materials.push(this.shirt, this.pants);
     if (outfit !== 'kurta') return;
     // The kurta's lower half flares out from the hips to the knees, riding on the pelvis.
@@ -421,8 +558,20 @@ export class Person {
       [0.255, 0.74],
       [0.31, 0.52],
     ].map(([r, y]) => new THREE.Vector2(r, y));
-    const skirt = new THREE.LatheGeometry(profile, 24);
-    skirt.scale(1, 1, 1.0);
+    const skirt = new THREE.LatheGeometry(profile, 64);
+    // Soft pleats: the cloth waves in and out around the body, more towards the hem, the way
+    // fabric hangs in folds (and the hem is not a perfectly level circle).
+    const sp = skirt.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < sp.count; i++) {
+      const x = sp.getX(i);
+      const z = sp.getZ(i);
+      const y = sp.getY(i);
+      const angle = Math.atan2(z, x);
+      const depth = THREE.MathUtils.smoothstep(1.0 - y, 0, 0.48); // 0 at the waist, 1 at the hem
+      const wave = 1 + depth * (0.06 * Math.sin(angle * 9) + 0.03 * Math.sin(angle * 4 + 1.3));
+      sp.setXYZ(i, x * wave, y + depth * 0.012 * Math.sin(angle * 9 + 0.7), z * wave);
+    }
+    skirt.computeVertexNormals();
     skirt.translate(at.x, 0, at.z);
     skirt.applyMatrix4(pelvis.matrixWorld.clone().invert());
     const cloth = this.shirt.clone();
@@ -445,6 +594,9 @@ export class Person {
     u.uPants.value.set(PANTS[outfit]).convertSRGBToLinear();
     this.shirt.color.copy(u.uShirt.value);
     this.pants.color.copy(u.uPants.value);
+    // The sheen (light catching the fibres at grazing angles) takes the cloth's own colour.
+    this.shirt.sheenColor.copy(u.uShirt.value).lerp(new THREE.Color(1, 1, 1), 0.35);
+    this.pants.sheenColor.copy(u.uPants.value).lerp(new THREE.Color(1, 1, 1), 0.35);
     this.skirtMaterial?.color.copy(u.uShirt.value);
     u.uSleeve.value = outfit === 'tee' ? 0 : 1;
     u.uLong.value = outfit === 'kurta' ? 1 : 0;
