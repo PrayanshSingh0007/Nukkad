@@ -52,16 +52,30 @@ export class CharacterBody {
 
   /** One physics step: try to move by (dx, dz) metres on the ground; gravity is added here. */
   move(dx: number, dz: number, dt: number): void {
-    this.fallSpeed = this.grounded ? 0 : Math.min(MAX_FALL_SPEED, this.fallSpeed + GRAVITY * dt);
-    // Always push down a little so the controller can tell that we are standing on something.
-    const dy = -Math.max(this.fallSpeed * dt, 0.02);
+    if (this.rising > 0) this.rising -= dt;
+    this.fallSpeed = this.grounded && this.rising <= 0 ? 0 : Math.min(MAX_FALL_SPEED, this.fallSpeed + GRAVITY * dt);
+    // Going up after a jump; otherwise always push down a little so the controller can tell
+    // that we are standing on something.
+    const dy = this.fallSpeed < 0 ? -this.fallSpeed * dt : -Math.max(this.fallSpeed * dt, 0.02);
     this.controller.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz });
     const moved = this.controller.computedMovement();
-    this.grounded = this.controller.computedGrounded();
+    this.grounded = this.rising > 0 ? false : this.controller.computedGrounded();
     this.x += moved.x;
     this.y += moved.y;
     this.z += moved.z;
     this.body.setNextKinematicTranslation({ x: this.x, y: this.y + this.centre, z: this.z });
+  }
+
+  /** Take-off time during which the ground under the feet does not count yet, seconds. */
+  private rising = 0;
+
+  /** A jump straight up at `speed` m/s; only from the ground. Returns whether it happened. */
+  jump(speed: number): boolean {
+    if (!this.grounded) return false;
+    this.fallSpeed = -speed;
+    this.grounded = false;
+    this.rising = 0.12;
+    return true;
   }
 
   /** Puts the body somewhere at once (spawning, or rescuing a player who fell out of the world). */

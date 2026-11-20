@@ -989,6 +989,8 @@ export class Game {
       this.rig.look(drag.dx, drag.dy);
       if (drag.dx !== 0 || drag.dy !== 0) this.lastDragAt = now;
       player.handbrake = this.input.handbrake;
+      // Space on foot: a jump (about 0.6 m with the game's gravity). In vehicles it stays the handbrake.
+      if (this.input.consumeJump() && !player.vehicle && !player.riding && player.seat === null && !player.emote) player.body.jump(5.2);
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       if (this.driveMesh) {
         this.driveMesh.position.set(player.x, player.y, player.z);

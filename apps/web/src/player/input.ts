@@ -12,6 +12,14 @@ export class PlayerInput {
   moveY = 0;
   /** Space (or the on-screen Drift button) = handbrake while driving. */
   handbrake = false;
+  private jumpWanted = false;
+
+  /** Space was pressed since the last call (on foot that is a jump). */
+  consumeJump(): boolean {
+    const wanted = this.jumpWanted;
+    this.jumpWanted = false;
+    return wanted;
+  }
   /** Look sensitivity multiplier (settings, Phase 7). */
   sensitivity = 1;
   private lookX = 0;
@@ -84,6 +92,8 @@ export class PlayerInput {
   private onKey(event: KeyboardEvent, down: boolean): void {
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
+    // A fresh Space press (not the key repeating) asks for a jump when on foot.
+    if (down && event.code === 'Space' && !event.repeat) this.jumpWanted = true;
     if (down) this.keys.add(event.code);
     else this.keys.delete(event.code);
     if (event.code.startsWith('Arrow') || event.code === 'Space') event.preventDefault();

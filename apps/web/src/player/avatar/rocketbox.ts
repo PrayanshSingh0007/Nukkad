@@ -266,12 +266,34 @@ export class RocketboxPerson {
       const hips = this.root.worldToLocal(this.pelvis.getWorldPosition(new THREE.Vector3())).y;
       this.body.position.y = SEAT_HIPS_M - hips;
     }
+    // In the air (a jump, a fall): knees tucked up, arms lifted a little and out — eased in
+    // and out, laid over the clip (the library has no jump of its own).
+    this.air += ((riding === null && !grounded ? 1 : 0) - this.air) * Math.min(1, dt * 9);
+    if (this.air > 0.01) this.jumpPose(this.air);
     if (riding === 'stand') this.handlebarPose();
     if (riding === 'seat' && feet) reach(this.root, this.legs, feet);
     if (riding === 'seat' && grips) {
       this.leanTo(grips);
       reach(this.root, this.arms, grips);
     }
+  }
+
+  private air = 0;
+
+  private jumpPose(amount: number): void {
+    this.root.updateMatrixWorld(true);
+    const turn = this.root.getWorldQuaternion(new THREE.Quaternion());
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(turn);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(turn);
+    this.legs.forEach(({ upper, lower }, i) => {
+      turnAbout(upper, right, (i === 0 ? 0.75 : 0.45) * amount); // one knee a little higher
+      turnAbout(lower, right, -1.15 * amount);
+    });
+    this.arms.forEach(({ upper, lower }, i) => {
+      turnAbout(upper, forward, (i === 0 ? 0.55 : -0.55) * amount); // left arm out to the left, right to the right
+      turnAbout(upper, right, 0.35 * amount);
+      turnAbout(lower, right, 0.4 * amount);
+    });
   }
 
   /** Standing on the scooter: both hands on its handlebar grips (just in front, at waist height). */
