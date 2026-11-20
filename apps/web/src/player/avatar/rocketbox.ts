@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { OUTFIT_COLORS } from '@nukkad/shared';
+import type { AvatarLook } from '@nukkad/shared';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
@@ -93,7 +95,52 @@ function reach(root: THREE.Object3D, limbs: Limb[], targets: THREE.Vector3[]): v
 export interface RocketboxAssets {
   bodies: THREE.Group[];
   clips: { f: Map<RocketboxClip, THREE.AnimationClip>; m: Map<RocketboxClip, THREE.AnimationClip> };
+  /** Per avatar: where its top is in the body texture (tools/characters/rocketbox-masks.mjs), or null. */
+  tops: { mask: THREE.Texture; meanLum: number }[] | null;
 }
+
+/** Loads the top masks; null (no recolouring) if any is missing. */
+async function loadTops(): Promise<{ mask: THREE.Texture; meanLum: number }[] | null> {
+  try {
+    const response = await fetch(BASE + 'masks.json');
+    if (!response.ok) return null;
+    const summary = (await response.json()) as Record<string, { meanLum: number }>;
+    const loader = new THREE.TextureLoader();
+    return await Promise.all(
+      ROCKETBOX_AVATARS.map(async (a) => {
+        const mask = await loader.loadAsync(`${BASE}${a.file}_top.png`);
+        mask.flipY = false; // the same layout as the glTF's own textures
+        mask.colorSpace = THREE.NoColorSpace;
+        return { mask, meanLum: Math.max(0.01, summary[a.file]?.meanLum ?? 0.2) };
+      }),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dyes the top: inside the mask, the fabric takes the new colour but keeps its own light and
+ * shade (folds, seams, print) — its brightness relative to the top's average brightness.
+ */
+const TOP_PARS = /* glsl */ `
+  uniform sampler2D uTopMask;
+  uniform vec3 uTop;
+  uniform float uTint;
+  uniform float uMeanLum;
+`;
+const TOP_DYE = /* glsl */ `
+  #ifdef USE_MAP
+  {
+    float nkTop = texture2D(uTopMask, vMapUv).r * uTint;
+    if (nkTop > 0.004) {
+      float nkLum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float nkShade = clamp(mix(1.0, nkLum / uMeanLum, 0.8), 0.3, 1.9);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uTop * nkShade, nkTop);
+    }
+  }
+  #endif
+`;
 
 let loading: Promise<RocketboxAssets | null> | null = null;
 let loaded: RocketboxAssets | null = null;
@@ -106,8 +153,9 @@ export function loadRocketbox(): Promise<RocketboxAssets | null> {
   loading = Promise.all([
     Promise.all(ROCKETBOX_AVATARS.map((a) => glb(`${a.file}.glb`).then((g) => prepare(g.scene)))),
     Promise.all((['f', 'm'] as const).flatMap((sex) => CLIPS.map((clip) => glb(`anims/${sex}_${clip}.glb`).then((g) => [sex, clip, g.animations[0]] as const)))),
+    loadTops(),
   ])
-    .then(([bodies, clips]) => {
+    .then(([bodies, clips, tops]) => {
       const f = new Map<RocketboxClip, THREE.AnimationClip>();
       const m = new Map<RocketboxClip, THREE.AnimationClip>();
       // Tracks for bones the bodies do not have (tiny end "Nub" bones) are dropped.
@@ -119,7 +167,7 @@ export function loadRocketbox(): Promise<RocketboxAssets | null> {
         animation.tracks = animation.tracks.filter((track) => bones.has(track.name.split('.')[0]));
         (sex === 'f' ? f : m).set(clip, animation);
       }
-      loaded = { bodies, clips: { f, m } };
+      loaded = { bodies, clips: { f, m }, tops };
       return loaded;
     })
     .catch((error: unknown) => {
@@ -175,6 +223,8 @@ export class RocketboxPerson {
   private readonly spine: THREE.Bone | null;
   private spineBefore: THREE.Quaternion | null = null;
   private readonly pelvis: THREE.Bone | null;
+  /** The top's dye (shared with the body material's shader). */
+  private readonly top = { colour: { value: new THREE.Color() }, tint: { value: 0 }, tintIndex: 0 };
 
   constructor(assets: RocketboxAssets, avatar: number, seed = 0.5) {
     this.avatar = avatar % ROCKETBOX_AVATARS.length;
@@ -193,7 +243,11 @@ export class RocketboxPerson {
       if (!mesh.isMesh) return;
       // Own material copies, so fading one person does not fade everyone wearing the same body.
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone();
-      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) this.materials.push(material);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        this.materials.push(material);
+        const top = assets.tops?.[this.avatar];
+        if (top && /body/i.test(material.name) && (material as THREE.MeshStandardMaterial).map) this.dyeable(material, top.mask, top.meanLum);
+      }
     });
     this.root.add(body);
     this.body = body;
@@ -227,8 +281,37 @@ export class RocketboxPerson {
     this.current = name;
   }
 
-  /** Colours are part of these models (nothing to recolour yet). */
-  setLook(): void {}
+  /** The body material learns to dye the top (one shader for every person). */
+  private dyeable(material: THREE.Material, mask: THREE.Texture, meanLum: number): void {
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uTopMask = { value: mask };
+      shader.uniforms.uTop = this.top.colour;
+      shader.uniforms.uTint = this.top.tint;
+      shader.uniforms.uMeanLum = { value: meanLum };
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${TOP_PARS}`)
+        .replace('#include <map_fragment>', `#include <map_fragment>\n${TOP_DYE}`);
+    };
+    material.customProgramCacheKey = () => 'nukkad-rocketbox-top-1';
+  }
+
+  /** The top's colour: 0 = as the person comes, 1–10 = OUTFIT_COLORS[tint − 1]. */
+  setTint(tint: number): void {
+    if (tint === this.top.tintIndex) return;
+    this.top.tintIndex = tint;
+    const hex = OUTFIT_COLORS[tint - 1];
+    this.top.tint.value = hex ? 1 : 0;
+    if (!hex) return;
+    // Dyed cloth is never quite the pure swatch: a touch less saturated.
+    const hsl = { h: 0, s: 0, l: 0 };
+    this.top.colour.value.set(hex).getHSL(hsl);
+    this.top.colour.value.setHSL(hsl.h, hsl.s * 0.82, hsl.l);
+  }
+
+  /** Only the top's colour changes on these models (the rest is the person's own). */
+  setLook(look: AvatarLook): void {
+    this.setTint(look.tint ?? 0);
+  }
 
   /**
    * speed in m/s; riding: 'stand' (own scooter: hands forward on the handlebar), 'seat' (bike,

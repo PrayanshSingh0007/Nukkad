@@ -125,11 +125,15 @@ export class Avatar {
     if (this.disposed) return;
     const rocketbox = this.look.person > 0 ? rocketboxReady() : null;
     if (rocketbox) {
-      if (this.person instanceof RocketboxPerson && this.person.avatar === this.look.person - 1) return;
+      if (this.person instanceof RocketboxPerson && this.person.avatar === this.look.person - 1) {
+        this.person.setLook(this.look);
+        return;
+      }
       this.person?.dispose();
       // Height seeded from the look, so a player always looks the same to everyone.
       const seed = ((this.look.skin * 7 + this.look.hair * 13 + this.look.color * 23 + this.look.person * 31) % 97) / 97;
       this.person = new RocketboxPerson(rocketbox, this.look.person - 1, seed);
+      this.person.setLook(this.look);
     } else {
       const assets = peopleReady();
       if (!assets) return;

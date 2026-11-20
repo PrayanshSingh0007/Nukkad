@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeRng, randomLook } from '@nukkad/shared';
+import { OUTFIT_COLORS, makeRng, randomLook } from '@nukkad/shared';
 import { heightAt, trafficPose } from '@nukkad/worldgen';
 import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { AvatarLook } from '@nukkad/shared';
@@ -183,6 +183,9 @@ export class PedestrianView {
         if (!slot) continue;
         slot.walker = index;
         slot.seen = true;
+        // Everyone dresses differently: a seeded top colour per walker (a third wear their own).
+        const dye = (((index + 1) * 2246822519) >>> 0) / 4294967296;
+        (slot.person as RocketboxPerson).setTint(dye < 0.34 ? 0 : 1 + Math.floor(((dye - 0.34) / 0.66) * OUTFIT_COLORS.length));
         continue;
       }
       let slot = this.pool.find((s) => !s.seen);

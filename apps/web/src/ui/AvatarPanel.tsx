@@ -7,8 +7,12 @@ interface Props {
   onClose: () => void;
 }
 
+/** A realistic person's top: their own (the first, striped button) or dyed one of the outfit colours. */
+const TOP_SWATCHES = ['repeating-linear-gradient(135deg, #8d8f94 0 4px, #e9e4da 4px 8px)', ...OUTFIT_COLORS];
+const TOP_NAMES = ['Their own top', ...OUTFIT_COLORS.map((_, index) => `Top colour ${index + 1}`)];
+
 /** A row of round colour buttons. */
-function Swatches(props: { label: string; colors: readonly string[]; value: number; onPick: (index: number) => void }) {
+function Swatches(props: { label: string; colors: readonly string[]; value: number; onPick: (index: number) => void; names?: string[] }) {
   return (
     <div className="row">
       <span className="rowLabel">{props.label}</span>
@@ -19,7 +23,8 @@ function Swatches(props: { label: string; colors: readonly string[]; value: numb
             type="button"
             className={index === props.value ? 'swatch picked' : 'swatch'}
             style={{ background: color }}
-            aria-label={`${props.label} ${index + 1}`}
+            aria-label={props.names?.[index] ?? `${props.label} ${index + 1}`}
+            title={props.names?.[index]}
             aria-pressed={index === props.value}
             onClick={() => props.onPick(index)}
           />
@@ -64,7 +69,10 @@ export function AvatarPanel({ look, onChange, onClose }: Props) {
       </header>
       <Choices label="Person" names={[...PEOPLE]} value={look.person} onPick={set('person')} />
       {look.person > 0 ? (
-        <p className="small">A ready-made person: their clothes, skin and hair come with them. Pick Classic to make your own.</p>
+        <>
+          <Swatches label="Top" colors={TOP_SWATCHES} value={look.tint} onPick={set('tint')} names={TOP_NAMES} />
+          <p className="small">A ready-made person: skin, hair and the rest of their clothes come with them. Pick Classic to make your own.</p>
+        </>
       ) : (
         <>
           <Choices label="Build" names={[...BUILDS]} value={look.build} onPick={set('build')} />

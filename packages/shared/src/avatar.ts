@@ -77,6 +77,8 @@ export interface AvatarLook {
   build: number;
   /** Index into PEOPLE: 0 = Classic (customisable), 1–8 a realistic person. */
   person: number;
+  /** A realistic person's top: 0 = as they come, 1–10 = dyed OUTFIT_COLORS[tint − 1]. */
+  tint: number;
 }
 
 const LIMITS: Record<keyof AvatarLook, number> = {
@@ -87,9 +89,10 @@ const LIMITS: Record<keyof AvatarLook, number> = {
   color: OUTFIT_COLORS.length,
   build: BUILDS.length,
   person: PEOPLE.length,
+  tint: OUTFIT_COLORS.length + 1,
 };
 
-export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0, person: 5 };
+export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0, person: 5, tint: 0 };
 
 /** Turns anything (saved data, a network message) into a valid look. Bad fields fall back to the default. */
 export function sanitizeLook(value: unknown): AvatarLook {
@@ -116,5 +119,6 @@ export function randomLook(random: () => number): AvatarLook {
   const color = pick(OUTFIT_COLORS.length);
   // A realistic person matching the build (1–4 women, 5–8 men in PEOPLE).
   const person = (build === 1 ? 1 : 5) + pick(4);
-  return { skin, hair, hairColor, outfit, color, build, person };
+  const tint = random() < 0.4 ? 0 : 1 + pick(OUTFIT_COLORS.length);
+  return { skin, hair, hairColor, outfit, color, build, person, tint };
 }
