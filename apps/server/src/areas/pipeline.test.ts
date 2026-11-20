@@ -180,7 +180,9 @@ describe('test area: pack → meshes', () => {
       total += triangles;
     }
     expect(total).toBeGreaterThan(20_000);
-    expect(total).toBeLessThan(300_000); // floor ledges up close; only the chunks near you use full detail // the whole area at full detail fits the Medium budget
+    // Floor ledges and house compound walls (about 85k here) up close; only the chunks near you
+    // use full detail, and every chunk stays under its own cap above.
+    expect(total).toBeLessThan(420_000);
   });
 
   it('builds lighter far versions of every chunk', () => {

@@ -27,6 +27,26 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## House compound walls with gate lamps (2026-11-20)
+
+- Owner picked "compound walls", an idea from benglooru.com's footage. Built in code (`worldgen/buildings/houseCompounds.ts`, tests in `houseCompounds.test.ts`; geometry `appendHouseWalls` in `compoundMesh.ts`).
+- **Which homes:** houses (up to 700 m²) and small flats or generic homes (up to 350 m², 5 floors).
+- **The front:** the wall with the front door, or else the side most squarely facing a road within 30 m.
+- **The wall:**
+  - A 1.45 m plastered wall with a grey coping runs across the free space in front (up to 3.2 m deep, never onto the footpath or road), with side walls back to the house corners.
+  - Colours are cream, pale yellow, peach, grey, white or terracotta, seeded per house.
+  - Pieces that would run into another building or a road are dropped.
+- **The gate:** a 2.6 m opening in front of the door (you can still walk in), between two pillars, each topped by a globe lamp.
+- **Lamps:** the glass balls are drawn by the client in one draw call (`addGateLamps` in `worldView.ts`). They glow brighter than white at night (bloom) with small halos that grow in rain.
+- **Size and cost:**
+  - In the owner's area: 3,090 globe lamps, so about 1,500 houses.
+  - Walls are part of the near chunks' building mesh, so they are solid. They come first out of each chunk's triangle budget (`houseWallTriangles`).
+  - The whole test area's full-detail total rose by about 85k triangles (the pipeline test bound is now 420k); every chunk stays under its cap.
+- **Limits:**
+  - Walls are drawn only in near chunks, but the lamps are drawn everywhere, so at night a far-off house can show a small glow without its pillar (fog hides most of it).
+  - The map has no plot lines, so walls follow the house's front, not the real plot boundary.
+  - The gate is an open gap; there are no gate leaves.
+
 ## Real vehicle speeds, better people, lit night streets (2026-11-20)
 
 - **Vehicle performance** (`vehicleSpecs.ts` `tune`, `driveAccel`, `specForModel`; test `vehicleSpecs.test.ts`). The owner: "make the vehicle speed feel real and the top speed also limit it".

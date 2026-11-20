@@ -1,5 +1,5 @@
 import { appendBuilding, buildingTriangleEstimate } from '../buildings/buildingMesh.ts';
-import { appendGate, appendWalls } from '../buildings/compoundMesh.ts';
+import { appendGate, appendHouseWalls, appendWalls, houseWallTriangles } from '../buildings/compoundMesh.ts';
 import { appendDoor } from '../buildings/doors.ts';
 import { appendFlyover } from '../roads/flyover.ts';
 import { signedArea } from '../geom/polygon.ts';
@@ -47,7 +47,9 @@ export function buildChunk(world: PreparedWorld, cx: number, cz: number, lod: Ch
 
   // Far buildings have no window data (the shader then draws plain walls).
   const buildings = new MeshBuilder(far ? 0 : 3);
-  const budget = (far ? MAX_FAR_CHUNK_TRIANGLES : MAX_CHUNK_TRIANGLES) - ground.triangleCount;
+  // Up close, house compound walls come first out of the budget (they are cheap and line every street).
+  const houseWalls = far ? 0 : houseWallTriangles(bucket.houseWalls, bucket.pillars);
+  const budget = (far ? MAX_FAR_CHUNK_TRIANGLES : MAX_CHUNK_TRIANGLES) - ground.triangleCount - houseWalls;
   let planned = 0;
   let skippedBuildings = 0;
   for (const building of bucket.buildings) {
@@ -68,6 +70,7 @@ export function buildChunk(world: PreparedWorld, cx: number, cz: number, lod: Ch
 
   // Gated societies: walls only up close (from far away they are hidden behind trees), gates always.
   if (!far) appendWalls(buildings, bucket.walls, world.terrain);
+  if (!far) appendHouseWalls(buildings, bucket.houseWalls, bucket.pillars, world.terrain);
   if (!far) for (const door of bucket.doors) appendDoor(buildings, door);
   for (const run of bucket.runs) if (run.ribbon.rise) appendFlyover(buildings, run, world.terrain);
   for (const gate of bucket.gates) appendGate(buildings, gate, world.terrain);

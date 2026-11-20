@@ -114,3 +114,51 @@ export function appendGate(mesh: MeshBuilder, gate: GateSpot, terrain: TerrainGr
   box(mesh, bx, bz, base, ground + 1.0, 0.22, 0.22, ux, uz, BOOM_BASE);
   for (let k = 0; k < 6; k++) box(mesh, bx, bz, ground + 1.0 + k * 0.5, ground + 1.5 + k * 0.5, 0.06, 0.06, ux, uz, k % 2 ? BOOM_WHITE : BOOM_RED);
 }
+
+/** House compound walls: lower than a society's, plastered in the colours Bengaluru homes use. */
+const HOUSE_WALL_HEIGHT = 1.45;
+const HOUSE_WALL_HALF_THICK = 0.1;
+const HOUSE_TONES: Rgb[] = ['#efe6cf', '#f0dc9a', '#e9b98f', '#d2d3cd', '#f3f1ea', '#c97a55'].map(linear);
+const PILLAR_HALF = 0.22;
+const PILLAR_HEIGHT = 1.75;
+/** Height of a globe lamp's centre above the ground at its pillar (the client draws the glass). */
+export const GATE_LAMP_HEIGHT = PILLAR_HEIGHT + 0.1 + 0.2;
+
+/** Wall pieces [ax, az, bx, bz, tone] (metres) and gate pillars [x, z, ux, uz, tone]. */
+export function appendHouseWalls(mesh: MeshBuilder, walls: number[], pillars: number[], terrain: TerrainGrid): void {
+  for (let i = 0; i + 4 < walls.length; i += 5) {
+    const ax = walls[i];
+    const az = walls[i + 1];
+    const bx = walls[i + 2];
+    const bz = walls[i + 3];
+    const tone = HOUSE_TONES[walls[i + 4]] ?? HOUSE_TONES[0];
+    const length = Math.hypot(bx - ax, bz - az);
+    if (length < 0.1) continue;
+    const ux = (bx - ax) / length;
+    const uz = (bz - az) / length;
+    const ya = heightAt(terrain, ax, az);
+    const yb = heightAt(terrain, bx, bz);
+    const y = Math.min(ya, yb);
+    const top = Math.max(ya, yb) + HOUSE_WALL_HEIGHT;
+    // The wall as a long box (it can step over a little slope), and a wider coping on top.
+    box(mesh, (ax + bx) / 2, (az + bz) / 2, y - 0.3, top, length / 2, HOUSE_WALL_HALF_THICK, ux, uz, tone);
+    box(mesh, (ax + bx) / 2, (az + bz) / 2, top, top + 0.07, length / 2 + 0.03, HOUSE_WALL_HALF_THICK + 0.035, ux, uz, COPING);
+  }
+  for (let i = 0; i + 4 < pillars.length; i += 5) {
+    const x = pillars[i];
+    const z = pillars[i + 1];
+    const ux = pillars[i + 2];
+    const uz = pillars[i + 3];
+    const tone = HOUSE_TONES[pillars[i + 4]] ?? HOUSE_TONES[0];
+    const y = heightAt(terrain, x, z);
+    box(mesh, x, z, y - 0.3, y + PILLAR_HEIGHT, PILLAR_HALF, PILLAR_HALF, ux, uz, tone);
+    box(mesh, x, z, y + PILLAR_HEIGHT, y + PILLAR_HEIGHT + 0.1, PILLAR_HALF + 0.05, PILLAR_HALF + 0.05, ux, uz, COPING);
+    // The lamp's dark metal base; the glowing glass ball on it is drawn by the client.
+    box(mesh, x, z, y + PILLAR_HEIGHT + 0.1, y + PILLAR_HEIGHT + 0.16, 0.07, 0.07, ux, uz, ARCH);
+  }
+}
+
+/** Triangles `appendHouseWalls` adds: two boxes per piece, three per pillar (10 each). */
+export function houseWallTriangles(walls: number[], pillars: number[]): number {
+  return (walls.length / 5) * 20 + (pillars.length / 5) * 30;
+}

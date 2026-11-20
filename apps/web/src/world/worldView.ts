@@ -48,7 +48,7 @@ function meshToGeometry(mesh: MeshData, extraName = 'aWin'): THREE.BufferGeometr
 export class WorldView {
   readonly group = new THREE.Group();
   readonly terrain: TerrainGrid;
-  readonly counts = { trees: 0, lamps: 0, benches: 0 };
+  readonly counts = { trees: 0, lamps: 0, benches: 0, gateLamps: 0 };
   private readonly materials: WorldMaterials;
   private readonly groundMap: THREE.DataTexture;
   private readonly chunks = new Map<string, THREE.Group>();
@@ -65,6 +65,9 @@ export class WorldView {
   private halos: THREE.Points | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
+  private globeMaterial: THREE.MeshBasicMaterial | null = null;
+  private globeHalos: THREE.Points | null = null;
+  private globeHaloMaterial: THREE.PointsMaterial | null = null;
   private glow: THREE.InstancedMesh | null = null;
   private glowMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly signs: Signs;
@@ -213,6 +216,9 @@ export class WorldView {
     this.lampHeads?.dispose();
     this.halos?.geometry.dispose();
     this.haloMaterial?.dispose();
+    this.globeHalos?.geometry.dispose();
+    this.globeHaloMaterial?.dispose();
+    this.globeMaterial?.dispose();
     this.signs.dispose();
     this.glowMaterial?.map?.dispose();
     this.glowMaterial?.dispose();
@@ -296,6 +302,7 @@ export class WorldView {
     };
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
+    this.addGateLamps(props.gateLamps);
     this.counts.benches = addSimple(models.bench, props.benches, BENCH_STRIDE);
   }
 
@@ -378,6 +385,40 @@ export class WorldView {
     }
   }
 
+  /**
+   * The globe lamps on house gate pillars: frosted glass balls (one draw call) that light up
+   * at night, each with a small halo (points, which the AO pass skips).
+   */
+  private addGateLamps(lamps: Float32Array): void {
+    const count = lamps.length / 3;
+    if (count === 0) return;
+    this.globeMaterial = new THREE.MeshBasicMaterial({ color: 0xe8e2d4 });
+    const globes = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 2), this.globeMaterial, count);
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < count; i++) globes.setMatrixAt(i, matrix.makeTranslation(lamps[i * 3], lamps[i * 3 + 1], lamps[i * 3 + 2]));
+    globes.instanceMatrix.needsUpdate = true;
+    globes.computeBoundingSphere();
+    this.group.add(globes);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(lamps.slice(), 3));
+    this.globeHaloMaterial = new THREE.PointsMaterial({
+      map: this.glowMaterial?.map ?? null,
+      color: 0xffd9a0,
+      size: 0.75,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: true,
+    });
+    this.globeHalos = new THREE.Points(geometry, this.globeHaloMaterial);
+    this.globeHalos.visible = false;
+    this.globeHalos.renderOrder = 2;
+    this.group.add(this.globeHalos);
+    this.counts.gateLamps = count;
+  }
+
   /** Moves water and wind. Call every frame. */
   update(dt: number): void {
     this.materials.time.value = (this.materials.time.value + dt) % 3600;
@@ -412,6 +453,13 @@ export class WorldView {
       this.glow.visible = night > 0.05;
       // Wet ground throws more of the light back.
       this.glowMaterial.opacity = night * (0.55 + 0.35 * rain);
+    }
+    // Gate globes: frosted white by day, warm and glowing (brighter than white, for the bloom) at night.
+    this.globeMaterial?.color.setRGB(0.91 + night * 3.4, 0.89 + night * 2.6, 0.83 + night * 1.4);
+    if (this.globeHalos && this.globeHaloMaterial) {
+      this.globeHalos.visible = night > 0.05;
+      this.globeHaloMaterial.opacity = night * (0.4 + 0.35 * rain);
+      this.globeHaloMaterial.size = 0.75 + 0.6 * rain;
     }
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;

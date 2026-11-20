@@ -22,6 +22,8 @@ export interface PropSet extends StreetLife {
   lamps: Float32Array;
   /** Per bench: x, y, z, rotation. */
   benches: Float32Array;
+  /** Globe lamps on house gate pillars: x, y, z (the centre of the glass ball). */
+  gateLamps: Float32Array;
 }
 
 export const TREE_STRIDE = 7;
@@ -193,5 +195,6 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
     benches: shuffleAndCap(benches, BENCH_STRIDE, MAX_BENCHES, seed + 2),
     ...placeStreetLife(pack, terrain, occupancy),
     tanks: placeRoofTanks(pack, terrain),
+    gateLamps: new Float32Array(0), // filled in by prepareWorld (needs the doors)
   };
 }

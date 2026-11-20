@@ -6,10 +6,12 @@ import { scatterProps } from '../props/scatter.ts';
 import type { PropSet } from '../props/scatter.ts';
 import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
+import { GATE_LAMP_HEIGHT } from '../buildings/compoundMesh.ts';
+import { HOUSE_WALL_STRIDE, PILLAR_STRIDE, houseCompounds } from '../buildings/houseCompounds.ts';
 import { findDoors } from '../buildings/doors.ts';
 import type { Door } from '../buildings/doors.ts';
 import { FOOT_KINDS, bridgeRise, buildRibbon } from '../roads/ribbon.ts';
-import { cloneTerrain, terrainFromPack } from '../terrain/grid.ts';
+import { cloneTerrain, heightAt, terrainFromPack } from '../terrain/grid.ts';
 import type { TerrainGrid } from '../terrain/grid.ts';
 
 /** Everything of one 150 m chunk, ready to be turned into meshes on request. */
@@ -21,6 +23,9 @@ export interface ChunkBucket {
   /** Compound wall pieces [ax, az, bx, bz, …] in metres, and society gates. */
   walls: number[];
   gates: GateSpot[];
+  /** House compound walls [ax, az, bx, bz, tone] and gate pillars [x, z, ux, uz, tone]. */
+  houseWalls: number[];
+  pillars: number[];
   doors: Door[];
 }
 
@@ -66,6 +71,8 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     discs: [],
     walls: [],
     gates: [],
+    houseWalls: [],
+    pillars: [],
     doors: [],
   }));
   const chunkAt = (x: number, z: number): ChunkBucket => buckets[chunkIndexAt(half, chunksPerSide, x, z)];
@@ -132,5 +139,24 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
   const doors = findDoors(pack, terrain);
   for (const door of doors) chunkAt(door.x, door.z).doors.push(door);
 
-  return { doors, pack, half, chunksPerSide, terrain, originalTerrain, buckets, props: scatterProps(pack, terrain) };
+  // House compound walls with gate pillars and globe lamps (worked out from the doors and roads).
+  const compounds = houseCompounds(pack, doors);
+  for (let i = 0; i + 4 < compounds.walls.length; i += HOUSE_WALL_STRIDE) {
+    const w = compounds.walls;
+    chunkAt((w[i] + w[i + 2]) / 2, (w[i + 1] + w[i + 3]) / 2).houseWalls.push(w[i], w[i + 1], w[i + 2], w[i + 3], w[i + 4]);
+  }
+  for (let i = 0; i + 4 < compounds.pillars.length; i += PILLAR_STRIDE) {
+    const p = compounds.pillars;
+    chunkAt(p[i], p[i + 1]).pillars.push(p[i], p[i + 1], p[i + 2], p[i + 3], p[i + 4]);
+  }
+  const props = scatterProps(pack, terrain);
+  const gateLamps = new Float32Array((compounds.lamps.length / 2) * 3);
+  for (let i = 0; i < compounds.lamps.length / 2; i++) {
+    const x = compounds.lamps[i * 2];
+    const z = compounds.lamps[i * 2 + 1];
+    gateLamps.set([x, heightAt(terrain, x, z) + GATE_LAMP_HEIGHT, z], i * 3);
+  }
+  props.gateLamps = gateLamps;
+
+  return { doors, pack, half, chunksPerSide, terrain, originalTerrain, buckets, props };
 }
