@@ -79,6 +79,17 @@ Google Maps, Street View, any scraped imagery, real brand logos or shop signs, a
 
 ## People (3D characters and animations)
 
+- **Microsoft Rocketbox Avatar Library** — https://github.com/microsoft/Microsoft-Rocketbox — © Microsoft Corporation, **MIT License**. Downloaded 2026-11-20 with the owner's OK (about 340 MB).
+  - Used in `models/people/rocketbox/`:
+    - Avatars: Female_Adult_01, Female_Adult_03, Female_Adult_13, Female_Adult_17, Male_Adult_06, Male_Adult_08, Male_Adult_09, Male_Adult_16.
+    - Clips, female (f_) and male (m_): idle_neutral_01, walk_neutral_01, run_neutral_01 (jog), run_fast_01 (sprint), sit_chair_idle_neutral_01, wave_01, dancing_neutral, gestic_talk_neutral_01.
+  - Changes made by us:
+    - Converted from FBX to glTF in Blender; textures shrunk from 2048 px TGA to 1024 px WebP; normal and specular maps left out; hair and lashes made cut-out.
+    - Clips: face-bone tracks and per-bone position tracks removed, keyframes thinned (`tools/characters/rocketbox-anims.mjs`).
+    - People are scaled to varied real heights.
+  - MIT licence text: "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files … The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." (full text in the repository's LICENSE.md)
+
+
 | Asset | Author | Licence | Source | Used for |
 |---|---|---|---|---|
 | Universal Base Characters — free Standard pack (2 bodies, hairstyles, eyebrows) | Quaternius | CC0 1.0 | https://quaternius.itch.io/universal-base-characters | `apps/web/public/models/people/male.glb`, `female.glb`, `hair_*.glb`, `skin_*_dark.jpg` (resized by `tools/characters/build.mjs`) |

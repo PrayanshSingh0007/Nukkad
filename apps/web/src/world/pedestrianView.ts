@@ -5,6 +5,7 @@ import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { AvatarLook } from '@nukkad/shared';
 import { buildAvatarGeometry } from '../player/avatar/avatarModel.ts';
 import { Person, peopleReady } from '../player/avatar/people.ts';
+import { ROCKETBOX_AVATARS, RocketboxPerson, loadRocketbox, rocketboxReady } from '../player/avatar/rocketbox.ts';
 
 const LOOKS = 8;
 const WAIT_AHEAD_M = 1.6;
@@ -52,10 +53,11 @@ export class PedestrianView {
   private readonly looks: AvatarLook[] = [];
   /** Up close, the nearest few walkers are real 3D people (a small pool, reused). */
   private nearLimit = 0;
-  private readonly pool: { person: Person; walker: number; seen: boolean }[] = [];
+  private readonly pool: { person: Person | RocketboxPerson; walker: number; seen: boolean }[] = [];
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid) {
     this.walkers = routes.map((route) => ({ route, delay: 0 }));
+    void loadRocketbox(); // realistic people for the nearest walkers, when they arrive
     this.terrain = terrain;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.material.onBeforeCompile = (shader) => {
@@ -103,9 +105,10 @@ export class PedestrianView {
     const up = new THREE.Vector3(0, 1, 0);
     const one = new THREE.Vector3(1, 1, 1);
     // The nearest few become real 3D people; the rest are the light instanced crowd.
+    const rocketbox = this.nearLimit > 0 ? rocketboxReady() : null;
     const assets = this.nearLimit > 0 ? peopleReady() : null;
     const near: { index: number; d: number }[] = [];
-    if (assets) {
+    if (assets || rocketbox) {
       this.walkers.forEach((walker, index) => {
         const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
         const d = Math.hypot(pose.x - px, pose.z - pz);
@@ -119,6 +122,31 @@ export class PedestrianView {
     for (const slot of this.pool) if (nearSet.has(slot.walker)) slot.seen = true;
     for (const { index } of near) {
       if (this.pool.some((slot) => slot.walker === index && slot.seen)) continue;
+      const route = this.walkers[index].route;
+      if (rocketbox) {
+        // Each walker is always the same Rocketbox person (by route), seeded height.
+        const avatar = route.kind % ROCKETBOX_AVATARS.length;
+        let slot = this.pool.find((s) => !s.seen && s.person instanceof RocketboxPerson && s.person.avatar === avatar);
+        if (!slot) {
+          const free = this.pool.find((s) => !s.seen);
+          if (free || this.pool.length < this.nearLimit) {
+            const person = new RocketboxPerson(rocketbox, avatar, ((index * 2654435761) >>> 0) / 4294967296);
+            this.group.add(person.root);
+            if (free) {
+              free.person.dispose();
+              free.person = person;
+              slot = free;
+            } else {
+              slot = { person, walker: -1, seen: false };
+              this.pool.push(slot);
+            }
+          }
+        }
+        if (!slot) continue;
+        slot.walker = index;
+        slot.seen = true;
+        continue;
+      }
       let slot = this.pool.find((s) => !s.seen);
       if (!slot && assets && this.pool.length < this.nearLimit) {
         const look = this.looks[this.pool.length % LOOKS];
@@ -126,10 +154,10 @@ export class PedestrianView {
         this.group.add(slot.person.root);
         this.pool.push(slot);
       }
-      if (!slot) continue;
+      if (!slot || !(slot.person instanceof Person)) continue;
       slot.walker = index;
       slot.seen = true;
-      slot.person.setLook(this.looks[this.walkers[index].route.kind % LOOKS]); // same colours as their crowd version
+      slot.person.setLook(this.looks[route.kind % LOOKS]); // same colours as their crowd version
     }
     for (const slot of this.pool) slot.person.root.visible = slot.seen;
 
@@ -148,7 +176,8 @@ export class PedestrianView {
       if (slot) {
         slot.person.root.position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z);
         slot.person.root.rotation.y = pose.heading;
-        slot.person.update(dt, waiting ? 0 : route.speed, true, null);
+        if (slot.person instanceof RocketboxPerson) slot.person.update(dt, waiting ? 0 : route.speed);
+        else slot.person.update(dt, waiting ? 0 : route.speed, true, null);
         return;
       }
       const mesh = this.meshes[route.kind % LOOKS];
