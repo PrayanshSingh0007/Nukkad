@@ -40,7 +40,17 @@ const WALK_GLSL = /* glsl */ `
 interface Walker {
   route: TrafficRoute;
   delay: number;
+  /** Seconds left of stopping to look at someone who honked, and where the horn was. */
+  startled: number;
+  lookX: number;
+  lookZ: number;
+  /** 0–1, fixed per walker: who stays indoors first when it rains or gets late. */
+  keen: number;
 }
+
+/** How long people stop and stare after a horn, seconds, and how far away they hear it. */
+const STARTLE_S = 1.8;
+const HORN_HEARD_M = 16;
 
 export class PedestrianView {
   readonly group = new THREE.Group();
@@ -56,7 +66,7 @@ export class PedestrianView {
   private readonly pool: { person: Person | RocketboxPerson; walker: number; seen: boolean }[] = [];
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid) {
-    this.walkers = routes.map((route) => ({ route, delay: 0 }));
+    this.walkers = routes.map((route, index) => ({ route, delay: 0, startled: 0, lookX: 0, lookZ: 0, keen: ((index * 2654435761) >>> 0) / 4294967296 }));
     void loadRocketbox(); // realistic people for the nearest walkers, when they arrive
     this.terrain = terrain;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -89,6 +99,32 @@ export class PedestrianView {
     this.radius = radius;
   }
 
+  /**
+   * The street follows the world, like the NPCs in an "NPC brain" design (no AI model needed):
+   * in rain, and late at night, fewer people are out (the keenest stay). Seeded per walker, so
+   * every player sees the same people out.
+   */
+  setWorld(night: number, rain: number): void {
+    const wet = THREE.MathUtils.smoothstep(rain, 0.3, 0.75);
+    const late = THREE.MathUtils.smoothstep(night, 0.55, 0.95);
+    this.presence = Math.max(0.22, 1 - 0.6 * wet - 0.5 * late);
+  }
+  private presence = 1;
+  /** The shared clock at the last update, seconds. */
+  private lastSeconds = 0;
+
+  /** Someone honked at (x, z): people close by stop, turn to look and complain for a moment. */
+  honk(x: number, z: number): void {
+    const seconds = this.lastSeconds;
+    for (const walker of this.walkers) {
+      const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
+      if (Math.hypot(pose.x - x, pose.z - z) > HORN_HEARD_M) continue;
+      walker.startled = STARTLE_S;
+      walker.lookX = x;
+      walker.lookZ = z;
+    }
+  }
+
   /** How many of the nearest walkers may be full 3D people (0 on Low). */
   setNearLimit(count: number): void {
     this.nearLimit = count;
@@ -98,6 +134,7 @@ export class PedestrianView {
   /** Moves everyone to `seconds` on the shared clock; people wait for a moment if you block them. */
   update(dt: number, seconds: number, px: number, pz: number): void {
     this.time.value = seconds % 3600;
+    this.lastSeconds = seconds;
     const counts = new Array<number>(LOOKS).fill(0);
     const matrix = new THREE.Matrix4();
     const rotation = new THREE.Quaternion();
@@ -110,6 +147,7 @@ export class PedestrianView {
     const near: { index: number; d: number }[] = [];
     if (assets || rocketbox) {
       this.walkers.forEach((walker, index) => {
+        if (walker.keen > this.presence) return; // stayed in (rain, night)
         const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
         const d = Math.hypot(pose.x - px, pose.z - pz);
         if (d < NEAR_M) near.push({ index, d });
@@ -162,9 +200,16 @@ export class PedestrianView {
     for (const slot of this.pool) slot.person.root.visible = slot.seen;
 
     this.walkers.forEach((walker, index) => {
+      if (walker.keen > this.presence) return; // stayed in (rain, night)
       const route = walker.route;
       let pose = trafficPose(route, seconds * route.speed - walker.delay);
       if (Math.hypot(pose.x - px, pose.z - pz) > this.radius) return;
+      // Startled by a horn: stand still for a moment.
+      if (walker.startled > 0) {
+        walker.startled -= dt;
+        walker.delay += route.speed * dt;
+        pose = trafficPose(route, seconds * route.speed - walker.delay);
+      }
       const ahead = (px - pose.x) * -Math.sin(pose.heading) + (pz - pose.z) * -Math.cos(pose.heading);
       let waiting = false;
       if (ahead > 0 && ahead < WAIT_AHEAD_M && Math.hypot(pose.x - px, pose.z - pz) < WAIT_AHEAD_M) {
@@ -175,9 +220,11 @@ export class PedestrianView {
       const slot = nearSet.has(index) ? this.pool.find((s) => s.walker === index && s.seen) : undefined;
       if (slot) {
         slot.person.root.position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z);
-        slot.person.root.rotation.y = pose.heading;
-        if (slot.person instanceof RocketboxPerson) slot.person.update(dt, waiting ? 0 : route.speed);
-        else slot.person.update(dt, waiting ? 0 : route.speed, true, null);
+        const startled = walker.startled > 0;
+        // Turn to face whoever honked (the person's front is −z, so heading = atan2(−dx, −dz)).
+        slot.person.root.rotation.y = startled ? Math.atan2(-(walker.lookX - pose.x), -(walker.lookZ - pose.z)) : pose.heading;
+        if (slot.person instanceof RocketboxPerson) slot.person.update(dt, waiting || startled ? 0 : route.speed, startled ? 4 : 0);
+        else slot.person.update(dt, waiting || startled ? 0 : route.speed, true, null, startled ? 4 : 0);
         return;
       }
       const mesh = this.meshes[route.kind % LOOKS];

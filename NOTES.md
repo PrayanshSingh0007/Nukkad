@@ -27,6 +27,25 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Drivers in traffic, jump, street reactions (2026-11-20)
+
+- **The owner's two repos:**
+  - `casanova77koresh/The-Pinnacle-Of-V` is gone (GitHub 404), and we had agreed earlier not to use it.
+  - `gugu-2/Game-NPC-Brain-LLM` is a Python server: a fine-tuned Gemma-2 2B and XTTS voice cloning, with SQLite memory of players' chats. It can't run in a web game without a GPU server, and storing chats would break the "store only name, room, avatar" rule. We took its ideas (NPCs react to the live world and to the player) and built them without a language model.
+- **Drivers** (`world/trafficDrivers.ts`):
+  - Every moving vehicle has a seated person: the light crowd figure posed on the GPU (thighs, knees, shoulders, elbows, lean).
+  - Seats: cars, buses, vans and trucks on the right (India is right-hand drive); two-wheelers centred and leaning; autos front-centre. Seat heights per kind.
+  - 16 instanced draw calls in total. Checked: a scooter rider, and an SUV driver visible through the windscreen.
+- **Traffic:**
+  - Vehicles within 40 m use the full model; the light LOD looked crumpled up close.
+  - Car-following: a vehicle waits while another is ahead in its lane going the same way, with a gap of both half-lengths plus 2.2 m. Measured: 0 overlaps among about 23 nearby vehicles over 16 s, with 16 of 22 moving more than 4 m in 2 s.
+  - The waits happen on your screen only, like the existing wait for the player.
+- **Jump:** Space on foot, about 0.6 m (it stays the handbrake in vehicles). `CharacterBody.jump` ignores ground contact for 0.12 s of take-off. Realistic people tuck their knees in the air; there is no jump clip.
+- **Street reactions** (`PedestrianView.setWorld` / `honk`):
+  - Fewer people are out in rain and late at night (seeded per walker, at least 22 %). Measured: 810 people dry, 324 in heavy rain.
+  - Your horn makes people within 16 m stop, turn to face you and gesture (the talk clip) for 1.8 s.
+- **Not done:** recolouring Rocketbox clothes. Their textures mix skin and clothes with a different layout per avatar, and a colour rule would recolour sleeves differently from the body or tint jeans. It needs a hand-painted clothing mask per avatar.
+
 ## Realistic people: Microsoft Rocketbox (2026-11-20)
 
 - The owner OK'd the download (about 340 MB from github.com/microsoft/Microsoft-Rocketbox, MIT): 8 avatars (Female_Adult_01, 03, 13, 17; Male_Adult_06, 08, 09, 16) and 16 clips (idle, walk, jog, sprint, sit, wave, dance, talk, for women and men).

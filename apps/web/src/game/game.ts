@@ -590,6 +590,8 @@ export class Game {
       this.sound.horn(false);
       return;
     }
+    // People nearby hear it: they stop, look and complain.
+    if (this.player) this.walkers?.honk(this.player.x, this.player.z);
     this.sound.horn(true, [7, 10, 11, 12].includes(vehicle.code) ? 'heavy' : vehicle.leans || vehicle.code === 5 ? 'scooter' : 'car');
   }
 
@@ -1133,6 +1135,7 @@ export class Game {
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
     this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.rain);
+    this.walkers?.setWorld(this.atmosphere.night, this.rain);
     world?.update(dt);
     if (player) {
       this.placeSun(player.x, player.y, player.z);
