@@ -27,6 +27,33 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Real vehicle speeds, better people, lit night streets (2026-11-20)
+
+- **Vehicle performance** (`vehicleSpecs.ts` `tune`, `driveAccel`, `specForModel`; test `vehicleSpecs.test.ts`). The owner: "make the vehicle speed feel real and the top speed also limit it".
+  - **Before:** each kind had one setting for all its models, and acceleration was 3–4× too fast (hatchback 0–100 in about 3.7 s).
+  - **Now:** every model has its real top speed (a limiter holds it) and its real 0–100 or 0–60 time. The pull is grip-limited off the line, then power-limited, with air drag growing with speed².
+  - **Gears:** the drive cuts briefly at each upshift, matched to the engine note (`gearAt` / `gearTop`). Coasting includes air drag.
+  - **Top speeds:**
+    - own e-scooter 90 (0–60 in 5.5 s); 110 cc scooter 85; Pulsar 150 at 115 (0–60 in 5 s); auto 55;
+    - WagonR 150 (0–100 in 13.5 s); Nano 105; Honda City 190 (10.5 s); BMW M3 250 limited (3.9 s);
+    - Creta 175; Seltos 170; Thar 155; BMW X3 240 (6.3 s);
+    - minivan 140; ambulance 120; pickup 120; trucks and tempo 80; bus 80.
+  - These replace the owner's earlier numbers (bike 150, hatchbacks 180, SUVs 200).
+- **People** (`people.ts`):
+  - **Arms:** slimmed in the rest pose by pulling arm vertices toward the bone line (upper arm up to 14 %, forearm 10 %, blended at the joints; no bone scaling, so nothing shears).
+  - **Clothes:** cloth materials have sheen and fabric detail fixed to the cloth: folds at elbows, knees, ankles and waist, torso drape, side seams, waistband and hem, fine weave up close, and fold valleys that shade themselves (bump from screen-space slopes, no textures).
+  - **Kurta:** the lower half hangs in pleats.
+  - It is still the free Quaternius body. The bigger step, clothed bodies, needs a download (Quaternius' itch.io page refused us with "429 Too Many Requests" today).
+- **Night streets:**
+  - The map's own street lamps were 25 in the whole area: the old rule only invented lamps when there were fewer than 30 in total. Now ours fill in unless real ones cover 30 % of lit streets, skipping spots within 12 m of a real lamp (`scatter.ts`). The owner's area went from 25 to 1,500 (the cap).
+  - Lamp heads glow brighter than white at night, so bloom catches them. Halos (points, so GTAO skips them) grow in rain, and light pools are brighter on wet ground. Measured 10.5–13 ms a frame at night in rain against 10.3 by day.
+- **Trees:** rain trees grown 1.55×, gulmohars 1.3× and neems 1.2× (Medium and High), for wide canopies over the avenues.
+- **Learned from benglooru.com** ("Namma Benglooru", ideas only):
+  - Their demo is built like ours: three.js, Rapier, OpenStreetMap, Quaternius characters, plus ambientCG/Poly Haven textures, EZ-Tree trees, Kenney/Freesound sounds, and real weather from Open-Meteo.
+  - Their footage shows a kerb-height golden-hour camera, big avenue trees, compound walls with globe lamps on the gate pillars, black-and-yellow barriers, and glowing lamps and shops reflected on wet roads.
+  - We now have the lamps and the trees.
+  - Ideas not done yet: compound walls with gate lamps; real weather from Open-Meteo (open data, would need a credit); clothed characters.
+
 ## Big AAA pass: day cycle, rain, speed-up, lights, sound, roofs (2026-11-19)
 
 - **Speed (owner: "really laggy").** Measured in the browser pane at 2048×1536 on High: 23 ms per frame. The costs were AO about 12 ms, shadows about 7, bloom about 6 and the cinema pass about 4.
