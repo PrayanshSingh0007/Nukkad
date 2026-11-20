@@ -354,6 +354,12 @@ export class StreetLifeView {
   }
 
   /** Geometry and material to draw the vehicle you are driving. */
+  /** The model file of a parked vehicle without folder or extension (e.g. "bmw_m3"), if it has one. */
+  modelFile(parked: ParkedVehicle): string | undefined {
+    const kind = this.kinds.find((k) => k === parked.kind);
+    return kind?.textured?.path.split('/').pop()?.replace('.glb', '');
+  }
+
   modelOf(parked: ParkedVehicle): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; paint: THREE.Color | null } | null {
     const kind = parked.kind as Kind;
     if (!kind.mesh) return null;

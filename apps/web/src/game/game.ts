@@ -34,7 +34,7 @@ import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
 import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
-import { VEHICLES } from './vehicleSpecs.ts';
+import { VEHICLES, gearAt, gearTop, specForModel } from './vehicleSpecs.ts';
 import type { VehicleSpec } from './vehicleSpecs.ts';
 import type { ParkedVehicle } from '../world/streetLifeView.ts';
 import { FrameGovernor, QUALITY, QUALITY_LEVELS, saveQuality } from './quality.ts';
@@ -54,12 +54,10 @@ import { RainView, rainAt } from '../atmosphere/weather.ts';
 function engineRpm(vehicle: VehicleSpec, speed: number): number {
   const share = Math.min(1, speed / vehicle.maxSpeed);
   if (vehicle.code === 1 || vehicle.code === 6) return 0.3 + 0.6 * share;
-  const gears = vehicle.leans ? 5 : vehicle.maxSpeed > 40 ? 6 : 5;
-  const top = (i: number): number => vehicle.maxSpeed * Math.pow(i / gears, 0.75);
-  let gear = 1;
-  while (gear < gears && speed > top(gear) * 0.97) gear++;
-  const low = gear === 1 ? 0 : top(gear - 1) * 0.75;
-  return 0.25 + 0.75 * Math.min(1, Math.max(0, (speed - low) / (top(gear) - low)));
+  // The same gearbox the physics uses, so the note drops exactly when the pull dips.
+  const gear = gearAt(vehicle, speed);
+  const low = gear === 1 ? 0 : gearTop(vehicle, gear - 1) * 0.75;
+  return 0.25 + 0.75 * Math.min(1, Math.max(0, (speed - low) / (gearTop(vehicle, gear) - low)));
 }
 import type { GameScene } from './scene.ts';
 
@@ -560,7 +558,9 @@ export class Game {
     player.seat = null;
     player.emote = 0;
     const parked = streetLife.nearestVehicle(player.x, player.z, 3.5);
-    const spec = parked ? VEHICLES[parked.kind.name] : undefined;
+    // The kind's handling with this model's real top speed and pull (a BMW M3 is not a Honda City).
+    const kindSpec = parked ? VEHICLES[parked.kind.name] : undefined;
+    const spec = parked && kindSpec ? specForModel(kindSpec, streetLife.modelFile(parked)) : undefined;
     const model = parked ? streetLife.modelOf(parked) : null;
     if (!parked || !spec || !model) return;
     streetLife.take(parked);

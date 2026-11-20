@@ -2,7 +2,7 @@ import type { AvatarLook } from '@nukkad/shared';
 import { CharacterBody } from '../physics/characterBody.ts';
 import type { PhysicsWorld } from '../physics/physicsWorld.ts';
 import { Avatar } from '../player/avatar/avatar.ts';
-import { SCOOTER } from './vehicleSpecs.ts';
+import { SCOOTER, driveAccel, gearAt, gearCount } from './vehicleSpecs.ts';
 import type { VehicleSpec } from './vehicleSpecs.ts';
 
 /** Physics runs in fixed steps of 1/60 s, however fast or slow the screen draws. */
@@ -46,6 +46,9 @@ export class LocalPlayer {
   /** How much the tyres are sliding sideways (0 = gripping, 1 = full drift). */
   slip = 0;
   private yawVelocity = 0;
+  /** Gearbox: the gear you are in, and the moment of an upshift (drive cut), seconds. */
+  private gear = 1;
+  private shiftLeft = 0;
   /** The body's actual ground velocity, m/s (for tyre smoke). */
   get velocity(): [number, number] {
     return [this.velocityX, this.velocityZ];
@@ -223,14 +226,21 @@ export class LocalPlayer {
 
     let v = before;
     const share = Math.max(0, v) / vehicle.maxSpeed;
+    // Gears: at each upshift the drive is cut for a moment (quicker on fast cars), like a real
+    // gearbox; the engine note drops at the same time (game.ts engineRpm).
+    const gear = gearAt(vehicle, Math.max(0, v));
+    if (gear > this.gear && throttle > 0.05 && gearCount(vehicle) > 1) this.shiftLeft = vehicle.maxSpeed > 60 ? 0.09 : 0.18;
+    this.gear = gear;
+    this.shiftLeft = Math.max(0, this.shiftLeft - STEP_S);
     if (throttle > 0.05) {
       if (v < -0.3) v += vehicle.brake * throttle * STEP_S;
-      else v += vehicle.accel * Math.max(0, 1 - Math.pow(share, 2.2)) * throttle * STEP_S;
+      else v += driveAccel(vehicle, v) * (this.shiftLeft > 0 ? 0.2 : 1) * throttle * STEP_S;
     } else if (throttle < -0.05) {
       if (v > 0.3) v -= vehicle.brake * (1 + 0.25 * share) * -throttle * STEP_S;
-      else v -= vehicle.accel * 0.6 * -throttle * STEP_S;
+      else v -= Math.min(vehicle.accel, 3) * 0.6 * -throttle * STEP_S;
     } else {
-      const coast = 0.7 + 2.4 * share * share + (this.handbrake ? 4.5 : 0);
+      // Rolling: tyres, engine braking and air drag (which grows with speed²).
+      const coast = 0.5 + 1.1 * share + (vehicle.drag ?? 0.0004) * v * v + (this.handbrake ? 4.5 : 0);
       v -= Math.sign(v) * Math.min(Math.abs(v), coast * STEP_S);
     }
     if (this.handbrake && throttle <= 0.05) v -= Math.sign(v) * Math.min(Math.abs(v), 2 * STEP_S);
