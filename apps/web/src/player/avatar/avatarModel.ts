@@ -58,7 +58,19 @@ const PARENT: Record<BoneId, BoneId | null> = {
   [BONE.lids]: BONE.head,
 };
 
-const PANTS: Record<(typeof OUTFITS)[number], number> = { tee: 0x34425e, hoodie: 0x3f434b, kurta: 0xece6d6, jacket: 0x2b303a };
+// (This simple model is only the fallback if the 3D people cannot load: skirts and shorts are
+// drawn as trousers here.)
+const PANTS: Record<(typeof OUTFITS)[number], number> = {
+  tee: 0x4a6c9c,
+  hoodie: 0x3f434b,
+  kurta: 0xece6d6,
+  jacket: 0x2b303a,
+  crop: 0x5b80b3,
+  skirt: 0x2b2f3a,
+  dress: 0xf0d9c8,
+  shirt: 0x3f5f8f,
+  shorts: 0xb49d70,
+};
 const SHOE = 0x2a2d34;
 const SOLE = 0xf2f2ef;
 const LACE = 0xe9e7e1;
@@ -271,7 +283,7 @@ function addHand(p: Parts, bone: BoneId, x: number, skin: number): void {
 }
 
 function addArms(p: Parts, outfit: (typeof OUTFITS)[number], cloth: number, skin: number): void {
-  const longSleeves = outfit !== 'tee';
+  const longSleeves = outfit === 'hoodie' || outfit === 'kurta' || outfit === 'jacket' || outfit === 'shirt';
   for (const [upper, fore, x] of [
     [BONE.upperArmL, BONE.foreArmL, -0.21],
     [BONE.upperArmR, BONE.foreArmR, 0.21],

@@ -7,21 +7,31 @@ import * as THREE from 'three';
  * the skin. It keeps the body's bone weights, so it moves with every animation. Made once
  * per body build and outfit, and shared by everyone wearing it.
  */
-export type GarmentPart = 'top' | 'longTop' | 'pants';
+export type GarmentPart = 'top' | 'longTop' | 'crop' | 'pants' | 'shorts';
+
+/** Where a crop top ends (share of the height): above the navel. Shorts end above the knee. */
+export const CROP_HEM = 0.635;
+export const SHORTS_HEM = 0.37;
 
 /** Regions written by prepareBody (people.ts): 0 skin · 1 torso · 2 upper arm · 3 forearm · 4 hips · 5 thigh · 6 calf · 7 foot. */
-function covers(part: GarmentPart, region: number, h: number, sleeves: boolean): boolean {
+function covers(part: GarmentPart, region: number, h: number, sleeves: boolean, armless: boolean): boolean {
   switch (part) {
     case 'top':
     case 'longTop':
-      if (region === 1 || region === 2) return true;
-      if (region === 3) return sleeves;
-      if (region === 4) return h > (part === 'longTop' ? 0.44 : 0.5);
+    case 'crop':
+      if (region === 1) return part !== 'crop' || h > CROP_HEM;
+      if (region === 2) return !armless;
+      if (region === 3) return sleeves && !armless;
+      if (region === 4) return part !== 'crop' && h > (part === 'longTop' ? 0.44 : 0.5);
       return false;
     case 'pants':
       if (region === 4) return h <= 0.56;
       if (region === 5) return true;
       if (region === 6) return h > 0.065;
+      return false;
+    case 'shorts':
+      if (region === 4) return h <= 0.56;
+      if (region === 5) return h > SHORTS_HEM;
       return false;
   }
 }
@@ -33,13 +43,15 @@ export interface GarmentSpec {
   offset: number;
   /** Smoothing passes: more = looser, fewer folds of the body showing. */
   smooth: number;
+  /** Sleeveless (a dress, a tank): bare shoulders and arms. */
+  armless?: boolean;
 }
 
 const cache = new Map<string, THREE.BufferGeometry>();
 
 /** `metresPerUnit` = how many metres one unit of the body geometry is. */
 export function garmentGeometry(body: THREE.BufferGeometry, spec: GarmentSpec, metresPerUnit: number, cacheKey: string): THREE.BufferGeometry | null {
-  const key = `${cacheKey}|${spec.part}|${spec.sleeves}|${spec.offset}|${spec.smooth}`;
+  const key = `${cacheKey}|${spec.part}|${spec.sleeves}|${spec.armless ?? false}|${spec.offset}|${spec.smooth}`;
   const cached = cache.get(key);
   if (cached) return cached;
   const position = body.getAttribute('position') as THREE.BufferAttribute;
@@ -62,7 +74,7 @@ export function garmentGeometry(body: THREE.BufferGeometry, spec: GarmentSpec, m
   }
 
   // 2. The triangles this garment covers.
-  const inside = (v: number): boolean => covers(spec.part, Math.round(cloth.getX(v)), cloth.getY(v), spec.sleeves);
+  const inside = (v: number): boolean => covers(spec.part, Math.round(cloth.getX(v)), cloth.getY(v), spec.sleeves, spec.armless ?? false);
   const tris: number[] = [];
   for (let t = 0; t < index.count; t += 3) {
     const a = index.getX(t);

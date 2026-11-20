@@ -20,12 +20,36 @@ export const OUTFIT_COLORS = [
   '#33373d',
 ] as const;
 
-export const OUTFITS = ['tee', 'hoodie', 'kurta', 'jacket'] as const;
+/**
+ * Outfits. New ones go at the end, so saved looks and old messages keep their meaning.
+ * tee = tee + jeans · hoodie · kurta (with pyjama) · jacket · crop = crop top + jeans ·
+ * skirt = top + knee skirt · dress = sleeveless dress · shirt = shirt + jeans · shorts = tee + shorts.
+ */
+export const OUTFITS = ['tee', 'hoodie', 'kurta', 'jacket', 'crop', 'skirt', 'dress', 'shirt', 'shorts'] as const;
 /** Two body builds (open to everyone, any combination with anything else). */
 export const BUILDS = ['Build 1', 'Build 2'] as const;
 export const HAIR_STYLES = ['short', 'long', 'bun', 'curly', 'cap', 'none'] as const;
 
-export const OUTFIT_LABELS: Record<(typeof OUTFITS)[number], string> = { tee: 'Tee', hoodie: 'Hoodie', kurta: 'Kurta', jacket: 'Jacket' };
+export const OUTFIT_LABELS: Record<(typeof OUTFITS)[number], string> = {
+  tee: 'Tee & jeans',
+  hoodie: 'Hoodie',
+  kurta: 'Kurta',
+  jacket: 'Jacket',
+  crop: 'Crop top',
+  skirt: 'Top & skirt',
+  dress: 'Dress',
+  shirt: 'Shirt & jeans',
+  shorts: 'Tee & shorts',
+};
+
+/**
+ * What people on the street usually wear with each build (index into OUTFITS). Players can still
+ * pick any outfit with any build; this only shapes the crowd and a first-time look.
+ */
+export const USUAL_OUTFITS: readonly (readonly number[])[] = [
+  [0, 1, 2, 3, 7, 8, 7, 0], // build 1: tee & jeans, hoodie, kurta, jacket, shirt & jeans (often), tee & shorts
+  [4, 5, 6, 2, 0, 4, 6, 1], // build 2: crop top (often), top & skirt, dress (often), kurta, tee & jeans, hoodie
+];
 export const HAIR_LABELS: Record<(typeof HAIR_STYLES)[number], string> = {
   short: 'Short',
   long: 'Long',
@@ -71,12 +95,10 @@ export function sanitizeLook(value: unknown): AvatarLook {
 /** A look picked from a seed, so a first-time player does not look like everyone else. */
 export function randomLook(random: () => number): AvatarLook {
   const pick = (count: number): number => Math.floor(random() * count);
-  return {
-    skin: pick(SKIN_TONES.length),
-    hair: pick(HAIR_STYLES.length - 1), // not "none" by default
-    hairColor: pick(5), // natural colours by default
-    outfit: pick(OUTFITS.length),
-    color: pick(OUTFIT_COLORS.length),
-    build: pick(BUILDS.length),
-  };
+  const skin = pick(SKIN_TONES.length);
+  const hair = pick(HAIR_STYLES.length - 1); // not "none" by default
+  const hairColor = pick(5); // natural colours by default
+  const build = pick(BUILDS.length);
+  const usual = USUAL_OUTFITS[build] ?? USUAL_OUTFITS[0];
+  return { skin, hair, hairColor, outfit: usual[pick(usual.length)], color: pick(OUTFIT_COLORS.length), build };
 }

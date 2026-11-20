@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HAIR_COLORS, HAIR_STYLES, OUTFITS, OUTFIT_COLORS, SKIN_TONES } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
-import { garmentGeometry } from './garments.ts';
+import { CROP_HEM, SHORTS_HEM, garmentGeometry } from './garments.ts';
 import type { GarmentSpec } from './garments.ts';
 
 /**
@@ -25,7 +25,44 @@ const HAIR_FILES: Record<(typeof HAIR_STYLES)[number], string | null> = {
   cap: 'hair_buzzed.glb',
   none: null,
 };
-const PANTS: Record<(typeof OUTFITS)[number], string> = { tee: '#34425e', hoodie: '#3f434b', kurta: '#ece6d6', jacket: '#2b303a' };
+/** The lower half: jeans (three washes), pyjama, trousers, a dark knee skirt, khaki shorts. */
+const PANTS: Record<(typeof OUTFITS)[number], string> = {
+  tee: '#4a6c9c',
+  hoodie: '#3f434b',
+  kurta: '#ece6d6',
+  jacket: '#2b303a',
+  crop: '#5b80b3',
+  skirt: '#2b2f3a',
+  dress: '#2b2f3a', // (nothing below a dress)
+  shirt: '#3f5f8f',
+  shorts: '#b49d70',
+};
+/** Outfits whose trousers are jeans (denim weave and fading). */
+const DENIM = new Set<(typeof OUTFITS)[number]>(['tee', 'crop', 'shirt']);
+/**
+ * Skirts hanging from the waist (pelvis), as (radius, height) points in metres for a 1.75 m
+ * person: a kurta's lower half, a knee-length A-line skirt, a dress.
+ */
+const SKIRTS: Partial<Record<(typeof OUTFITS)[number], [number, number][]>> = {
+  kurta: [
+    [0.18, 1.0],
+    [0.215, 0.9],
+    [0.255, 0.74],
+    [0.31, 0.52],
+  ],
+  skirt: [
+    [0.168, 1.03],
+    [0.2, 0.95],
+    [0.25, 0.78],
+    [0.3, 0.57],
+  ],
+  dress: [
+    [0.168, 1.03],
+    [0.208, 0.95],
+    [0.258, 0.76],
+    [0.315, 0.54],
+  ],
+};
 const SHOES = '#2a2d34';
 
 /** Regions painted by the clothes shader. */
@@ -205,8 +242,12 @@ function fabric<T extends THREE.MeshStandardMaterial>(material: T, part: 'top' |
   // Metres per geometry unit (set when the person is dressed; bodies may be in centimetres).
   const unit = { value: 0.01 };
   material.userData.fabUnit = unit;
+  // Jeans: 1 = denim weave and fading (set per outfit in setLook).
+  const denim = { value: 0 };
+  material.userData.denim = denim;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFabUnit = unit;
+    shader.uniforms.uDenim = denim;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aCloth;\nvarying vec2 vFab;\nvarying vec3 vRest;\nuniform float uFabUnit;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFab = aCloth;\nvRest = position * uFabUnit; // metres');
@@ -216,6 +257,7 @@ function fabric<T extends THREE.MeshStandardMaterial>(material: T, part: 'top' |
         `#include <common>
 varying vec2 vFab;
 varying vec3 vRest;
+uniform float uDenim;
 float fabH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float fabN(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(fabH(i), fabH(i + vec2(1, 0)), f.x), mix(fabH(i + vec2(0, 1)), fabH(i + vec2(1, 1)), f.x), f.y); }
@@ -256,6 +298,15 @@ float fabFolds;`,
   float close = 1.0 - smoothstep(0.4, 1.5, max(fw.x, fw.y));
   float weave = (fabN(vRest.xy * 900.0) + fabN(vRest.zy * 900.0)) * 0.5;
   diffuseColor.rgb *= 1.0 + (weave - 0.5) * 0.12 * close;
+  if (uDenim > 0.5) {
+    // Denim: fine diagonal twill ribs up close, threads of slightly different indigo, and the
+    // lighter, worn patches on the upper thighs that jeans get.
+    float twill = 0.5 + 0.5 * sin((vRest.x + vRest.y) * 1300.0 + vRest.z * 600.0);
+    diffuseColor.rgb *= 1.0 + (twill - 0.5) * 0.2 * close;
+    diffuseColor.rgb *= 0.94 + 0.12 * fabN(vec2(vRest.y * 300.0, around * 40.0));
+    float worn = smoothstep(0.33, 0.43, h) * (1.0 - smoothstep(0.47, 0.54, h)) * smoothstep(0.35, 0.75, fabN(vec2(around * 2.5, h * 18.0)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.45 + vec3(0.02, 0.03, 0.05), worn * 0.55);
+  }
   fabFolds = folds;
   // Bump from the fold height: slopes on screen tilt the normal (no texture needed).
   float hgt = folds * 0.004 + weave * 0.0004 * close;
@@ -273,7 +324,7 @@ float fabFolds;`,
 }`,
       );
   };
-  material.customProgramCacheKey = () => `nukkad-fabric-${part}-1`;
+  material.customProgramCacheKey = () => `nukkad-fabric-${part}-2`;
   return material;
 }
 
@@ -300,6 +351,7 @@ const clothShader = (material: THREE.MeshStandardMaterial, uniforms: Record<stri
 varying vec2 vCloth;
 uniform vec3 uShirt; uniform vec3 uPants; uniform vec3 uShoes; uniform vec3 uSkinTint;
 uniform float uSleeve; uniform float uLong; uniform float uHood;
+uniform float uCrop; uniform float uArmless; uniform float uLegs;
 float nkCloth; float nkShirt;`,
       )
       .replace(
@@ -309,13 +361,20 @@ float nkCloth; float nkShirt;`,
   float r = floor(vCloth.x + 0.5);
   float h = vCloth.y;
   // Shirt: torso, upper arms, forearms (long sleeves), the top of the hips; a kurta reaches the knees.
-  float shirt = step(abs(r - 1.0), 0.1) + step(abs(r - 2.0), 0.1) + step(abs(r - 3.0), 0.1) * uSleeve
-              + step(abs(r - 4.0), 0.1) * step(0.53, h)
+  // A crop top stops above the navel; a sleeveless top leaves the arms bare.
+  float shirt = step(abs(r - 1.0), 0.1) * (1.0 - uCrop * (1.0 - step(${CROP_HEM.toFixed(3)}, h)))
+              + step(abs(r - 2.0), 0.1) * (1.0 - uArmless)
+              + step(abs(r - 3.0), 0.1) * uSleeve * (1.0 - uArmless)
+              + step(abs(r - 4.0), 0.1) * step(0.53, h) * (1.0 - uCrop)
               + (step(abs(r - 4.0), 0.1) + step(abs(r - 5.0), 0.1)) * uLong * step(0.3, h);
   shirt = min(shirt, 1.0);
   float shoes = step(abs(r - 7.0), 0.1) + step(abs(r - 6.0), 0.1) * step(h, 0.06);
   shoes = min(shoes, 1.0);
-  float pants = (step(abs(r - 4.0), 0.1) + step(abs(r - 5.0), 0.1) + step(abs(r - 6.0), 0.1)) * (1.0 - shirt) * (1.0 - shoes);
+  // Trousers cover hips, thighs and calves; shorts stop above the knee; under a skirt the legs are bare.
+  float thighs = uLegs < 0.5 ? 1.0 : (uLegs < 1.5 ? step(${SHORTS_HEM.toFixed(3)}, h) : 0.0);
+  float calves = uLegs < 0.5 ? 1.0 : 0.0;
+  float hips = uLegs < 1.5 ? 1.0 : step(0.5, h);
+  float pants = (step(abs(r - 4.0), 0.1) * hips + step(abs(r - 5.0), 0.1) * thighs + step(abs(r - 6.0), 0.1) * calves) * (1.0 - shirt) * (1.0 - shoes);
   // A hood or collar edge: the top of the torso near the neck.
   float hood = step(abs(r - 1.0), 0.1) * step(0.79, h) * uHood;
   nkShirt = shirt;
@@ -391,6 +450,12 @@ export class Person {
     uSleeve: { value: 0 },
     uLong: { value: 0 },
     uHood: { value: 0 },
+    /** Crop top: bare midriff. */
+    uCrop: { value: 0 },
+    /** Sleeveless: bare shoulders and arms. */
+    uArmless: { value: 0 },
+    /** Legs: 0 trousers · 1 shorts · 2 bare (under a skirt or dress). */
+    uLegs: { value: 0 },
   };
   private readonly hairColor = { value: new THREE.Color() };
   /** Arm bones, for the scooter handlebar pose laid over the idle clip. */
@@ -518,23 +583,30 @@ export class Person {
   private readonly shirt = fabric(new THREE.MeshPhysicalMaterial({ roughness: 0.9, metalness: 0, sheen: 0.6, sheenRoughness: 0.55 }), 'top');
   private readonly pants = fabric(new THREE.MeshPhysicalMaterial({ roughness: 0.92, metalness: 0, sheen: 0.45, sheenRoughness: 0.6 }), 'pants');
 
-  /** Real cloth layers over the body, and a loose skirt for the kurta. */
+  /** Real cloth layers over the body, and a skirt hanging from the waist where the outfit has one. */
   private dress(bodyMesh: THREE.SkinnedMesh, body: THREE.Group, look: AvatarLook): void {
     const outfit = OUTFITS[look.outfit] ?? 'tee';
     const metres = (bodyMesh.userData.metresPerUnit as number | undefined) ?? 0.01;
     const key = `build${look.build}`;
-    const top: GarmentSpec =
-      outfit === 'tee'
-        ? { part: 'top', sleeves: false, offset: 0.012, smooth: 10 }
-        : outfit === 'hoodie'
-          ? { part: 'top', sleeves: true, offset: 0.032, smooth: 18 }
-          : outfit === 'jacket'
-            ? { part: 'top', sleeves: true, offset: 0.026, smooth: 14 }
-            : { part: 'longTop', sleeves: true, offset: 0.016, smooth: 14 };
-    const pieces: [GarmentSpec, THREE.MeshStandardMaterial][] = [
-      [top, this.shirt],
-      [{ part: 'pants', sleeves: false, offset: 0.011, smooth: 8 }, this.pants],
-    ];
+    const tops: Record<(typeof OUTFITS)[number], GarmentSpec> = {
+      tee: { part: 'top', sleeves: false, offset: 0.012, smooth: 10 },
+      hoodie: { part: 'top', sleeves: true, offset: 0.032, smooth: 18 },
+      jacket: { part: 'top', sleeves: true, offset: 0.026, smooth: 14 },
+      kurta: { part: 'longTop', sleeves: true, offset: 0.016, smooth: 14 },
+      crop: { part: 'crop', sleeves: false, offset: 0.01, smooth: 8 },
+      skirt: { part: 'top', sleeves: false, offset: 0.011, smooth: 9 },
+      dress: { part: 'top', sleeves: false, armless: true, offset: 0.011, smooth: 9 },
+      shirt: { part: 'top', sleeves: true, offset: 0.024, smooth: 16 }, // a shirt hangs looser than a tee
+      shorts: { part: 'top', sleeves: false, offset: 0.013, smooth: 10 },
+    };
+    const lower: GarmentSpec | null =
+      outfit === 'skirt' || outfit === 'dress'
+        ? null // legs bare under the skirt
+        : outfit === 'shorts'
+          ? { part: 'shorts', sleeves: false, offset: 0.013, smooth: 8 }
+          : { part: 'pants', sleeves: false, offset: 0.011, smooth: 8 };
+    const pieces: [GarmentSpec, THREE.MeshStandardMaterial][] = [[tops[outfit], this.shirt]];
+    if (lower) pieces.push([lower, this.pants]);
     for (const [spec, material] of pieces) {
       const geometry = garmentGeometry(bodyMesh.geometry, spec, metres, key);
       if (!geometry) continue;
@@ -546,19 +618,19 @@ export class Person {
     }
     for (const material of [this.shirt, this.pants]) (material.userData.fabUnit as { value: number }).value = metres;
     this.materials.push(this.shirt, this.pants);
-    if (outfit !== 'kurta') return;
-    // The kurta's lower half flares out from the hips to the knees, riding on the pelvis.
+    const profilePoints = SKIRTS[outfit];
+    if (!profilePoints) return;
+    // The skirt hangs from the hips to the knees, riding on the pelvis.
     const pelvis = body.getObjectByName('pelvis');
     if (!pelvis) return;
     body.updateMatrixWorld(true);
     const at = new THREE.Vector3().setFromMatrixPosition(pelvis.matrixWorld);
-    const profile = [
-      [0.18, 1.0],
-      [0.215, 0.9],
-      [0.255, 0.74],
-      [0.31, 0.52],
-    ].map(([r, y]) => new THREE.Vector2(r, y));
-    const skirt = new THREE.LatheGeometry(profile, 64);
+    const top = profilePoints[0][1];
+    const length = top - profilePoints[profilePoints.length - 1][1];
+    const skirt = new THREE.LatheGeometry(
+      profilePoints.map(([r, y]) => new THREE.Vector2(r, y)),
+      64,
+    );
     // Soft pleats: the cloth waves in and out around the body, more towards the hem, the way
     // fabric hangs in folds (and the hem is not a perfectly level circle).
     const sp = skirt.getAttribute('position') as THREE.BufferAttribute;
@@ -567,16 +639,17 @@ export class Person {
       const z = sp.getZ(i);
       const y = sp.getY(i);
       const angle = Math.atan2(z, x);
-      const depth = THREE.MathUtils.smoothstep(1.0 - y, 0, 0.48); // 0 at the waist, 1 at the hem
+      const depth = THREE.MathUtils.smoothstep(top - y, 0, length); // 0 at the waist, 1 at the hem
       const wave = 1 + depth * (0.06 * Math.sin(angle * 9) + 0.03 * Math.sin(angle * 4 + 1.3));
       sp.setXYZ(i, x * wave, y + depth * 0.012 * Math.sin(angle * 9 + 0.7), z * wave);
     }
     skirt.computeVertexNormals();
     skirt.translate(at.x, 0, at.z);
     skirt.applyMatrix4(pelvis.matrixWorld.clone().invert());
-    const cloth = this.shirt.clone();
-    cloth.side = THREE.DoubleSide;
+    // A kurta or dress is the top's own cloth; a skirt is the lower half's.
+    const cloth = new THREE.MeshPhysicalMaterial({ roughness: 0.9, metalness: 0, sheen: 0.55, sheenRoughness: 0.55, side: THREE.DoubleSide });
     this.skirtMaterial = cloth;
+    this.skirtIsLower = outfit === 'skirt';
     this.materials.push(cloth);
     const mesh = new THREE.Mesh(skirt, cloth);
     mesh.castShadow = true;
@@ -584,7 +657,8 @@ export class Person {
     pelvis.add(mesh);
   }
 
-  private skirtMaterial: THREE.MeshStandardMaterial | null = null;
+  private skirtMaterial: THREE.MeshPhysicalMaterial | null = null;
+  private skirtIsLower = false;
 
   /** Colours only (body build, skin picture and hairstyle need a new Person). */
   setLook(look: AvatarLook): void {
@@ -597,10 +671,17 @@ export class Person {
     // The sheen (light catching the fibres at grazing angles) takes the cloth's own colour.
     this.shirt.sheenColor.copy(u.uShirt.value).lerp(new THREE.Color(1, 1, 1), 0.35);
     this.pants.sheenColor.copy(u.uPants.value).lerp(new THREE.Color(1, 1, 1), 0.35);
-    this.skirtMaterial?.color.copy(u.uShirt.value);
-    u.uSleeve.value = outfit === 'tee' ? 0 : 1;
+    if (this.skirtMaterial) {
+      this.skirtMaterial.color.copy(this.skirtIsLower ? u.uPants.value : u.uShirt.value);
+      this.skirtMaterial.sheenColor.copy(this.skirtMaterial.color).lerp(new THREE.Color(1, 1, 1), 0.35);
+    }
+    u.uSleeve.value = outfit === 'hoodie' || outfit === 'jacket' || outfit === 'kurta' || outfit === 'shirt' ? 1 : 0;
     u.uLong.value = outfit === 'kurta' ? 1 : 0;
     u.uHood.value = outfit === 'hoodie' ? 1 : 0;
+    u.uCrop.value = outfit === 'crop' ? 1 : 0;
+    u.uArmless.value = outfit === 'dress' ? 1 : 0;
+    u.uLegs.value = outfit === 'skirt' || outfit === 'dress' ? 2 : outfit === 'shorts' ? 1 : 0;
+    (this.pants.userData.denim as { value: number }).value = DENIM.has(outfit) ? 1 : 0;
     const tint = SKIN_TINT[look.skin] ?? SKIN_TINT[2];
     u.uSkinTint.value.setRGB(tint[0], tint[1], tint[2]);
     this.hairColor.value.set(HAIR_COLORS[look.hairColor]).convertSRGBToLinear();
