@@ -27,6 +27,30 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Realistic people: Microsoft Rocketbox (2026-11-20)
+
+- The owner OK'd the download (about 340 MB from github.com/microsoft/Microsoft-Rocketbox, MIT): 8 avatars (Female_Adult_01, 03, 13, 17; Male_Adult_06, 08, 09, 16) and 16 clips (idle, walk, jog, sprint, sit, wave, dance, talk, for women and men).
+- **Conversion** (Blender 5.2 via MCP):
+  - FBX import needs a placeholder active object first, or the importer fails entering edit mode.
+  - Materials rebuilt with relinked textures: body, head, and hair/lashes as a cut-out (alpha > 0.5, so glTF MASK). Textures shrunk to 1024 px WebP; normal and specular maps dropped.
+  - Exported as GLB: 0.5–1.1 MB each, about 8.7k triangles, 80-bone "Bip01" skeleton, models face +z.
+  - Clips exported one per file (merging actions in Blender 5 runs into action-slot trouble), then slimmed by `tools/characters/rocketbox-anims.mjs`: face and per-bone position tracks dropped, keys thinned. Walk went from 970 KB to 43 KB.
+  - Everything in `public/models/people/rocketbox/` is 8.3 MB.
+- **Game** (`player/avatar/rocketbox.ts`, `RocketboxPerson`):
+  - Speed picks idle, walk, jog or sprint, with the clip speed matched so feet don't slide. Emotes are wave, dance, sit and talk.
+  - Riding:
+    - Seated vehicles use the sit clip with the hips lowered to 0.52 m (where every vehicle's seat values expect them, measured from the old people's drive clip). Feet and hands are placed with two-bone IK, and the upper back (Spine1) leans; in Bip01 the thighs hang off Spine, so Spine itself must not lean.
+    - On the scooter, the hands reach the grips (0.88 m up, 0.4 m ahead) by IK.
+  - Height is seeded: women around 1.62 m, men around 1.73 m.
+- **Street walkers:** the nearest ones (up to the quality's limit) are Rocketbox people, each walker always the same one (route kind % 8); the far crowd is still the light instanced figures.
+- **Players:** a new look field `person` (`PEOPLE` in shared: Classic, Asha, Meera, Priya, Divya, Arjun, Rahul, Kiran, Vikram). 1–8 picks a realistic person; 0 = Classic, the customisable body with outfits. Looks saved before this get a person matching their build. The look panel shows Person first; the other options only apply to Classic.
+- **Checked in the browser:** a street walker; Asha standing and riding the Pulsar (seated, hands on the bars, feet on the pegs); Rahul on the scooter (hands on the grips).
+- **Not done:**
+  - Rocketbox people can't change clothes or colours yet.
+  - No jump clip: they stand when in the air.
+  - The 3,000 far-off walkers are still the simple figures.
+  - Not tested on a phone, or with many players at once.
+
 ## Street cables, shop glow, varied people; Rocketbox plan (2026-11-20)
 
 - **Overhead cables** (`scatter.ts` `lampsAndCables`, `worldView.ts` `addCables`):

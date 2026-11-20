@@ -4,6 +4,9 @@ import type { AvatarLook } from '@nukkad/shared';
 import { ScooterModel } from '../scooter.ts';
 import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.ts';
 import { Person, loadPeople, peopleReady } from './people.ts';
+import { RocketboxPerson, loadRocketbox, rocketboxReady } from './rocketbox.ts';
+
+const lookKey = (look: AvatarLook): string => `${look.build},${look.hair},${look.outfit},${look.skin >= 3}`;
 
 const STRIDE_M = 1.6; // metres walked per full leg cycle
 const FULL_SPEED = 4.5; // speed at which the swing is at its widest
@@ -73,7 +76,7 @@ export class Avatar {
   private blob: THREE.Mesh | null = null;
   private readonly scooter: ScooterModel;
   /** The real 3D person (once its files have loaded); until then the built-in body shows. */
-  private person: Person | null = null;
+  private person: Person | RocketboxPerson | null = null;
   private look: AvatarLook;
   private disposed = false;
   private opacity = 1;
@@ -114,17 +117,35 @@ export class Avatar {
       loadPeople()
         .then(() => this.makePerson())
         .catch(() => {}); // stays on the built-in body
+    // A realistic person (when the look picks one) replaces the classic body once loaded.
+    void loadRocketbox().then(() => this.makePerson());
   }
 
   private makePerson(): void {
-    const assets = peopleReady();
-    if (!assets || this.disposed) return;
-    this.person?.dispose();
-    this.person = new Person(assets, this.look);
-    this.person.setOpacity(this.opacity);
-    this.body.add(this.person.root);
+    if (this.disposed) return;
+    const rocketbox = this.look.person > 0 ? rocketboxReady() : null;
+    if (rocketbox) {
+      if (this.person instanceof RocketboxPerson && this.person.avatar === this.look.person - 1) return;
+      this.person?.dispose();
+      // Height seeded from the look, so a player always looks the same to everyone.
+      const seed = ((this.look.skin * 7 + this.look.hair * 13 + this.look.color * 23 + this.look.person * 31) % 97) / 97;
+      this.person = new RocketboxPerson(rocketbox, this.look.person - 1, seed);
+    } else {
+      const assets = peopleReady();
+      if (!assets) return;
+      if (this.person instanceof Person && this.look.person === 0 && this.builtFor === lookKey(this.look)) return;
+      this.person?.dispose();
+      this.person = new Person(assets, this.look);
+      this.builtFor = lookKey(this.look);
+    }
+    const person = this.person;
+    person.setOpacity(this.opacity);
+    this.body.add(person.root);
     this.mesh.visible = false;
   }
+
+  /** What the classic body was built for (build, hair, outfit, dark skin). */
+  private builtFor = '';
 
   /** The direction the avatar faces, radians (0 = towards -z). */
   get facing(): number {
@@ -136,7 +157,7 @@ export class Avatar {
     this.look = look;
     if (this.person) {
       // Build, hairstyle and light/dark skin picture are part of the model; colours are not.
-      if (old.build !== look.build || old.hair !== look.hair || old.outfit !== look.outfit || old.skin >= 3 !== look.skin >= 3) this.makePerson();
+      if (old.person !== look.person || old.build !== look.build || old.hair !== look.hair || old.outfit !== look.outfit || old.skin >= 3 !== look.skin >= 3) this.makePerson();
       else this.person.setLook(look);
     }
     this.mesh.geometry.dispose();

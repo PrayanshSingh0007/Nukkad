@@ -59,6 +59,13 @@ export const HAIR_LABELS: Record<(typeof HAIR_STYLES)[number], string> = {
   none: 'None',
 };
 
+/**
+ * Ready-made realistic people (Microsoft Rocketbox avatars, in this order in the game's
+ * ROCKETBOX_AVATARS), after "Classic" = the customisable body. Their clothes, skin and hair are
+ * part of the model; the other look fields only apply to Classic.
+ */
+export const PEOPLE = ['Classic', 'Asha', 'Meera', 'Priya', 'Divya', 'Arjun', 'Rahul', 'Kiran', 'Vikram'] as const;
+
 /** Every field is an index into one of the lists above. */
 export interface AvatarLook {
   skin: number;
@@ -68,6 +75,8 @@ export interface AvatarLook {
   color: number;
   /** Index into BUILDS (older saved looks have none → 0). */
   build: number;
+  /** Index into PEOPLE: 0 = Classic (customisable), 1–8 a realistic person. */
+  person: number;
 }
 
 const LIMITS: Record<keyof AvatarLook, number> = {
@@ -77,9 +86,10 @@ const LIMITS: Record<keyof AvatarLook, number> = {
   outfit: OUTFITS.length,
   color: OUTFIT_COLORS.length,
   build: BUILDS.length,
+  person: PEOPLE.length,
 };
 
-export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0 };
+export const DEFAULT_LOOK: AvatarLook = { skin: 2, hair: 0, hairColor: 0, outfit: 0, color: 5, build: 0, person: 5 };
 
 /** Turns anything (saved data, a network message) into a valid look. Bad fields fall back to the default. */
 export function sanitizeLook(value: unknown): AvatarLook {
@@ -89,6 +99,8 @@ export function sanitizeLook(value: unknown): AvatarLook {
     const field = input[key];
     if (typeof field === 'number' && Number.isInteger(field) && field >= 0 && field < LIMITS[key]) look[key] = field;
   }
+  // Looks saved before the realistic people existed get one that matches their build.
+  if (input.person === undefined) look.person = look.build === 1 ? 1 : 5;
   return look;
 }
 
@@ -100,5 +112,9 @@ export function randomLook(random: () => number): AvatarLook {
   const hairColor = pick(5); // natural colours by default
   const build = pick(BUILDS.length);
   const usual = USUAL_OUTFITS[build] ?? USUAL_OUTFITS[0];
-  return { skin, hair, hairColor, outfit: usual[pick(usual.length)], color: pick(OUTFIT_COLORS.length), build };
+  const outfit = usual[pick(usual.length)];
+  const color = pick(OUTFIT_COLORS.length);
+  // A realistic person matching the build (1–4 women, 5–8 men in PEOPLE).
+  const person = (build === 1 ? 1 : 5) + pick(4);
+  return { skin, hair, hairColor, outfit, color, build, person };
 }

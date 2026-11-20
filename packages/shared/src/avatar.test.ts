@@ -4,8 +4,14 @@ import { makeRng } from './util/random.ts';
 
 describe('avatar look', () => {
   it('keeps valid choices', () => {
-    const look = { skin: 5, hair: 3, hairColor: 8, outfit: 2, color: 9, build: 1 };
+    const look = { skin: 5, hair: 3, hairColor: 8, outfit: 2, color: 9, build: 1, person: 3 };
     expect(sanitizeLook(look)).toEqual(look);
+  });
+
+  it('gives looks saved before the realistic people one that matches their build', () => {
+    expect(sanitizeLook({ skin: 1, build: 1 }).person).toBe(1);
+    expect(sanitizeLook({ skin: 1, build: 0 }).person).toBe(5);
+    expect(sanitizeLook({ skin: 1, build: 0, person: 0 }).person).toBe(0); // Classic stays Classic
   });
 
   it('replaces anything invalid with the default, field by field', () => {
