@@ -402,11 +402,12 @@ export class StreetLifeView {
     return kind ? this.paintOf(kind, variant) : null;
   }
 
-  modelByName(name: string): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null {
+  modelByName(name: string, light = true): { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null {
     const kind = this.kinds.find((k) => k.name === name && k.mesh);
     if (!kind?.mesh) return null;
-    // Moving traffic and friends' vehicles use the light version once it is loaded.
-    if (kind.lod && kind.lodMaterial) return { geometry: kind.lod.geometry, material: kind.lodMaterial };
+    // Traffic further away and friends' vehicles use the light version once it is loaded;
+    // traffic close to you gets the full model.
+    if (light && kind.lod && kind.lodMaterial) return { geometry: kind.lod.geometry, material: kind.lodMaterial };
     return { geometry: kind.mesh.geometry, material: kind.material ?? this.material };
   }
 

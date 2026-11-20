@@ -4,9 +4,11 @@ import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { SolidBox } from './streetLifeView.ts';
 import { TrafficDrivers } from './trafficDrivers.ts';
 
-type ModelSource = (name: string) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
+type ModelSource = (name: string, light: boolean) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
 const STOP_AHEAD_M = 9; // traffic stops when you stand this close in front of it
+/** The space a vehicle keeps behind the one ahead of it in its lane (bumper to bumper), metres. */
+const GAP_M = 2.2;
 /** Two-wheelers have one headlight in the middle. */
 const ONE_LAMP = new Set(['two_wheeler', 'motorbike', 'scooter']);
 
@@ -48,6 +50,10 @@ function beamTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 const SOLID_COUNT = 5; // the nearest moving vehicles are solid
+/** Vehicles closer than this are drawn with their full model (further ones with the light one). */
+const FULL_MODEL_M = 40;
+/** Mesh keys: kind for the light version, kind + FULL for the full one. */
+const FULL = 100;
 
 interface Lane {
   route: TrafficRoute;
@@ -133,19 +139,21 @@ export class TrafficView {
     this.radius = radius;
   }
 
-  /** Creates the mesh for a vehicle type once its model has loaded. */
-  private meshFor(kind: number): THREE.InstancedMesh | null {
-    let mesh = this.meshes.get(kind);
+  /** Creates the mesh for a vehicle type (full or light model) once its model has loaded. */
+  private meshFor(kind: number, full = false): THREE.InstancedMesh | null {
+    const key = full ? kind + FULL : kind;
+    let mesh = this.meshes.get(key);
     if (mesh) return mesh;
-    const model = this.models(VEHICLE_KINDS[kind]);
+    const model = this.models(VEHICLE_KINDS[kind], !full);
     if (!model) return null;
-    const capacity = this.lanes.filter((lane) => lane.route.kind === kind).length;
+    const all = this.lanes.filter((lane) => lane.route.kind === kind).length;
+    const capacity = full ? Math.min(all, 16) : all;
     mesh = new THREE.InstancedMesh(model.geometry, model.material, Math.max(1, capacity));
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
-    this.meshes.set(kind, mesh);
+    this.meshes.set(key, mesh);
     this.group.add(mesh);
     return mesh;
   }
@@ -170,9 +178,29 @@ export class TrafficView {
     let beams = 0;
     this.drivers.begin();
 
+    // Vehicles near you (positions from last frame), for keeping a gap to the one in front.
+    const around = this.lanes.filter((lane) => Math.abs(lane.x - px) < this.radius + 20 && Math.abs(lane.z - pz) < this.radius + 20);
     for (const lane of this.lanes) {
       const route = lane.route;
       let pose = trafficPose(route, seconds * route.speed - lane.delay);
+      // Car-following: different routes share roads, so a vehicle waits while another is just
+      // ahead in its lane, going the same way (traffic queues instead of overlapping).
+      if (Math.abs(pose.x - px) < this.radius && Math.abs(pose.z - pz) < this.radius) {
+        const ax = -Math.sin(pose.heading);
+        const az = -Math.cos(pose.heading);
+        for (const other of around) {
+          if (other === lane) continue;
+          const dx = other.x - pose.x;
+          const dz = other.z - pose.z;
+          const ahead = dx * ax + dz * az;
+          const gap = (VEHICLE_HALF[route.kind]?.[1] ?? 2) + (VEHICLE_HALF[other.route.kind]?.[1] ?? 2) + GAP_M;
+          if (ahead <= 0.5 || ahead > gap) continue;
+          if (Math.abs(dx * -az + dz * ax) > 1.6 || Math.cos(other.heading - pose.heading) < 0.6) continue;
+          lane.delay += route.speed * dt;
+          pose = trafficPose(route, seconds * route.speed - lane.delay);
+          break;
+        }
+      }
       // Wait while someone is right in front, in this lane.
       const fx = -Math.sin(pose.heading);
       const fz = -Math.cos(pose.heading);
@@ -191,9 +219,13 @@ export class TrafficView {
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
-      const mesh = this.meshFor(route.kind);
+      // Close by: the full model (if there is room in its mesh), else the light one.
+      const fullMesh = d < FULL_MODEL_M ? this.meshFor(route.kind, true) : null;
+      const useFull = fullMesh !== null && (counts.get(route.kind + FULL) ?? 0) < fullMesh.instanceMatrix.count;
+      const key = useFull ? route.kind + FULL : route.kind;
+      const mesh = useFull ? fullMesh : this.meshFor(route.kind);
       if (!mesh) continue;
-      const i = counts.get(route.kind) ?? 0;
+      const i = counts.get(key) ?? 0;
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, lane.y, pose.z), rotation, one));
@@ -201,7 +233,7 @@ export class TrafficView {
       const name = VEHICLE_KINDS[route.kind];
       const paint = name === 'taxi' || name === 'ambulance' ? null : this.paint(name, route.variant);
       if (paint) mesh.setColorAt(i, paint);
-      counts.set(route.kind, i + 1);
+      counts.set(key, i + 1);
       if (lightsOn) {
         // Lamps at the front (−z is forward) and back corners, a beam on the road ahead.
         const [hw, hl] = VEHICLE_HALF[route.kind];
