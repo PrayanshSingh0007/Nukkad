@@ -30,6 +30,7 @@ import { WorldClient } from '../world/worldClient.ts';
 import { StreetLifeView } from '../world/streetLifeView.ts';
 import { TrafficView } from '../world/trafficView.ts';
 import { PedestrianView } from '../world/pedestrianView.ts';
+import { BirdsView } from '../world/birdsView.ts';
 import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
@@ -210,6 +211,7 @@ export class Game {
   private streetLife: StreetLifeView | null = null;
   private traffic: TrafficView | null = null;
   private walkers: PedestrianView | null = null;
+  private birds: BirdsView | null = null;
   private readonly reflections: CityReflections;
   /** High only: renders through a glow pass. */
   private composer: EffectComposer | null = null;
@@ -421,6 +423,7 @@ export class Game {
   /** While inside, the city is not drawn at all (cheaper, and nothing leaks through the walls). */
   private setOutsideVisible(on: boolean): void {
     for (const group of [this.world?.group, this.traffic?.group, this.walkers?.group, this.streetLife?.group]) if (group) group.visible = on;
+    if (this.birds) this.birds.mesh.layers.set(on ? 0 : 31); // indoors: no birds (their own update sets visible)
   }
 
   private addShowroomCars(inside: Interior): void {
@@ -711,6 +714,8 @@ export class Game {
       this.walkers.setRadius(settings.streetLifeRadius * 0.8);
       this.walkers.setNearLimit(settings.nearPeople);
       this.view3d.scene.add(this.walkers.group);
+      this.birds = new BirdsView();
+      this.view3d.scene.add(this.birds.mesh);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
@@ -1143,6 +1148,7 @@ export class Game {
     this.streetLife?.setNight(this.atmosphere.night);
     this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.rain);
     this.walkers?.setWorld(this.atmosphere.night, this.rain);
+    this.birds?.setWorld(this.atmosphere.night, this.rain);
     world?.update(dt);
     if (player) {
       this.placeSun(player.x, player.y, player.z);
@@ -1154,6 +1160,8 @@ export class Game {
         const seconds = (clock.ready ? clock.renderTime(now) : Date.now()) / 1000;
         this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z, player.y));
         this.walkers?.update(dt, seconds, player.x, player.z);
+        this.birds?.setGround(player.y);
+        this.birds?.update(seconds, player.x, player.z);
       }
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
     }

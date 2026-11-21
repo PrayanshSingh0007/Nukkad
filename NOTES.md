@@ -27,6 +27,33 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Dyed tops, film lighting for people, lamp light, birds (2026-11-21) — owner: "paint the clothing masks and make it more AAA"
+
+- **Clothing masks** (`tools/characters/rocketbox-masks.mjs`, run on the avatar folder; writes `<name>_top.png` 512 px and `masks.json`):
+  - The skin tone comes from the middle of the face texture.
+  - The core of the top is the body triangles moved by spine, shoulder and arm bones, minus skin-coloured texels.
+  - The top's colour range is then measured (chromaticity, with dark texels damped), outliers like tattoos are dropped, and the mask fills every connected texel of that fabric. It never spreads into hands, head or feet, or across the texture's empty background (that once reached a man's shoes). Separate pieces whose whole colour sits well inside the range are added, and islands under 160 texels are dropped.
+  - Coverage is 20–36 % of each texture. To preview a mask, overlay it on the body texture; there is no script in the repo for that.
+- **Dye shader** (`rocketbox.ts`): inside the mask, the top takes the new colour scaled by its own brightness over the top's average (`meanLum`), so folds, seams and prints stay. The colour is 18 % less saturated than the swatch.
+  - New look field `tint`: 0 = their own top, 1–10 = `OUTFIT_COLORS`. The look panel shows a "Top" row for realistic people; the first, striped button is their own top.
+  - Street walkers get a seeded top colour each (about a third wear their own).
+  - Checked on all 8 people in game. Known miss: a red cuff on Male_Adult_06's sleeve keeps its colour.
+- **People lighting:**
+  - A rim of sky light around their outline (horizon colour, strongest on parts facing up, none indoors).
+  - The city's sky reflections at 0.1–0.32 for a sheen.
+  - Roughness: face 0.52, hair 0.6, clothes 0.78.
+  - Fed every frame by `setPeopleLight` in `game.ts`.
+- **Lamp light cones** (`world/lampBeams.ts`): one instanced draw call over every street lamp (1,500 in the owner's square). Each is an open cone from the head to the road, additive and never written to depth.
+  - It fades at its outline, with height, and from 70 to 170 m. Fog is not used, because fog would add its own colour to added light.
+  - Night only: 0.07 dry, up to 0.27 in heavy rain, with thin rain streaks falling through it at about 9 m/s.
+  - The AO pass skips it (`isLine2` flag, the same rule it uses for lines).
+  - Lesson: GLSL `pow()` of a value that interpolation pushed just below 0 gives NaN, and one NaN pixel turns the whole frame black through bloom. Clamp before `pow`.
+- **Birds** (`world/birdsView.ts`): one draw call of up to 90, with the wings flapped on the GPU (two-part wings).
+  - Black kites circle on seeded thermals (2 per ~260 m cell, 3 × 3 cells around you), 36–80 m up, banked and mostly gliding.
+  - Three flocks (pigeons, crows, pigeons) loop 14–30 m up around a point that trails after you at 2.5 m/s, gliding together now and then.
+  - They thin at dusk and in rain, and are gone at night. Checked in game: a pigeon flock overhead and a kite high up.
+- **Not checked:** a phone; how the beams cost on a weak GPU when many lamps fill the screen.
+
 ## Drivers in traffic, jump, street reactions (2026-11-20)
 
 - **The owner's two repos:**
@@ -44,7 +71,7 @@ The owner can no longer use the model that did most of this work, so this sectio
 - **Street reactions** (`PedestrianView.setWorld` / `honk`):
   - Fewer people are out in rain and late at night (seeded per walker, at least 22 %). Measured: 810 people dry, 324 in heavy rain.
   - Your horn makes people within 16 m stop, turn to face you and gesture (the talk clip) for 1.8 s.
-- **Not done:** recolouring Rocketbox clothes. Their textures mix skin and clothes with a different layout per avatar, and a colour rule would recolour sleeves differently from the body or tint jeans. It needs a hand-painted clothing mask per avatar.
+- **Recolouring Rocketbox tops: done on 2026-11-21 with painted masks** (see the section above). Other clothes (jeans, skirts) keep their own colours.
 
 ## Realistic people: Microsoft Rocketbox (2026-11-20)
 
@@ -65,7 +92,7 @@ The owner can no longer use the model that did most of this work, so this sectio
 - **Players:** a new look field `person` (`PEOPLE` in shared: Classic, Asha, Meera, Priya, Divya, Arjun, Rahul, Kiran, Vikram). 1–8 picks a realistic person; 0 = Classic, the customisable body with outfits. Looks saved before this get a person matching their build. The look panel shows Person first; the other options only apply to Classic.
 - **Checked in the browser:** a street walker; Asha standing and riding the Pulsar (seated, hands on the bars, feet on the pegs); Rahul on the scooter (hands on the grips).
 - **Not done:**
-  - Rocketbox people can't change clothes or colours yet.
+  - Rocketbox people can't change clothes; only their top's colour can change (since 2026-11-21).
   - No jump clip: they stand when in the air.
   - The 3,000 far-off walkers are still the simple figures.
   - Not tested on a phone, or with many players at once.

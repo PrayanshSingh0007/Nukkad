@@ -87,6 +87,7 @@ Google Maps, Street View, any scraped imagery, real brand logos or shop signs, a
     - Converted from FBX to glTF in Blender; textures shrunk from 2048 px TGA to 1024 px WebP; normal and specular maps left out; hair and lashes made cut-out.
     - Clips: face-bone tracks and per-bone position tracks removed, keyframes thinned (`tools/characters/rocketbox-anims.mjs`).
     - People are scaled to varied real heights.
+    - Top masks (`*_top.png`, `masks.json`) made by us from each avatar's body texture (`tools/characters/rocketbox-masks.mjs`), so the game can recolour the top.
   - MIT licence text: "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files … The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software." (full text in the repository's LICENSE.md)
 
 
