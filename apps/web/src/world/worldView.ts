@@ -6,6 +6,7 @@ import type { ReadyMessage } from '../workers/protocol.ts';
 import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
+import { LampBeams } from './lampBeams.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -63,6 +64,7 @@ export class WorldView {
   private treeVariants = new Uint8Array(0);
   private lampHeads: THREE.MeshBasicMaterial | null = null;
   private halos: THREE.Points | null = null;
+  private beams: LampBeams | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -218,6 +220,7 @@ export class WorldView {
     this.lampHeads?.dispose();
     this.halos?.geometry.dispose();
     this.haloMaterial?.dispose();
+    this.beams?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -349,6 +352,8 @@ export class WorldView {
     // Halos: a soft glow around each lamp head at night, bigger in rain and haze (light
     // scattering in the air). Points, so the ambient-occlusion pass skips them.
     const haloPositions = new Float32Array(count * 3);
+    const beamHeads = new Float32Array(count * 3);
+    const beamGrounds = new Float32Array(count);
     this.haloMaterial = new THREE.PointsMaterial({
       map: this.glowMaterial.map,
       color: 0xffcf8a,
@@ -376,7 +381,11 @@ export class WorldView {
       const py = heightAt(this.terrain, px, pz) + 0.14;
       this.glow.setMatrixAt(i, matrix.compose(new THREE.Vector3(px, py, pz), rotation, one));
       haloPositions.set([px, y + 5.08, pz], i * 3);
+      beamHeads.set([px, y + 4.96, pz], i * 3);
+      beamGrounds[i] = py - 0.14;
     }
+    this.beams = new LampBeams(beamHeads, beamGrounds);
+    this.group.add(this.beams.mesh);
     const haloGeometry = new THREE.BufferGeometry();
     haloGeometry.setAttribute('position', new THREE.BufferAttribute(haloPositions, 3));
     this.halos = new THREE.Points(haloGeometry, this.haloMaterial);
@@ -471,6 +480,7 @@ export class WorldView {
   /** Moves water and wind. Call every frame. */
   update(dt: number): void {
     this.materials.time.value = (this.materials.time.value + dt) % 3600;
+    this.beams?.update(dt);
   }
 
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
@@ -510,6 +520,7 @@ export class WorldView {
       this.globeHaloMaterial.opacity = night * (0.4 + 0.35 * rain);
       this.globeHaloMaterial.size = 0.75 + 0.6 * rain;
     }
+    this.beams?.setLevel(night, rain);
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;
       this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);
