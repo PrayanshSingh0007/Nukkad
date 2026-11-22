@@ -27,6 +27,25 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Traffic spray, night city glow, eye adaptation, storm trees, sky-lit lakes (2026-11-22) — owner: "more aaa" (away 30 min)
+
+- **Spray behind traffic** (`world/trafficSpray.ts`): on a wet road, every vehicle near you (within 70 m) that is really moving (over 5 m/s, measured from frame to frame) throws a mist of water up behind it, in one instanced draw call.
+  - Each is a soft volume behind the bumper: a plume behind each wheel joining further back, densest low down, with wisps streaming back.
+  - It grows with speed: 1.5 m plus 0.22 m per m/s (up to 25 m/s), and taller.
+  - The first version was a smooth slab: invisible at normal strength, a white ghost when boosted.
+  - Checked in rain behind a car at about 9 m/s.
+- **City glow at night** (`atmosphere.ts`): the horizon and the lower sky take a warm sodium glow at night, much stronger under cloud and rain (the cloud base throws the street lights back). It warms the fog too.
+  - Checked: a rainy night with a warm-lit cloud base.
+- **Eye adaptation** (`game.ts` `adapt`):
+  - Stepping out of a building into daylight starts at 2.1× exposure (glare). Going in from daylight starts at about 0.45× (the room looks dark).
+  - Both ease back to normal over about 2 s. At night going out starts at 0.65×.
+  - `BASE_EXPOSURE` (1.15) must match `scene.ts`.
+  - Not checked in the browser.
+- **Storm trees** (`materials.ts` `wind`): in rain, crowns sway about 3.4× harder, lean with slow gusts, and leaves flutter 3× more. Cache key `nukkad-wind-3`.
+- **Lakes** (`materials.ts` `waterRipples`): mirror the real sky colours (they were fixed day colours, dimmed at night), and rain stipples the surface with fine dimples. Cache key `nukkad-water-3`.
+  - Not checked on a lake in this pass.
+- **Not checked:** a phone.
+
 ## Umbrellas, headlight light, wet people, morning mist, walk fix (2026-11-22) — owner: "more AAA"
 
 - **Umbrellas** (`player/avatar/umbrella.ts`): an eight-panel canopy 1.06 m across, sagging between the ribs, on a shaft with a crook handle. Colours as on a Bengaluru street in the monsoon: mostly black, then navy, maroon and bottle green, and a few bright ones.

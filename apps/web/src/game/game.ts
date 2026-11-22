@@ -196,6 +196,9 @@ const HYSTERESIS_M = 30;
 // Before any shader is compiled: the sun's light is dimmed under drifting cloud shadows.
 installCloudShadows();
 
+/** The renderer's normal exposure (scene.ts); eye adaptation moves around it. */
+const BASE_EXPOSURE = 1.15;
+
 /** Reused for the rain splashes' sprite size. */
 const SPLASH_VIEW = new THREE.Vector2();
 
@@ -221,6 +224,8 @@ export class Game {
   private walkers: PedestrianView | null = null;
   private birds: BirdsView | null = null;
   private readonly clouds = new CloudShadows();
+  /** Eyes adjusting: > 1 just after stepping out into daylight (glare), < 1 just after going into a dim room. */
+  private adapt = 1;
   private readonly reflections: CityReflections;
   /** High only: renders through a glow pass. */
   private composer: EffectComposer | null = null;
@@ -411,6 +416,8 @@ export class Game {
     player.resetMotion();
     this.rig.yaw = door.face; // look into the room
     this.setOutsideVisible(false);
+    // Out of the daylight the room looks dark for a moment, until your eyes adjust.
+    this.adapt = 1 - 0.55 * (1 - this.atmosphere.night);
     if (door.kind === 'showroom') this.addShowroomCars(inside);
     this.onToast?.(door.name ? `Inside: ${door.name}` : `Inside: ${INTERIOR_NAMES[door.kind]}`);
   }
@@ -429,6 +436,9 @@ export class Game {
     inside.dispose();
     this.interior = null;
     this.setOutsideVisible(true);
+    // Stepping out into daylight: glare for a moment, then your eyes adjust (at night the street
+    // is the darker place).
+    this.adapt = this.atmosphere.night > 0.5 ? 0.65 : 2.1;
   }
 
   /** While inside, the city is not drawn at all (cheaper, and nothing leaks through the walls). */
@@ -1155,6 +1165,9 @@ export class Game {
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
     }
+    // Eyes adjusting after a doorway (exposure eases back to normal over about 2 s).
+    this.adapt += (1 - this.adapt) * Math.min(1, dt * 1.5);
+    this.view3d.renderer.toneMappingExposure = BASE_EXPOSURE * this.adapt;
     // Cloud shadows by day (not indoors, not on Low); fewer in rain, when the sky is one grey sheet.
     const day = 1 - THREE.MathUtils.smoothstep(this.atmosphere.night, 0.1, 0.6);
     const cloudStrength = this.interior || this.level === 'low' ? 0 : 0.72 * day * (1 - this.rain) * (1 - this.atmosphere.mist);

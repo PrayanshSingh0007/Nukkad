@@ -518,50 +518,59 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
 }
 
 /** Lakes and pools: moving ripples, the sky mirrored at flat angles, and sun glitter. */
-function waterRipples(material: THREE.MeshLambertMaterial, time: { value: number }, night: { value: number }, lightDir: { value: THREE.Vector3 }): void {
+function waterRipples(material: THREE.MeshLambertMaterial, time: { value: number }, night: { value: number }, lightDir: { value: THREE.Vector3 }, sky: SkyUniforms, rain: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
     shader.uniforms.uNight = night;
     shader.uniforms.uLightDir = lightDir;
+    shader.uniforms.uSkyTop = sky.uSkyTop;
+    shader.uniforms.uSkyHorizon = sky.uSkyHorizon;
+    shader.uniforms.uRain = rain;
     addWorldPosition(shader);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uNight;\nuniform vec3 uLightDir;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uNight;\nuniform vec3 uLightDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHorizon;\nuniform float uRain;')
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
          vec2 p = vNkWorld.xz;
          vec2 q1 = p * 0.35 + vec2(uTime * 0.25, uTime * 0.17);
          vec2 q2 = p * 1.3 - vec2(uTime * 0.4, -uTime * 0.3);
+         // Rain stipples the surface with fine, fast-moving dimples.
+         vec2 q3 = p * 5.0 + vec2(uTime * 2.1, -uTime * 1.7);
          float wave = nkNoise(q1) * 0.6 + nkNoise(q2) * 0.4;
          // A wavy surface normal from the slope of the ripples.
          float e = 0.35;
          float wx = (nkNoise(q1 + vec2(e, 0.0)) - nkNoise(q1)) * 0.6 + (nkNoise(q2 + vec2(e, 0.0)) - nkNoise(q2)) * 0.4;
          float wz = (nkNoise(q1 + vec2(0.0, e)) - nkNoise(q1)) * 0.6 + (nkNoise(q2 + vec2(0.0, e)) - nkNoise(q2)) * 0.4;
+         wx += (nkNoise(q3 + vec2(0.15, 0.0)) - nkNoise(q3)) * uRain * 1.2;
+         wz += (nkNoise(q3 + vec2(0.0, 0.15)) - nkNoise(q3)) * uRain * 1.2;
          vec3 wn = normalize(vec3(-wx * 1.6, 1.0, -wz * 1.6));
          vec3 wv = normalize(vNkWorld - cameraPosition);
          vec3 wr = reflect(wv, wn);
          float day = 1.0 - uNight;
-         vec3 mirror = mix(vec3(0.7, 0.78, 0.86), vec3(0.22, 0.4, 0.72), clamp(wr.y * 1.5, 0.0, 1.0)) * (0.06 + 0.94 * day);
+         // The real sky mirrored: its horizon colour at flat angles, its top looking up.
+         vec3 mirror = mix(uSkyHorizon, uSkyTop, clamp(wr.y * 1.5, 0.0, 1.0));
          float fres = 0.08 + 0.92 * pow(1.0 - max(0.0, -dot(wv, wn)), 4.0);
          diffuseColor.rgb = mix(diffuseColor.rgb * (0.8 + 0.25 * wave), mirror, fres * 0.85);
          float nkGlint = pow(max(dot(wr, uLightDir), 0.0), 140.0) * (0.25 + 0.75 * day);`,
       )
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.95, 0.85) * nkGlint * 2.5;');
   };
-  material.customProgramCacheKey = () => 'nukkad-water-2';
+  material.customProgramCacheKey = () => 'nukkad-water-3';
 }
 
 /** Tree tops sway gently; each tree moves a little differently. Leaf cards also flutter. */
-function wind(material: THREE.MeshLambertMaterial, time: { value: number }): void {
+function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
+    shader.uniforms.uRain = rain;
     // Leaf cards are seen from both sides but must shade as part of one round crown:
     // undo the "flip the normal on the back face" that double-sided materials do.
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_begin>',
       '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n  normal *= faceDirection;\n#endif',
     );
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;').replace(
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uRain;').replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
        #ifdef USE_INSTANCING
@@ -570,13 +579,16 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }): voi
          float phase = 0.0;
        #endif
        float bend = max(0.0, transformed.y - 1.4);
-       transformed.x += sin(uTime * 1.6 + phase) * 0.045 * bend;
-       transformed.z += cos(uTime * 1.3 + phase * 1.7) * 0.03 * bend;
-       float flutter = step(1.6, transformed.y) * 0.035;
+       // Storms: stronger sway, gusts that lean the whole crown, and leaves thrashing.
+       float storm = 1.0 + 2.4 * uRain;
+       float gust = uRain * (0.5 + 0.5 * sin(uTime * 0.45 + phase * 0.37)) * 0.05;
+       transformed.x += (sin(uTime * 1.6 + phase) * 0.045 * storm + gust) * bend;
+       transformed.z += (cos(uTime * 1.3 + phase * 1.7) * 0.03 * storm + gust * 0.6) * bend;
+       float flutter = step(1.6, transformed.y) * 0.035 * (1.0 + 2.0 * uRain);
        transformed.y += sin(uTime * 3.1 + position.x * 4.0 + position.z * 3.0 + phase) * flutter;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-wind-2';
+  material.customProgramCacheKey = () => 'nukkad-wind-3';
 }
 
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
@@ -594,11 +606,11 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces, weather);
   const water = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  waterRipples(water, time, night, lightDir);
+  waterRipples(water, time, night, lightDir, sky, rain);
   const props = new THREE.MeshLambertMaterial({ vertexColors: true });
   const trees = leaves
     ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
     : new THREE.MeshLambertMaterial({ vertexColors: true });
-  wind(trees, time);
+  wind(trees, time, rain);
   return { night, time, lightDir, sky, rain, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }

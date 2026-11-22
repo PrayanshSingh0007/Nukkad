@@ -202,6 +202,11 @@ export class Atmosphere {
     this.mist = mistAt(hour, day) * (1 - this.rain * 0.6);
     const mistColour = this.grey.setRGB(0.88, 0.86, 0.82).multiplyScalar(0.55 + 0.45 * (1 - this.night));
     u.uHorizon.value.lerp(mistColour, this.mist * 0.6);
+    // A city at night lights its own sky: a warm glow low down, much stronger under cloud and
+    // rain (the cloud base throws the street lights back). It also warms the fog.
+    const glow = this.night * (0.35 + 0.5 * r);
+    u.uHorizon.value.lerp(this.grey.setRGB(0.075, 0.042, 0.026), glow);
+    u.uTop.value.lerp(this.grey.setRGB(0.03, 0.022, 0.024), glow * 0.45);
     u.uTop.value.lerp(mistColour, this.mist * 0.22);
     this.fog.near = this.fogRange.near * (1 - 0.85 * this.mist) * (1 - 0.5 * this.rain);
     this.fog.far = this.fogRange.far * (1 - 0.6 * this.mist) * (1 - 0.3 * this.rain);

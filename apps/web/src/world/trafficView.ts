@@ -5,6 +5,7 @@ import type { SolidBox } from './streetLifeView.ts';
 import { TrafficDrivers } from './trafficDrivers.ts';
 import { WetReflections } from './wetReflections.ts';
 import { HeadlightCones } from './headlightCones.ts';
+import { TrafficSpray } from './trafficSpray.ts';
 
 type ModelSource = (name: string, light: boolean) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
@@ -56,6 +57,8 @@ const SOLID_COUNT = 5; // the nearest moving vehicles are solid
 const FULL_MODEL_M = 40;
 /** Head and tail lights are mirrored in a wet road within this distance. */
 const WET_LIGHTS_M = 110;
+/** Spray is drawn behind moving vehicles within this distance on a wet road. */
+const SPRAY_M = 70;
 /** Reused for each cone's place and size. */
 const CONE_AT = new THREE.Vector3();
 const CONE_SCALE = new THREE.Vector3();
@@ -102,6 +105,10 @@ export class TrafficView {
   /** Headlight light in rainy or misty air. */
   private readonly cones: HeadlightCones;
   private readonly coneMatrix = new THREE.Matrix4();
+  /** Water thrown up behind traffic on a wet road. */
+  private readonly spray: TrafficSpray;
+  private rain = 0;
+  private readonly sprayLight = new THREE.Color();
   /** Someone at the wheel (or on the seat) of every moving vehicle. */
   private readonly drivers: TrafficDrivers;
 
@@ -136,6 +143,8 @@ export class TrafficView {
     this.group.add(this.wet.mesh);
     this.cones = new HeadlightCones(Math.max(1, routes.length) * 2);
     this.group.add(this.cones.mesh);
+    this.spray = new TrafficSpray(Math.max(1, routes.length));
+    this.group.add(this.spray.mesh);
     this.drivers = new TrafficDrivers(routes.length);
     this.group.add(this.drivers.group);
   }
@@ -148,6 +157,7 @@ export class TrafficView {
     this.headMaterial.opacity = this.tailMaterial.opacity = Math.min(1, night * 1.3);
     this.beamMaterial.opacity = night * (0.32 + 0.3 * rain);
     this.wet.setLevel(night, rain);
+    this.rain = rain;
   }
 
   get count(): number {
@@ -196,6 +206,9 @@ export class TrafficView {
     let heads = 0;
     this.wet.begin();
     this.cones.begin();
+    this.spray.setLevel(this.rain, this.sprayLight.setRGB(1.05, 1.07, 1.1).multiplyScalar(1 - 0.78 * this.night), dt);
+    this.spray.begin();
+    const spraying = this.spray.active;
     let beams = 0;
     this.drivers.begin();
 
@@ -203,6 +216,8 @@ export class TrafficView {
     const around = this.lanes.filter((lane) => Math.abs(lane.x - px) < this.radius + 20 && Math.abs(lane.z - pz) < this.radius + 20);
     for (const lane of this.lanes) {
       const route = lane.route;
+      const lastX = lane.x;
+      const lastZ = lane.z;
       let pose = trafficPose(route, seconds * route.speed - lane.delay);
       // Car-following: different routes share roads, so a vehicle waits while another is just
       // ahead in its lane, going the same way (traffic queues instead of overlapping).
@@ -240,6 +255,14 @@ export class TrafficView {
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
+      // Spray off a wet road behind it, more the faster it goes.
+      const moving = dt > 0 ? Math.hypot(pose.x - lastX, pose.z - lastZ) / dt : 0;
+      if (spraying && d < SPRAY_M && moving > 5 && moving < 60) {
+        const [hw, hl] = VEHICLE_HALF[route.kind];
+        const fast = Math.min(moving, 25);
+        rotation.setFromAxisAngle(up, pose.heading);
+        this.spray.add(matrix.compose(position.set(pose.x + Math.sin(pose.heading) * hl, lane.y, pose.z + Math.cos(pose.heading) * hl), rotation, scale.set(hw * 2.3, 0.55 + fast * 0.035, 1.5 + fast * 0.22)));
+      }
       // Close by: the full model (if there is room in its mesh), else the light one.
       const fullMesh = d < FULL_MODEL_M ? this.meshFor(route.kind, true) : null;
       const useFull = fullMesh !== null && (counts.get(route.kind + FULL) ?? 0) < fullMesh.instanceMatrix.count;
@@ -295,6 +318,7 @@ export class TrafficView {
     }
     this.wet.commit();
     this.cones.commit();
+    this.spray.commit();
     this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
       mesh.count = counts.get(kind) ?? 0;
@@ -317,6 +341,7 @@ export class TrafficView {
     this.tailMaterial.dispose();
     this.wet.dispose();
     this.cones.dispose();
+    this.spray.dispose();
     this.beams.dispose();
     this.beamMaterial.dispose();
     this.drivers.dispose();
