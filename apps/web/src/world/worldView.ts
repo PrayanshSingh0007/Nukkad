@@ -8,6 +8,7 @@ import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { LampBeams } from './lampBeams.ts';
 import { WetReflections } from './wetReflections.ts';
+import { LampInsects } from './lampInsects.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -69,6 +70,7 @@ export class WorldView {
   /** Lights mirrored in wet roads: [x, groundY, z, height, r, g, b, width] per light. */
   private readonly wetLights: number[] = [];
   private wet: WetReflections | null = null;
+  private insects: LampInsects | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -226,6 +228,7 @@ export class WorldView {
     this.haloMaterial?.dispose();
     this.beams?.dispose();
     this.wet?.dispose();
+    this.insects?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -396,6 +399,8 @@ export class WorldView {
     }
     this.beams = new LampBeams(beamHeads, beamGrounds);
     this.group.add(this.beams.mesh);
+    this.insects = new LampInsects(beamHeads);
+    this.group.add(this.insects.points);
     const haloGeometry = new THREE.BufferGeometry();
     haloGeometry.setAttribute('position', new THREE.BufferAttribute(haloPositions, 3));
     this.halos = new THREE.Points(haloGeometry, this.haloMaterial);
@@ -496,6 +501,11 @@ export class WorldView {
     this.beams?.update(dt);
   }
 
+  /** Things that only matter near you (insects round the nearest lamps). Call every frame. */
+  updateNear(dt: number, x: number, z: number): void {
+    this.insects?.update(dt, x, z);
+  }
+
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
   setLightDir(dir: THREE.Vector3): void {
     this.materials.lightDir.value.copy(dir);
@@ -535,6 +545,7 @@ export class WorldView {
     }
     this.beams?.setLevel(night, rain);
     this.wet?.setLevel(night, rain);
+    this.insects?.setLevel(night, rain);
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;
       this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);

@@ -49,6 +49,7 @@ import { TyreFx } from './tyreFx.ts';
 import { CarLights } from './carLights.ts';
 import { CityReflections } from '../atmosphere/cityReflections.ts';
 import { CloudShadows, installCloudShadows } from '../atmosphere/cloudShadows.ts';
+import { LightningBolt } from '../atmosphere/lightningBolt.ts';
 import { RainSplashes, RainView, rainAt } from '../atmosphere/weather.ts';
 
 /**
@@ -88,7 +89,8 @@ export interface GameOptions {
  * - sun shafts: bright sky near the sun is smeared towards it (22 taps), so light pours through gaps
  *   between buildings and trees; nothing when the sun is hidden or behind you;
  * - lens flare: soft coloured rings along the line from the sun through the centre, a glow
- *   and a thin horizontal streak, only while the sun itself is visible;
+ *   and a thin horizontal streak, and smudges of dirt on the lens lighting up, only while the
+ *   sun itself is visible;
  * - grade: a touch more contrast and colour, warm highlights and cool shadows, vignette,
  *   and a very fine moving film grain.
  */
@@ -174,6 +176,20 @@ const CINEMA_SHADER = {
           float glow = exp(-length(fromSun) * 7.0);
           flare += vec3(1.0, 0.86, 0.68) * (streak * 0.9 + glow * 0.45);
           c += flare * vis;
+          // Lens dirt: soft smudges and specks on the lens that light up when the sun shines
+          // into it (brightest near the sun, fading across the picture).
+          vec2 dUv = vUv * vec2(uAspect, 1.0);
+          float dirt = 0.0;
+          for (int k = 0; k < 2; k++) {
+            float scale = k == 0 ? 4.5 : 10.0;
+            vec2 g = dUv * scale + float(k) * 13.7;
+            vec2 cell = floor(g);
+            vec2 f = fract(g) - 0.5;
+            vec2 off = vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5;
+            float radius = (k == 0 ? 0.34 : 0.2) * (0.45 + 0.55 * hash(cell + 11.3));
+            dirt += step(0.5, hash(cell + float(k) * 17.0)) * smoothstep(radius, radius * 0.25, length(f - off * 0.45)) * (k == 0 ? 0.55 : 0.45);
+          }
+          c += vec3(1.0, 0.9, 0.76) * dirt * exp(-length(fromSun) * 1.7) * vis * 0.24;
         }
       }
 
@@ -297,6 +313,7 @@ export class Game {
   private readonly carLights = new CarLights();
   private readonly rainView = new RainView();
   private readonly splashes = new RainSplashes();
+  private readonly bolt = new LightningBolt();
   /** `?rain=0…1` in the address fixes the weather (for testing); null = the shared weather. */
   private readonly rainOverride: number | null = null;
   private rain = 0;
@@ -317,6 +334,7 @@ export class Game {
     this.view3d.scene.add(this.tyreFx.group);
     this.view3d.scene.add(this.rainView.lines);
     this.view3d.scene.add(this.splashes.points);
+    this.view3d.scene.add(this.bolt.group);
     const rainParam = new URLSearchParams(location.search).get('rain');
     this.rainOverride = rainParam === null ? null : Math.min(1, Math.max(0, Number(rainParam) || 0));
     this.remotes = new RemotePlayers(this.view3d.scene);
@@ -897,7 +915,9 @@ export class Game {
       if (this.nextLightning === 0) this.nextLightning = now + 4000 + Math.random() * 8000;
       if (now > this.nextLightning) {
         this.lightning = 1;
-        const delay = 0.3 + Math.random() * 2.8; // the further away, the later the thunder
+        // A visible bolt somewhere ahead; its thunder arrives after the sound has travelled.
+        this.bolt.strike(this.view3d.camera, this.player?.y ?? 0, this.view3d.camera.far);
+        const delay = this.bolt.distance / 343;
         this.sound.thunder(delay, 1 - delay / 3.1);
         this.nextLightning = now + 9000 + Math.random() * 20000;
       }
@@ -906,6 +926,7 @@ export class Game {
     this.lightning = Math.max(0, this.lightning - dt * 5);
     const flicker = this.lightning > 0.55 || (this.lightning > 0.15 && this.lightning < 0.35) ? this.lightning : this.lightning * 0.25;
     if (!this.interior) this.atmosphere.flash(flicker);
+    this.bolt.update(this.interior ? 0 : flicker);
   }
 
   /** Where the sun is on screen and how fast you go, for the cinema pass. */
@@ -1229,6 +1250,7 @@ export class Game {
         this.birds?.update(seconds, player.x, player.z);
       }
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
+      world?.updateNear(dt, player.x, player.z);
     }
     else if (ready) this.placeSun(ready.info.spawn[0], 0, ready.info.spawn[1]);
 

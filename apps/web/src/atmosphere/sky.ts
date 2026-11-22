@@ -111,8 +111,32 @@ const fragmentShader = /* glsl */ `
     color = mix(color, vec3(0.92, 0.94, 1.0), smoothstep(0.9994, 0.9997, moon) * uNight);
 
     vec3 cell = floor(dir * 220.0);
-    float star = step(0.9975, hash(cell)) * smoothstep(0.02, 0.25, dir.y);
-    color += vec3(star) * smoothstep(0.7, 1.0, uNight) * 0.9 * (1.0 - smoothstep(0.0, 0.25, uRain)); // stars only when it is properly dark and clear
+    float starSeed = hash(cell);
+    // A small soft dot somewhere in its cell (not the whole square cell).
+    vec3 inCell = fract(dir * 220.0) - 0.5 - (vec3(hash(cell + 1.7), hash(cell + 3.3), hash(cell + 5.9)) - 0.5) * 0.4;
+    float star = step(0.9975, starSeed) * smoothstep(0.02, 0.25, dir.y) * smoothstep(0.42, 0.08, length(inCell)) * (0.6 + 0.8 * fract(starSeed * 371.0));
+    // Twinkling: each star flickers at its own pace, more near the horizon (thicker air).
+    float twinkle = 0.65 + 0.35 * sin(uTime * (2.0 + 5.0 * fract(starSeed * 91.3)) + starSeed * 60.0) * (0.4 + 0.6 * (1.0 - smoothstep(0.1, 0.6, dir.y)));
+    float clearDark = smoothstep(0.7, 1.0, uNight) * (1.0 - smoothstep(0.0, 0.25, uRain));
+    color += vec3(star * twinkle) * 0.9 * clearDark; // stars only when it is properly dark and clear
+
+    // Now and then a shooting star: a short bright streak sliding down across the sky (one
+    // chance every 17 s, and about half the chances come to something).
+    float slot = floor(uTime / 17.0);
+    float since = uTime - slot * 17.0;
+    if (clearDark > 0.01 && since < 0.8 && hash(vec3(slot, 4.0, 9.0)) > 0.5) {
+      float az = hash(vec3(slot, 1.0, 2.0)) * 6.2832;
+      float el = radians(30.0 + 35.0 * hash(vec3(slot, 2.0, 3.0)));
+      vec3 start = vec3(cos(el) * cos(az), sin(el), cos(el) * sin(az));
+      vec3 travel = normalize(normalize(cross(start, vec3(0.0, 1.0, 0.0))) * (hash(vec3(slot, 3.0, 5.0)) > 0.5 ? 1.0 : -1.0) + vec3(0.0, -0.5, 0.0));
+      float t = since / 0.8;
+      vec3 head = normalize(start + travel * 0.3 * t);
+      vec3 tail = normalize(start + travel * 0.3 * max(0.0, t - 0.3));
+      vec3 seg = head - tail;
+      float along = clamp(dot(dir - tail, seg) / max(dot(seg, seg), 1e-6), 0.0, 1.0);
+      float off = length(dir - (tail + seg * along));
+      color += vec3(1.0, 0.97, 0.9) * smoothstep(0.0022, 0.0, off) * along * (1.0 - t) * 1.6 * clearDark;
+    }
 
     gl_FragColor = vec4(color, 1.0);
     #include <colorspace_fragment>

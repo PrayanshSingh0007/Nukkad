@@ -27,6 +27,23 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Lightning bolts, brake lights, lamp insects, lens dirt, stars (2026-11-22) — owner: "more AAA"
+
+- **Lightning bolts** (`atmosphere/lightningBolt.ts`): every storm flash now has a visible bolt, a jagged main channel plus 2–4 forks, from the cloud base (230 m) to the ground 220–520 m away, within about 45° of where you look.
+  - Drawn as face-on ribbons, brighter than white so the bloom catches them: a core and a wide faint glow, additive. Buildings hide it.
+  - It flickers with the flash. Thunder now comes after distance ÷ 343 m/s.
+  - Checked: a forked bolt behind houses in a storm.
+- **Brake lights** (`TrafficView`): a held-up vehicle (moving under 1.2 m/s on a route faster than 2.5 m/s, within 110 m) lights bright red brake lights, by day too. One more draw call of points.
+  - Seen switching on in the data (2 lights while traffic queued), not caught in a screenshot.
+- **Insects round lamps** (`world/lampInsects.ts`): on dry nights, up to 36 moths circle and dart under each of the 6 nearest lamp heads (looked up twice a second), lit warm, as soft round specks. None in rain.
+  - Checked: a swarm in a lamp's light cone.
+- **Lens dirt** (cinema pass): soft smudges and specks on the lens glow when the sun shines into it, brightest near the sun.
+  - Checked facing a low sun, with the flare rings.
+- **Stars:** now small soft dots placed within their cells (they were whole square cells), of different brightness, twinkling (more near the horizon).
+  - Shooting stars: one chance every 17 s, about half of them happen: a short streak sliding down across a clear night sky.
+  - Checked: a shooting star over a house.
+- **Not checked:** a phone.
+
 ## Rainbows, people look at you, road dust, fruit bats (2026-11-22) — owner: "more AAAA"
 
 - **Rainbow** (`sky.ts`, `uRainbow` set in `game.ts`): for about three minutes after rain (`recentRain` fades over 180 s), while the sun is up but under about 35°.

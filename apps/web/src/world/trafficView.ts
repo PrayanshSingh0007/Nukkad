@@ -96,6 +96,8 @@ export class TrafficView {
   private night = 0;
   private readonly heads: THREE.Points;
   private readonly tails: THREE.Points;
+  /** Brake lights: vehicles slowing or queueing light up red, day and night. */
+  private readonly brakes: THREE.Points;
   private readonly headMaterial: THREE.PointsMaterial;
   private readonly tailMaterial: THREE.PointsMaterial;
   private readonly beams: THREE.InstancedMesh;
@@ -132,6 +134,7 @@ export class TrafficView {
     };
     [this.heads, this.headMaterial] = points(new THREE.Color(3.2, 3.0, 2.6), 0.5);
     [this.tails, this.tailMaterial] = points(new THREE.Color(2.6, 0.18, 0.1), 0.34);
+    [this.brakes] = points(new THREE.Color(3.6, 0.22, 0.12), 0.4);
     this.beamMaterial = new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d6, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: true });
     const beam = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0, -0.5);
     this.beams = new THREE.InstancedMesh(beam, this.beamMaterial, Math.max(1, routes.length));
@@ -204,6 +207,8 @@ export class TrafficView {
     const headPos = (this.heads.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     const tailPos = (this.tails.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     let heads = 0;
+    let brakes = 0;
+    const brakePos = (this.brakes.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     this.wet.begin();
     this.cones.begin();
     // Wet: white spray. Dry and light out: a faint haze of brown road dust, only behind faster traffic.
@@ -262,8 +267,23 @@ export class TrafficView {
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
-      // Spray off a wet road (or dust off a dry one) behind it, more the faster it goes.
+      // How fast it really moved since the last frame (it may be held up behind someone).
       const moving = dt > 0 ? Math.hypot(pose.x - lastX, pose.z - lastZ) / dt : 0;
+      // Brake lights while it is held up (queueing behind another vehicle, or stopped for you).
+      if (moving < 1.2 && route.speed > 2.5 && d < 110 && dt > 0) {
+        const [hw, hl] = VEHICLE_HALF[route.kind];
+        const name = VEHICLE_KINDS[route.kind];
+        const single = ONE_LAMP.has(name);
+        const lampY = lane.y + (single ? 0.95 : Math.min(0.85, VEHICLE_HEIGHT[route.kind] * 0.38));
+        const bx = Math.sin(pose.heading);
+        const bz = Math.cos(pose.heading);
+        for (const side of single ? [0] : [-0.72, 0.72]) {
+          if (brakes * 3 + 3 > brakePos.length) break;
+          brakePos.set([pose.x + bx * hl + bz * hw * side, lampY, pose.z + bz * hl - bx * hw * side], brakes * 3);
+          brakes++;
+        }
+      }
+      // Spray off a wet road (or dust off a dry one) behind it, more the faster it goes.
       if (spraying && d < SPRAY_M && moving > sprayFrom && moving < 60) {
         const [hw, hl] = VEHICLE_HALF[route.kind];
         const fast = Math.min(moving, 25);
@@ -325,6 +345,9 @@ export class TrafficView {
     }
     this.wet.commit();
     this.cones.commit();
+    this.brakes.geometry.setDrawRange(0, brakes);
+    (this.brakes.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.brakes.visible = brakes > 0;
     this.spray.commit();
     this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
@@ -343,7 +366,8 @@ export class TrafficView {
 
   dispose(): void {
     for (const mesh of this.meshes.values()) mesh.dispose();
-    for (const points of [this.heads, this.tails]) points.geometry.dispose();
+    for (const points of [this.heads, this.tails, this.brakes]) points.geometry.dispose();
+    (this.brakes.material as THREE.Material).dispose();
     this.headMaterial.dispose();
     this.tailMaterial.dispose();
     this.wet.dispose();
