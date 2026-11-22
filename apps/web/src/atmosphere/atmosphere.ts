@@ -28,6 +28,16 @@ export function cycleHour(ms: number): number {
 }
 
 /** "Morning", "Afternoon", "Evening" or "Night" for an hour of the day. */
+/**
+ * Morning mist (0–1): most mornings a pale haze lies over the city from first light, thinning
+ * out by about half past nine; some mornings are thicker than others (seeded by the date).
+ */
+export function mistAt(hour: number, day: number): number {
+  const x = Math.sin(day * 12.9898 + 4.1) * 43758.5453;
+  const strength = 0.35 + 0.65 * (x - Math.floor(x));
+  return strength * THREE.MathUtils.smoothstep(hour, 5.2, 6.4) * (1 - THREE.MathUtils.smoothstep(hour, 7.4, 9.5));
+}
+
 export function partOfDay(hour: number): string {
   if (hour >= 5 && hour < 12) return 'Morning';
   if (hour >= 12 && hour < 16.5) return 'Afternoon';
@@ -111,6 +121,10 @@ export class Atmosphere {
   rain = 0;
   /** 0 = clear … 1 = overcast (real cloud cover when known). */
   cloud = 0;
+  /** Morning mist, 0–1 (worked out from the hour). */
+  mist = 0;
+  /** The fog's range for the quality level, before mist and rain pull it in. */
+  private fogRange = { near: 90, far: 600 };
   private baseAmbient = 1;
   private readonly grey = new THREE.Color();
   /**
@@ -132,6 +146,14 @@ export class Atmosphere {
     this.fog = scene.fog as THREE.Fog;
     scene.background = null;
     scene.add(this.sky.mesh);
+  }
+
+  /** The quality level's fog range (mist and rain bring it closer). */
+  setFogRange(near: number, far: number): void {
+    this.fogRange = { near, far };
+    this.fog.near = near;
+    this.fog.far = far;
+    this.elapsed = Infinity;
   }
 
   setPlace(lat: number, lng: number, timeZone: string): void {
@@ -175,6 +197,14 @@ export class Atmosphere {
     u.uTop.value.copy(l.top).lerp(overcastTop, r * 0.8);
     const overcastHorizon = this.grey.setRGB(0.55, 0.57, 0.6).multiplyScalar(1 - this.night * 0.85);
     u.uHorizon.value.copy(l.horizon).lerp(overcastHorizon, r * 0.75);
+    // Morning mist: a pale, slightly warm haze (it lights up in the low sun) closes in.
+    const day = Math.floor(date.getTime() / 86_400_000);
+    this.mist = mistAt(hour, day) * (1 - this.rain * 0.6);
+    const mistColour = this.grey.setRGB(0.88, 0.86, 0.82).multiplyScalar(0.55 + 0.45 * (1 - this.night));
+    u.uHorizon.value.lerp(mistColour, this.mist * 0.6);
+    u.uTop.value.lerp(mistColour, this.mist * 0.22);
+    this.fog.near = this.fogRange.near * (1 - 0.85 * this.mist) * (1 - 0.5 * this.rain);
+    this.fog.far = this.fogRange.far * (1 - 0.6 * this.mist) * (1 - 0.3 * this.rain);
     u.uRain.value = r;
     u.uSunDir.value.copy(sunDir);
     u.uSunColor.value.copy(l.light).multiplyScalar(degrees > -3 ? 1 : 0);
@@ -183,13 +213,13 @@ export class Atmosphere {
 
     this.fog.color.copy(u.uHorizon.value);
     this.sun.color.copy(l.light);
-    this.sun.intensity = l.lightPower * (1 - r * 0.72);
+    this.sun.intensity = l.lightPower * (1 - r * 0.72) * (1 - this.mist * 0.35);
     this.lightDir.copy(degrees > -4 ? sunDir : moonDir);
     // Very low light would make endless shadows; lift it a little.
     if (this.lightDir.y < 0.25) this.lightDir.setY(0.25).normalize();
     this.ambient.color.copy(l.ambientSky).lerp(this.grey.setRGB(0.7, 0.73, 0.78), r * 0.6);
     this.ambient.groundColor.copy(l.ambientGround);
-    this.ambient.intensity = l.ambientPower * (1 - r * 0.2);
+    this.ambient.intensity = l.ambientPower * (1 - r * 0.2) * (1 + this.mist * 0.18);
     this.baseAmbient = this.ambient.intensity;
   }
 

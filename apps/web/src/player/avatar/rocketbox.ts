@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OUTFIT_COLORS } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
+import { umbrellaGeometry, umbrellaMaterial } from './umbrella.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
@@ -25,8 +26,32 @@ export const ROCKETBOX_AVATARS = [
 
 export type RocketboxClip = 'idle' | 'walk' | 'jog' | 'sprint' | 'sit' | 'wave' | 'dance' | 'talk';
 const CLIPS: RocketboxClip[] = ['idle', 'walk', 'jog', 'sprint', 'sit', 'wave', 'dance', 'talk'];
-/** How fast each moving clip walks or runs at normal speed, m/s (for matching the feet to the ground). */
-const CLIP_SPEED: Partial<Record<RocketboxClip, number>> = { walk: 1.35, jog: 3.2, sprint: 5.6 };
+/** How fast each moving clip walks or runs at normal speed, m/s, before the clips are measured. */
+const CLIP_SPEED: Partial<Record<RocketboxClip, number>> = { walk: 1.0, jog: 2.7, sprint: 5.5 };
+
+/**
+ * The walk, jog and sprint clips carry the body forward (the root bone travels 1.2 m per walk
+ * cycle, then the loop snaps it back), so people glided ahead of where they stood and jumped
+ * back every step cycle. This takes the straight-line travel out (keeping the bob and sway) and
+ * returns how fast the clip really moves, m/s — the speed the feet match at normal playback.
+ */
+function walkInPlace(clip: THREE.AnimationClip): number | null {
+  const track = clip.tracks.find((t) => t.name === 'Bip01.position');
+  if (!track || clip.duration <= 0) return null;
+  const v = track.values;
+  const n = v.length / 3;
+  if (n < 2) return null;
+  const dx = v[(n - 1) * 3] - v[0];
+  const dz = v[(n - 1) * 3 + 2] - v[2];
+  const travel = Math.hypot(dx, dz);
+  if (travel < 0.2) return null; // stays put already
+  for (let i = 0; i < n; i++) {
+    const t = (track.times[i] - track.times[0]) / Math.max(1e-6, track.times[n - 1] - track.times[0]);
+    v[i * 3] -= dx * t;
+    v[i * 3 + 2] -= dz * t;
+  }
+  return travel / clip.duration;
+}
 
 interface Limb {
   upper: THREE.Bone;
@@ -95,6 +120,8 @@ function reach(root: THREE.Object3D, limbs: Limb[], targets: THREE.Vector3[]): v
 export interface RocketboxAssets {
   bodies: THREE.Group[];
   clips: { f: Map<RocketboxClip, THREE.AnimationClip>; m: Map<RocketboxClip, THREE.AnimationClip> };
+  /** Each moving clip's own speed at normal playback (m/s, for a body at scale 1), per sex. */
+  speeds: { f: Map<RocketboxClip, number>; m: Map<RocketboxClip, number> };
   /** Per avatar: where its top is in the body texture (tools/characters/rocketbox-masks.mjs), or null. */
   tops: { mask: THREE.Texture; meanLum: number }[] | null;
 }
@@ -128,10 +155,16 @@ const RIM = { value: new THREE.Color(0, 0, 0) };
 let sharedEnv: THREE.Texture | null = null;
 let envStrength = 0.3;
 const living = new Set<RocketboxPerson>();
+/** How hard it rains where people are (0 indoors): umbrellas open, clothes and hair get wet. */
+let rainNow = 0;
 
-/** Called every frame by the game: rim = the sky's colour (black indoors), env = the city's reflections. */
-export function setPeopleLight(rim: THREE.Color, env: THREE.Texture | null, night: number): void {
+/**
+ * Called every frame by the game: rim = the sky's colour (black indoors), env = the city's
+ * reflections, rain = 0 … 1 (0 indoors).
+ */
+export function setPeopleLight(rim: THREE.Color, env: THREE.Texture | null, night: number, rain = 0): void {
   RIM.value.copy(rim);
+  rainNow = rain;
   const strength = 0.1 + 0.22 * (1 - night);
   if (env === sharedEnv && Math.abs(strength - envStrength) < 0.01) return;
   const rebuild = env !== sharedEnv;
@@ -142,7 +175,14 @@ export function setPeopleLight(rim: THREE.Color, env: THREE.Texture | null, nigh
 
 const RIM_PARS = /* glsl */ `
   uniform vec3 uRim;
+  uniform float uWet;
 `;
+/** Wet clothes, skin and hair are darker (and glossier: the roughness is lowered in update). */
+const WET_DARKEN = /* glsl */ `
+  diffuseColor.rgb *= 1.0 - 0.24 * uWet;
+`;
+/** Where the hand holds an open umbrella, in the person's own space (+x = their right, −z = ahead), as a share of their height. */
+const UMBRELLA_GRIP = new THREE.Vector3(0.17, 0.71, -0.2);
 const RIM_LIGHT = /* glsl */ `
   {
     float nkFacing = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
@@ -190,6 +230,7 @@ export function loadRocketbox(): Promise<RocketboxAssets | null> {
     .then(([bodies, clips, tops]) => {
       const f = new Map<RocketboxClip, THREE.AnimationClip>();
       const m = new Map<RocketboxClip, THREE.AnimationClip>();
+      const speeds = { f: new Map<RocketboxClip, number>(), m: new Map<RocketboxClip, number>() };
       // Tracks for bones the bodies do not have (tiny end "Nub" bones) are dropped.
       const bones = new Set<string>();
       bodies[0]?.traverse((object) => bones.add(object.name));
@@ -197,9 +238,11 @@ export function loadRocketbox(): Promise<RocketboxAssets | null> {
         if (!animation) continue;
         animation.name = clip;
         animation.tracks = animation.tracks.filter((track) => bones.has(track.name.split('.')[0]));
+        const speed = walkInPlace(animation);
+        if (speed) speeds[sex].set(clip, speed);
         (sex === 'f' ? f : m).set(clip, animation);
       }
-      loaded = { bodies, clips: { f, m }, tops };
+      loaded = { bodies, clips: { f, m }, speeds, tops };
       return loaded;
     })
     .catch((error: unknown) => {
@@ -258,6 +301,15 @@ export class RocketboxPerson {
   private readonly pelvis: THREE.Bone | null;
   /** The top's dye (shared with the body material's shader). */
   private readonly top = { colour: { value: new THREE.Color() }, tint: { value: 0 }, tintIndex: 0 };
+  /** 0 dry … 1 soaked (eases with the rain; less under an umbrella). */
+  private readonly wet = { value: 0 };
+  /** Each material's dry roughness. */
+  private readonly roughness: number[] = [];
+  private readonly height: number;
+  /** The moving clips' own speeds for this person's size, m/s. */
+  private readonly speeds = new Map<RocketboxClip, number>();
+  private umbrella: THREE.Mesh | null = null;
+  private umbrellaColour: number | null = null;
 
   constructor(assets: RocketboxAssets, avatar: number, seed = 0.5) {
     this.avatar = avatar % ROCKETBOX_AVATARS.length;
@@ -269,6 +321,7 @@ export class RocketboxPerson {
     const headY = head ? new THREE.Vector3().setFromMatrixPosition(head.matrixWorld).y : 1.6;
     const target = (info.female ? 1.62 : 1.73) + (seed - 0.5) * 0.12;
     const scale = (target * 0.93) / Math.max(0.5, headY); // the head bone sits at about 93 % of the height
+    this.height = target;
     body.scale.multiplyScalar(scale);
     body.rotation.y = Math.PI; // the models face +z; the game's people face −z
     body.traverse((object) => {
@@ -278,6 +331,7 @@ export class RocketboxPerson {
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone();
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         this.materials.push(material);
+        this.roughness.push((material as THREE.MeshStandardMaterial).roughness ?? 0.7);
         const top = assets.tops?.[this.avatar];
         this.shade(material, top && /body/i.test(material.name) && (material as THREE.MeshStandardMaterial).map ? top : null);
       }
@@ -296,6 +350,7 @@ export class RocketboxPerson {
     this.mixer = new THREE.AnimationMixer(body);
     const clips = info.female ? assets.clips.f : assets.clips.m;
     for (const [name, clip] of clips) this.actions.set(name, this.mixer.clipAction(clip));
+    for (const [name, speed] of info.female ? assets.speeds.f : assets.speeds.m) this.speeds.set(name, speed * scale);
     // Not everyone steps in time with everyone else.
     this.mixer.setTime(seed * 10);
     this.play('idle', 0);
@@ -319,20 +374,23 @@ export class RocketboxPerson {
   private shade(material: THREE.Material, top: { mask: THREE.Texture; meanLum: number } | null): void {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uRim = RIM;
+      shader.uniforms.uWet = this.wet;
       let pars = RIM_PARS;
+      let afterMap = WET_DARKEN;
       if (top) {
         shader.uniforms.uTopMask = { value: top.mask };
         shader.uniforms.uTop = this.top.colour;
         shader.uniforms.uTint = this.top.tint;
         shader.uniforms.uMeanLum = { value: top.meanLum };
         pars += TOP_PARS;
-        shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n${TOP_DYE}`);
+        afterMap = TOP_DYE + WET_DARKEN;
       }
       shader.fragmentShader = shader.fragmentShader
+        .replace('#include <map_fragment>', `#include <map_fragment>\n${afterMap}`)
         .replace('#include <common>', `#include <common>\n${pars}`)
         .replace('#include <opaque_fragment>', `${RIM_LIGHT}\n#include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => (top ? 'nukkad-rocketbox-2-top' : 'nukkad-rocketbox-2');
+    material.customProgramCacheKey = () => (top ? 'nukkad-rocketbox-3-top' : 'nukkad-rocketbox-3');
     const standard = material as THREE.MeshStandardMaterial;
     standard.envMap = sharedEnv;
     standard.envMapIntensity = envStrength;
@@ -361,6 +419,37 @@ export class RocketboxPerson {
     const hsl = { h: 0, s: 0, l: 0 };
     this.top.colour.value.set(hex).getHSL(hsl);
     this.top.colour.value.setHSL(hsl.h, hsl.s * 0.82, hsl.l);
+  }
+
+  /**
+   * Whether this person carries an umbrella (and its colour). It opens by itself in the rain
+   * while they stand or walk, held in the right hand over their head.
+   */
+  setUmbrella(colour: number | null): void {
+    if (colour === this.umbrellaColour) return;
+    this.umbrellaColour = colour;
+    this.umbrella?.removeFromParent();
+    this.umbrella = null;
+    if (colour === null) return;
+    this.umbrella = new THREE.Mesh(umbrellaGeometry(), umbrellaMaterial(colour));
+    this.umbrella.castShadow = true;
+    this.umbrella.visible = false;
+    this.root.add(this.umbrella);
+  }
+
+  /** The open umbrella over the head, the right hand on its handle (by IK). */
+  private holdUmbrella(): void {
+    const umbrella = this.umbrella;
+    if (!umbrella) return;
+    const grip = UMBRELLA_GRIP.clone();
+    grip.y *= this.height;
+    umbrella.position.copy(grip);
+    // Leaning a little ahead and in over the head (the hand is off to the right).
+    umbrella.rotation.set(-0.14, 0, 0.13);
+    const right = this.arms.find((limb) => /_R_/i.test(limb.upper.name));
+    if (!right) return;
+    this.root.updateMatrixWorld(true);
+    reach(this.root, [right], [this.root.localToWorld(grip.add(new THREE.Vector3(0, 0.05, 0)))]);
   }
 
   /** Only the top's colour changes on these models (the rest is the person's own). */
@@ -392,7 +481,7 @@ export class RocketboxPerson {
     else if (emote === 3) clip = 'sit';
     else if (emote === 4) clip = 'talk';
     this.play(clip);
-    const natural = CLIP_SPEED[clip];
+    const natural = this.speeds.get(clip) ?? CLIP_SPEED[clip];
     const action = this.actions.get(clip);
     if (action) action.timeScale = natural ? THREE.MathUtils.clamp(speed / natural, 0.6, 1.6) : 1;
     this.mixer.update(dt);
@@ -414,6 +503,18 @@ export class RocketboxPerson {
       this.leanTo(grips);
       reach(this.root, this.arms, grips);
     }
+    // Rain: the umbrella opens while standing or walking (not riding, in the air, running or
+    // dancing), and everyone slowly gets wet — much less under an umbrella — and slowly dries.
+    const open = this.umbrella !== null && rainNow > 0.15 && riding === null && grounded && emote === 0 && speed < 3.5;
+    if (this.umbrella) {
+      this.umbrella.visible = open;
+      if (open) this.holdUmbrella();
+    }
+    const soak = rainNow * (open ? 0.3 : 1);
+    this.wet.value += (soak - this.wet.value) * Math.min(1, dt / (soak > this.wet.value ? 10 : 45));
+    this.materials.forEach((material, i) => {
+      (material as THREE.MeshStandardMaterial).roughness = this.roughness[i] * (1 - 0.45 * this.wet.value);
+    });
   }
 
   private air = 0;
@@ -481,6 +582,7 @@ export class RocketboxPerson {
 
   dispose(): void {
     living.delete(this);
+    this.umbrella?.removeFromParent(); // its geometry and material are shared
     this.mixer.stopAllAction();
     for (const material of this.materials) material.dispose();
     this.root.removeFromParent();

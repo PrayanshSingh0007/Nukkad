@@ -5,6 +5,7 @@ import { ScooterModel } from '../scooter.ts';
 import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.ts';
 import { Person, loadPeople, peopleReady } from './people.ts';
 import { RocketboxPerson, loadRocketbox, rocketboxReady } from './rocketbox.ts';
+import { umbrellaColour } from './umbrella.ts';
 
 const lookKey = (look: AvatarLook): string => `${look.build},${look.hair},${look.outfit},${look.skin >= 3}`;
 
@@ -134,6 +135,8 @@ export class Avatar {
       const seed = ((this.look.skin * 7 + this.look.hair * 13 + this.look.color * 23 + this.look.person * 31) % 97) / 97;
       this.person = new RocketboxPerson(rocketbox, this.look.person - 1, seed);
       this.person.setLook(this.look);
+      // Everyone has an umbrella for the rain (seeded from the look, so others see the same one).
+      this.person.setUmbrella(umbrellaColour((seed * 7.31) % 1));
     } else {
       const assets = peopleReady();
       if (!assets) return;

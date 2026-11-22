@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleHour, partOfDay } from './atmosphere.ts';
+import { cycleHour, mistAt, partOfDay } from './atmosphere.ts';
 
 describe('the game day', () => {
   const minute = 60_000;
@@ -31,5 +31,19 @@ describe('the game day', () => {
     expect(partOfDay(18)).toBe('Evening');
     expect(partOfDay(23)).toBe('Night');
     expect(partOfDay(3)).toBe('Night');
+  });
+});
+
+describe('morning mist', () => {
+  it('lies over early mornings only, thicker on some days than others', () => {
+    for (let day = 0; day < 20; day++) {
+      expect(mistAt(3, day)).toBe(0);
+      expect(mistAt(12, day)).toBe(0);
+      expect(mistAt(20, day)).toBe(0);
+      expect(mistAt(7, day)).toBeGreaterThan(0.3);
+      expect(mistAt(7, day)).toBeLessThanOrEqual(1);
+    }
+    const strengths = new Set(Array.from({ length: 20 }, (_, day) => mistAt(7, day).toFixed(2)));
+    expect(strengths.size).toBeGreaterThan(5);
   });
 });

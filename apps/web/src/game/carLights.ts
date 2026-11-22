@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { headlightConePair, headlightsVisible } from '../world/headlightCones.ts';
 
 /**
  * Lamps on the vehicle you drive: red brake lights when you brake or pull the handbrake, white
@@ -58,6 +59,8 @@ export class CarLights {
   private tail: Lamp | null = null;
   private reverse: Lamp | null = null;
   private head: Lamp | null = null;
+  /** The headlights' light in rainy or misty air. */
+  private cones: THREE.Group | null = null;
 
   /** Puts the lamps on a vehicle model (its local −z is the front, +z the back). */
   attach(parent: THREE.Object3D, box: THREE.Box3, single: boolean): void {
@@ -73,7 +76,8 @@ export class CarLights {
     this.tail = lamps(xs.flatMap((x) => [x, tailY, back]), single ? 0.18 : 0.26);
     this.reverse = lamps(xs.flatMap((x) => [x * 0.6, tailY - 0.08, back]), 0.17);
     this.head = lamps(xs.flatMap((x) => [x * 0.95, headY, front]), single ? 0.28 : 0.34);
-    this.group.add(this.tail.points, this.reverse.points, this.head.points);
+    this.cones = headlightConePair(xs.map((x) => new THREE.Vector3(x * 0.95, headY, front)));
+    this.group.add(this.tail.points, this.reverse.points, this.head.points, this.cones);
     parent.add(this.group);
   }
 
@@ -85,6 +89,7 @@ export class CarLights {
     }
     this.group.clear();
     this.tail = this.reverse = this.head = null;
+    this.cones = null;
   }
 
   /** `speed` m/s (negative = backwards), `brake` 0–1, night 0–1. */
@@ -97,5 +102,6 @@ export class CarLights {
     this.reverse.material.color.copy(REVERSE);
     this.head.points.visible = night > 0.3;
     this.head.material.color.copy(HEAD);
+    if (this.cones) this.cones.visible = night > 0.3 && headlightsVisible();
   }
 }

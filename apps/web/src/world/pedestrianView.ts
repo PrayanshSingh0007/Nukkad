@@ -6,6 +6,16 @@ import type { AvatarLook } from '@nukkad/shared';
 import { buildAvatarGeometry } from '../player/avatar/avatarModel.ts';
 import { Person, peopleReady } from '../player/avatar/people.ts';
 import { ROCKETBOX_AVATARS, RocketboxPerson, loadRocketbox, rocketboxReady } from '../player/avatar/rocketbox.ts';
+import { umbrellaColour, umbrellaGeometry, umbrellaMaterial } from '../player/avatar/umbrella.ts';
+
+/** About four in five walkers carry an umbrella in the rain (seeded per walker). */
+const UMBRELLA_SHARE = 0.8;
+/** Where the far crowd figures hold theirs: right hand, chest high, a little ahead; leaning in. */
+const CROWD_GRIP = new THREE.Matrix4().compose(new THREE.Vector3(0.17, 1.2, -0.2), new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.14, 0, 0.13)), new THREE.Vector3(1, 1, 1));
+const umbrellaSeed = (index: number, salt: number): number => {
+  const x = Math.sin(index * 91.17 + salt * 13.7) * 43758.5453;
+  return x - Math.floor(x);
+};
 
 const LOOKS = 8;
 const WAIT_AHEAD_M = 1.6;
@@ -89,6 +99,21 @@ export class PedestrianView {
       this.meshes.push(mesh);
       this.group.add(mesh);
     }
+    // The far crowd's umbrellas: one draw call, each its own colour.
+    this.umbrellas = new THREE.InstancedMesh(umbrellaGeometry(), umbrellaMaterial(null), Math.max(1, routes.length));
+    this.umbrellas.count = 0;
+    this.umbrellas.frustumCulled = false;
+    this.umbrellas.castShadow = true;
+    this.umbrellas.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, routes.length) * 3), 3);
+    this.group.add(this.umbrellas);
+  }
+
+  private readonly umbrellas: THREE.InstancedMesh;
+  private rain = 0;
+
+  /** This walker's umbrella colour, or null if they have none. */
+  private umbrellaOf(index: number): number | null {
+    return umbrellaSeed(index, 1) < UMBRELLA_SHARE ? umbrellaColour(umbrellaSeed(index, 2)) : null;
   }
 
   get count(): number {
@@ -108,6 +133,7 @@ export class PedestrianView {
     const wet = THREE.MathUtils.smoothstep(rain, 0.3, 0.75);
     const late = THREE.MathUtils.smoothstep(night, 0.55, 0.95);
     this.presence = Math.max(0.22, 1 - 0.6 * wet - 0.5 * late);
+    this.rain = rain;
   }
   private presence = 1;
   /** The shared clock at the last update, seconds. */
@@ -136,6 +162,10 @@ export class PedestrianView {
     this.time.value = seconds % 3600;
     this.lastSeconds = seconds;
     const counts = new Array<number>(LOOKS).fill(0);
+    let umbrellas = 0;
+    const umbrellasOpen = this.rain > 0.15;
+    const grip = new THREE.Matrix4();
+    const tint = new THREE.Color();
     const matrix = new THREE.Matrix4();
     const rotation = new THREE.Quaternion();
     const position = new THREE.Vector3();
@@ -186,6 +216,7 @@ export class PedestrianView {
         // Everyone dresses differently: a seeded top colour per walker (a third wear their own).
         const dye = (((index + 1) * 2246822519) >>> 0) / 4294967296;
         (slot.person as RocketboxPerson).setTint(dye < 0.34 ? 0 : 1 + Math.floor(((dye - 0.34) / 0.66) * OUTFIT_COLORS.length));
+        (slot.person as RocketboxPerson).setUmbrella(this.umbrellaOf(index));
         continue;
       }
       let slot = this.pool.find((s) => !s.seen);
@@ -236,7 +267,16 @@ export class PedestrianView {
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z), rotation, one));
       counts[route.kind % LOOKS] = i + 1;
+      const colour = umbrellasOpen ? this.umbrellaOf(index) : null;
+      if (colour !== null) {
+        this.umbrellas.setMatrixAt(umbrellas, grip.multiplyMatrices(matrix, CROWD_GRIP));
+        this.umbrellas.setColorAt(umbrellas, tint.setHex(colour));
+        umbrellas++;
+      }
     });
+    this.umbrellas.count = umbrellas;
+    this.umbrellas.instanceMatrix.needsUpdate = true;
+    if (this.umbrellas.instanceColor) this.umbrellas.instanceColor.needsUpdate = true;
     this.meshes.forEach((mesh, look) => {
       mesh.count = counts[look];
       mesh.instanceMatrix.needsUpdate = true;

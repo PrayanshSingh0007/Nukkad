@@ -70,6 +70,11 @@ Template:
 
 ## Fixed
 
+### B-032 Realistic people glided forward and snapped back every step
+- Type: looks wrong
+- Status: fixed 2026-11-22
+- Notes: the Rocketbox walk, jog and sprint clips carry the root bone forward (1.2, 2.1 and 3.5 m per cycle), and the looping clip snapped it back. So walkers and your own character drifted up to 1.2 m ahead of where they stood and jumped back every cycle. `walkInPlace` in `rocketbox.ts` now takes the straight-line travel out of `Bip01.position` at load (keeping the bob and sway), and uses the measured travel ÷ cycle length as each clip's real speed for matching the feet. Found because an umbrella hand-hold landed behind a walker. Checked: hips stay within 3 cm of the walker's position over a whole cycle.
+
 ### B-030 Water tanks floating in the air
 - Type: looks wrong
 - Status: fixed 2026-11-20

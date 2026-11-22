@@ -31,6 +31,7 @@ import { StreetLifeView } from '../world/streetLifeView.ts';
 import { TrafficView } from '../world/trafficView.ts';
 import { PedestrianView } from '../world/pedestrianView.ts';
 import { BirdsView } from '../world/birdsView.ts';
+import { setHeadlightHaze } from '../world/headlightCones.ts';
 import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
@@ -762,6 +763,7 @@ export class Game {
     const fog = this.view3d.scene.fog as THREE.Fog;
     fog.far = quality.viewDistance;
     fog.near = quality.viewDistance * 0.15; // a light city haze from fairly close: depth, like a real Bengaluru afternoon
+    this.atmosphere?.setFogRange(fog.near, fog.far); // morning mist and rain pull it in from here
     this.view3d.camera.far = quality.viewDistance + 80;
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
@@ -1155,11 +1157,11 @@ export class Game {
     }
     // Cloud shadows by day (not indoors, not on Low); fewer in rain, when the sky is one grey sheet.
     const day = 1 - THREE.MathUtils.smoothstep(this.atmosphere.night, 0.1, 0.6);
-    const cloudStrength = this.interior || this.level === 'low' ? 0 : 0.72 * day * (1 - this.rain);
+    const cloudStrength = this.interior || this.level === 'low' ? 0 : 0.72 * day * (1 - this.rain) * (1 - this.atmosphere.mist);
     this.clouds.update(this.view3d.renderer, Date.now(), cloudStrength, this.atmosphere.cloud);
     // Realistic people: a rim of sky light (none indoors) and the sky's reflections.
     PEOPLE_RIM.copy(skyU.uHorizon.value).multiplyScalar(this.interior ? 0 : 0.55 * (1 - this.atmosphere.night * 0.4));
-    setPeopleLight(PEOPLE_RIM, this.reflections.texture, this.interior ? 1 : this.atmosphere.night);
+    setPeopleLight(PEOPLE_RIM, this.reflections.texture, this.interior ? 1 : this.atmosphere.night, this.interior ? 0 : this.rain);
     if (this.interior) {
       // Indoors: lit by the room's lamps, not the sun (same lights, other strengths — no shader rebuild).
       this.view3d.sun.intensity = 0.7;
@@ -1170,6 +1172,7 @@ export class Game {
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
     this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.rain);
+    setHeadlightHaze(this.interior ? 0 : this.atmosphere.night, this.interior ? 0 : this.rain, this.interior ? 0 : this.atmosphere.mist, dt);
     this.walkers?.setWorld(this.atmosphere.night, this.rain);
     this.birds?.setWorld(this.atmosphere.night, this.rain);
     world?.update(dt);

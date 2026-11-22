@@ -27,6 +27,25 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Umbrellas, headlight light, wet people, morning mist, walk fix (2026-11-22) — owner: "more AAA"
+
+- **Umbrellas** (`player/avatar/umbrella.ts`): an eight-panel canopy 1.06 m across, sagging between the ribs, on a shaft with a crook handle. Colours as on a Bengaluru street in the monsoon: mostly black, then navy, maroon and bottle green, and a few bright ones.
+  - Realistic people (`RocketboxPerson.setUmbrella`) open theirs above rain 0.15 while standing or walking. It stays closed when riding, in the air, running or emoting. The right hand holds the handle by two-bone IK (grip at 71 % of their height, 17 cm to the right, 20 cm ahead), and the umbrella leans a little ahead and in over the head.
+  - Players: everyone has one (colour seeded from the look, so others see the same).
+  - Street walkers: about 4 in 5 carry one (seeded). The far crowd figures get instanced umbrellas (one draw call) at the same grip.
+  - Known limit: rain streaks still fall under the umbrella.
+- **Wet people:** clothes, skin and hair slowly darken (up to 24 %) and turn glossier (roughness down up to 45 %) in rain. They soak in about 10 s and dry over about 45 s, and stay much drier under an umbrella (30 %). `setPeopleLight` now takes the rain.
+- **Headlight light in the air** (`world/headlightCones.ts`): a soft cone about 14 m long from each headlight at night, tipped 4° down. Faint when dry; strong in rain, with drops glinting through it, and in mist.
+  - Traffic within 90 m uses one instanced draw call. Your own vehicle carries a pair (`CarLights`). The shader and geometry are shared, and `setHeadlightHaze` is called every frame.
+  - Checked at night in rain: lit rain around oncoming headlights.
+- **Morning mist** (`mistAt` in `atmosphere.ts`, tested): most mornings from about 5:15, thinning out by about 9:30, thicker on some days (seeded by the date).
+  - It pales the horizon (so the fog, sky and reflections agree) and the sky a little, and softens the sun (−35 %) and fills the shade (+18 %).
+  - It pulls the fog in: near up to 85 % closer, far up to 60 % closer. Rain now also brings fog in (far −30 %).
+  - The quality's fog range goes through `Atmosphere.setFogRange`. Cloud shadows fade in mist.
+  - Checked at 7:12: distant blocks fade into a pale haze.
+- **Walk fix (BUGS B-032):** realistic people no longer glide ahead and snap back each step cycle. The clips' forward travel is removed at load, and their real speeds (for example, walk 1.13 m/s for a 1.73 m man) set the playback rate.
+- **Not checked:** a phone.
+
 ## Cloud shadows, wet-road reflections, tyre spray, rain splashes (2026-11-22) — owner: "make it more AAA"
 
 - **Cloud shadows** (`atmosphere/cloudShadows.ts`): soft patches of shade, 100–300 m across, drift over the whole city with the wind (about 6 m/s). They land on everything lit by the sun and come from the clock, so everyone sees the same ones.
