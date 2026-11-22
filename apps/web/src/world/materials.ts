@@ -19,6 +19,8 @@ export interface WorldMaterials {
   sky: SkyUniforms;
   /** 0 = dry … 1 = downpour: wet roads, puddles, darker walls and soil. */
   rain: { value: number };
+  /** 0 = dry … 1 = soaked: how wet the ground and walls are (stays after the rain, dries slowly). */
+  wet: { value: number };
   terrain: THREE.MeshLambertMaterial;
   buildings: THREE.MeshLambertMaterial;
   ground: THREE.MeshLambertMaterial;
@@ -39,11 +41,13 @@ export interface SkyUniforms {
 /** Rain and the sky, for wet surfaces. */
 export interface WeatherUniforms extends SkyUniforms {
   uRain: { value: number };
+  uWet: { value: number };
   uNkTime: { value: number };
   uNight: { value: number };
 }
 const WEATHER_PARS_GLSL = /* glsl */ `
   uniform float uRain;
+  uniform float uWet;
   uniform float uNkTime;
   uniform float uNight;
   uniform vec3 uSkyTop;
@@ -322,16 +326,19 @@ const FACADE_GLSL = /* glsl */ `
 `;
 
 /**
- * Wet roads in the rain: the asphalt darkens and mirrors the sky (much more at low angles, as
- * real wet roads do), puddles collect in the dips, and drops make rings in the puddles.
+ * Wet roads: the asphalt darkens and mirrors the sky (much more at low angles, as real wet roads
+ * do), puddles collect in the dips, and while it rains drops make rings in the puddles. After
+ * the rain it dries out in stages: the glossy film goes first, the puddles last.
  */
 const WET_GLSL = /* glsl */ `
   vec3 nkWet = vec3(0.0);
-  if (uRain > 0.01) {
+  if (uWet > 0.01) {
     vec3 Vw = normalize(vNkWorld - cameraPosition);
     float grazing = pow(1.0 - clamp(-Vw.y, 0.0, 1.0), 6.0);
     vec2 wp = vNkWorld.xz;
-    float puddle = smoothstep(0.5, 0.64, nkNoise(wp * 0.22) * 0.7 + nkNoise(wp * 1.1) * 0.3) * smoothstep(0.2, 0.7, uRain);
+    // Puddles shrink as they dry: the threshold rises (only the deepest dips stay wet).
+    float pondLevel = mix(0.7, 0.5, smoothstep(0.05, 0.6, uWet));
+    float puddle = smoothstep(pondLevel, pondLevel + 0.14, nkNoise(wp * 0.22) * 0.7 + nkNoise(wp * 1.1) * 0.3) * smoothstep(0.02, 0.3, uWet);
     // Rings from drops, only in puddles: each third-of-a-metre cell gets a drop at its own
     // moment and spot; the ring spreads and fades.
     vec2 cellW = floor(wp * 3.0);
@@ -340,7 +347,7 @@ const WET_GLSL = /* glsl */ `
     float phase = fract(uNkTime * 1.1 + nkHash(cellW) * 7.0);
     float ring = (1.0 - smoothstep(0.0, 0.03, abs(length(inCell) - phase * 0.3))) * (1.0 - phase) * (1.0 - phase);
     ring *= smoothstep(0.4, 0.8, puddle) * step(0.35, nkHash(cellW + 4.1));
-    float wet = smoothstep(0.0, 0.35, uRain);
+    float wet = smoothstep(0.25, 0.6, uWet);
     diffuseColor.rgb *= 1.0 - 0.45 * wet - 0.35 * puddle;
     // A mirror of the sky, dimmed: a wet road reads as dark and glossy, silvery only far off.
     vec3 mirrored = mix(uSkyHorizon, uSkyTop, 0.4) * 0.6 * (1.0 - uNight * 0.85);
@@ -449,7 +456,7 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\ndiffuseColor.rgb *= 1.0 - 0.16 * uRain; // wet plaster\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-9';
+  material.customProgramCacheKey = () => 'nukkad-facades-10';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, weather: WeatherUniforms): void {
@@ -473,7 +480,7 @@ function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, w
          }`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-roads-5';
+  material.customProgramCacheKey = () => 'nukkad-roads-6';
 }
 
 /** Breaks up the flat ground colour with soft blotches and fine grain. */
@@ -485,7 +492,7 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
-       diffuseColor.rgb *= 1.0 - 0.32 * smoothstep(0.0, 0.4, uRain); // wet soil is darker
+       diffuseColor.rgb *= 1.0 - 0.32 * smoothstep(0.0, 0.4, uWet); // wet soil is darker
        float nkShade = diffuseColor.a; // baked: darker close to buildings
        diffuseColor.a = 1.0;
        vec3 nkBase = diffuseColor.rgb;
@@ -514,7 +521,7 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
        diffuseColor.rgb *= nkShade;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-5';
+  material.customProgramCacheKey = () => 'nukkad-ground-6';
 }
 
 /** Lakes and pools: moving ripples, the sky mirrored at flat angles, and sun glitter. */
@@ -597,11 +604,12 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const lightDir = { value: new THREE.Vector3(0.4, 0.8, 0.3) };
   const sky: SkyUniforms = { uSkyTop: { value: new THREE.Color(0.25, 0.42, 0.8) }, uSkyHorizon: { value: new THREE.Color(0.7, 0.74, 0.8) }, uSkyGain: { value: 1 } };
   const rain = { value: 0 };
-  const weather: WeatherUniforms = { ...sky, uRain: rain, uNkTime: time, uNight: night };
+  const wet = { value: 0 };
+  const weather: WeatherUniforms = { ...sky, uRain: rain, uWet: wet, uNkTime: time, uNight: night };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   groundDetail(terrain, surfaces, weather);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) facades(buildings, night, surfaces, lightDir, sky, rain);
+  if (windows) facades(buildings, night, surfaces, lightDir, sky, wet); // walls dry like the ground
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces, weather);
@@ -612,5 +620,5 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
     ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
     : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time, rain);
-  return { night, time, lightDir, sky, rain, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
+  return { night, time, lightDir, sky, rain, wet, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }

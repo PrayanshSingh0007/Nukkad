@@ -277,7 +277,8 @@ export class WorldView {
     const perVariant = new Array<number>(treeModels.length).fill(0);
     for (let t = 0; t < treeCount; t++) {
       const mapped = props.trees[t * TREE_STRIDE + 5];
-      this.treeVariants[t] = leafy > 0 ? speciesOf(mapped, props.trees[t * TREE_STRIDE + 6]) : mapped;
+      // (Without leafy trees, a wall bougainvillea is a plain bush.)
+      this.treeVariants[t] = leafy > 0 ? speciesOf(mapped, props.trees[t * TREE_STRIDE + 6]) : Math.min(mapped, 2);
       perVariant[this.treeVariants[t]]++;
     }
     treeModels.forEach((geometry, variant) => {
@@ -511,11 +512,18 @@ export class WorldView {
     this.materials.lightDir.value.copy(dir);
   }
 
-  /** 0 = dry … 1 = downpour: wet roads, puddles, darker walls. */
-  setRain(rain: number): void {
+  /**
+   * rain: 0 = dry … 1 = downpour, falling now (drop rings, storm wind, lamp light in the air);
+   * wet: how wet the ground and walls are (roads, puddles, darker walls, lights mirrored in the
+   * road) — it stays after the rain and dries slowly. Defaults to the rain.
+   */
+  setRain(rain: number, wet = rain): void {
     this.materials.rain.value = rain;
+    this.materials.wet.value = wet;
     this.rainLevel = rain;
+    this.wetLevel = wet;
   }
+  private wetLevel = 0;
 
   /** The sky's colours, for what window glass mirrors. */
   setSky(top: THREE.Color, horizon: THREE.Color): void {
@@ -534,7 +542,7 @@ export class WorldView {
     if (this.glow && this.glowMaterial) {
       this.glow.visible = night > 0.05;
       // Wet ground throws more of the light back.
-      this.glowMaterial.opacity = night * (0.55 + 0.35 * rain);
+      this.glowMaterial.opacity = night * (0.55 + 0.35 * this.wetLevel);
     }
     // Gate globes: frosted white by day, warm and glowing (brighter than white, for the bloom) at night.
     this.globeMaterial?.color.setRGB(0.91 + night * 3.4, 0.89 + night * 2.6, 0.83 + night * 1.4);
@@ -544,7 +552,7 @@ export class WorldView {
       this.globeHaloMaterial.size = 0.75 + 0.6 * rain;
     }
     this.beams?.setLevel(night, rain);
-    this.wet?.setLevel(night, rain);
+    this.wet?.setLevel(night, this.wetLevel);
     this.insects?.setLevel(night, rain);
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;

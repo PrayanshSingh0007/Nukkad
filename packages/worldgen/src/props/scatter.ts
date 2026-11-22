@@ -29,6 +29,8 @@ export interface PropSet extends StreetLife {
 }
 
 export const TREE_STRIDE = 7;
+/** Tree variant for a bougainvillea draped over a compound wall (always that species). */
+export const WALL_CREEPER_VARIANT = 3;
 export const LAMP_STRIDE = 4;
 export const BENCH_STRIDE = 4;
 
@@ -107,7 +109,7 @@ function lampsAndCables(lamps: number[], spans: number[], seed: number): { lamps
 }
 
 /** Shuffles records of `stride` numbers with a seed and keeps at most `max` of them. */
-function shuffleAndCap(values: number[], stride: number, max: number, seed: number): Float32Array {
+export function shuffleAndCap(values: number[], stride: number, max: number, seed: number): Float32Array {
   const count = values.length / stride;
   const order = Array.from({ length: count }, (_, index) => index);
   const random = makeRng(seed);

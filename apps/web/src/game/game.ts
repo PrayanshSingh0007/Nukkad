@@ -244,6 +244,11 @@ export class Game {
   private walkers: PedestrianView | null = null;
   private birds: BirdsView | null = null;
   private readonly clouds = new CloudShadows();
+  /** Photo mode: the page hides the HUD; the mouse wheel moves the camera in and out. */
+  private photo = false;
+  private photoDistance = 5.2;
+  /** How wet the streets are: soaks up within seconds of rain, dries over about four minutes. */
+  private wetness = 0;
   /** How hard it rained lately (fades over about three minutes after the rain), for rainbows. */
   private recentRain = 0;
   /** Eyes adjusting: > 1 just after stepping out into daylight (glare), < 1 just after going into a dim room. */
@@ -375,6 +380,16 @@ export class Game {
       if (event.code === 'KeyH') this.setHorn(false);
     });
     window.addEventListener('pointerdown', () => this.sound.unlock());
+    // Photo mode: the wheel pulls the camera back for a wider shot, or in close.
+    options.canvas.addEventListener(
+      'wheel',
+      (event) => {
+        if (!this.photo) return;
+        event.preventDefault();
+        this.photoDistance = THREE.MathUtils.clamp(this.photoDistance * (1 + event.deltaY * 0.0012), 1.6, 18);
+      },
+      { passive: false },
+    );
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
   }
@@ -384,6 +399,39 @@ export class Game {
     this.listeners.add(listener);
     listener(this.status);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Photo mode on or off (the page hides its buttons and shows the photo bar). */
+  setPhotoMode(on: boolean): void {
+    this.photo = on;
+    this.photoDistance = this.rig.distance;
+    if (!on) this.setPhotoFilter('');
+  }
+
+  /** A look for photo mode, as a CSS filter on the picture ('' = natural). */
+  setPhotoFilter(filter: string): void {
+    this.view3d.renderer.domElement.style.filter = filter;
+  }
+
+  /**
+   * Saves what is on screen as a PNG (downloaded by the browser), with the photo filter (a CSS
+   * filter string, '' for none) baked in.
+   */
+  takePhoto(filter: string): void {
+    this.frame(performance.now()); // draw now, so the picture is in the canvas when it is read
+    const source = this.view3d.renderer.domElement;
+    const shot = document.createElement('canvas');
+    shot.width = source.width;
+    shot.height = source.height;
+    const context = shot.getContext('2d');
+    if (!context) return;
+    context.filter = filter || 'none';
+    context.drawImage(source, 0, 0);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.download = `nukkad-${stamp}.png`;
+    link.href = shot.toDataURL('image/png');
+    link.click();
   }
 
   setLook(look: AvatarLook): void {
@@ -1090,8 +1138,8 @@ export class Game {
         this.tyreFx.setLight(new THREE.Color(1, 1, 1).multiplyScalar(1 - this.atmosphere.night * 0.75));
         // Wet roads: tyres slide on water instead of smoking and leave hardly any rubber.
         // ...and throw up spray behind them at speed.
-        const spray = this.interior ? 0 : THREE.MathUtils.smoothstep(this.rain, 0.1, 0.6) * THREE.MathUtils.smoothstep(Math.abs(player.rideSpeed), 5, 25);
-        this.tyreFx.update(dt, wheels, skid * (1 - 0.8 * this.rain), vx, vz, spray);
+        const spray = this.interior ? 0 : THREE.MathUtils.smoothstep(this.wetness, 0.1, 0.6) * THREE.MathUtils.smoothstep(Math.abs(player.rideSpeed), 5, 25);
+        this.tyreFx.update(dt, wheels, skid * (1 - 0.8 * this.wetness), vx, vz, spray);
         this.sound.skid(skid);
       }
       this.sound.engine(riding ? engineRpm(riding, Math.abs(player.rideSpeed)) : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine', player.throttle);
@@ -1141,7 +1189,7 @@ export class Game {
       }
       const lagTarget = vehicle ? Math.max(-0.7, Math.min(1.1, player.longAccel * 0.09)) : 0;
       this.cameraLag += (lagTarget - this.cameraLag) * Math.min(1, dt * 3);
-      this.rig.distance = (vehicle ? vehicle.cameraDistance : inside ? 3.4 : 5.2) + ease * 1.4 + this.cameraLag;
+      this.rig.distance = this.photo ? this.photoDistance : (vehicle ? vehicle.cameraDistance : inside ? 3.4 : 5.2) + ease * 1.4 + this.cameraLag;
       const kick = vehicle ? Math.max(0, Math.min(5, player.longAccel * 0.45)) * player.throttle : 0;
       const fov = Game.BASE_FOV + ease * 20 + kick;
       if (Math.abs(camera.fov - fov) > 0.05) {
@@ -1187,7 +1235,8 @@ export class Game {
     this.atmosphere.cloud = this.realWeather?.cloud ?? 0.25;
     this.atmosphere.update(dt, this.view3d.camera);
     this.updateLightning(now, dt);
-    world?.setRain(this.rain);
+    this.wetness = this.rain > this.wetness ? this.wetness + (this.rain - this.wetness) * Math.min(1, dt / 6) : Math.max(this.rain, this.wetness - dt / 240);
+    world?.setRain(this.rain, this.wetness);
     const skyU = this.atmosphere.sky.uniforms;
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
@@ -1231,7 +1280,7 @@ export class Game {
     world?.setLightDir(this.atmosphere.lightDir);
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
-    this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.rain);
+    this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.wetness); // wet roads keep spraying after the rain
     setHeadlightHaze(this.interior ? 0 : this.atmosphere.night, this.interior ? 0 : this.rain, this.interior ? 0 : this.atmosphere.mist, dt);
     this.walkers?.setWorld(this.atmosphere.night, this.rain);
     this.birds?.setWorld(this.atmosphere.night, this.rain);

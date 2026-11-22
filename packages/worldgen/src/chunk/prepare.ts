@@ -2,7 +2,7 @@ import { CHUNK_SIZE, UNITS_PER_METRE } from '@nukkad/shared';
 import type { AreaPack, PackBuilding } from '@nukkad/shared';
 import { digBasins } from '../areas/water.ts';
 import { ringCentroid, signedArea } from '../geom/polygon.ts';
-import { scatterProps } from '../props/scatter.ts';
+import { TREE_STRIDE, WALL_CREEPER_VARIANT, scatterProps, shuffleAndCap } from '../props/scatter.ts';
 import type { PropSet } from '../props/scatter.ts';
 import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
@@ -157,6 +157,27 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     gateLamps.set([x, heightAt(terrain, x, z) + GATE_LAMP_HEIGHT, z], i * 3);
   }
   props.gateLamps = gateLamps;
+  // Bougainvillea: about one compound wall piece in six has a bush of it spilling over the
+  // top (seeded by the wall). They join the trees, shuffled in, so a quality's tree limit thins
+  // them out evenly with everything else.
+  const creepers: number[] = [];
+  const spot = (a: number, b: number, salt: number): number => {
+    const x = Math.sin(a * 12.9898 + b * 78.233 + salt * 37.719) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i + 4 < compounds.walls.length; i += HOUSE_WALL_STRIDE) {
+    const [ax, az, bx, bz] = [compounds.walls[i], compounds.walls[i + 1], compounds.walls[i + 2], compounds.walls[i + 3]];
+    if (Math.hypot(bx - ax, bz - az) < 3 || spot(ax, az, 1) > 0.16) continue;
+    const t = 0.2 + 0.6 * spot(bx, bz, 2);
+    const x = ax + (bx - ax) * t;
+    const z = az + (bz - az) * t;
+    if (Math.abs(x) > half - 2 || Math.abs(z) > half - 2) continue; // inside the area, like every tree
+    creepers.push(x, heightAt(terrain, x, z), z, 0.85 + 0.4 * spot(ax, bz, 3), spot(bx, az, 4) * Math.PI * 2, WALL_CREEPER_VARIANT, spot(x, z, 5));
+  }
+  if (creepers.length > 0) {
+    const all = [...props.trees, ...creepers];
+    props.trees = shuffleAndCap(all, TREE_STRIDE, all.length / TREE_STRIDE, 4242);
+  }
 
   return { doors, pack, half, chunksPerSide, terrain, originalTerrain, buckets, props };
 }

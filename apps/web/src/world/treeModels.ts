@@ -329,6 +329,7 @@ export function createLeafyTrees(detail: 1 | 2): THREE.BufferGeometry[] {
 /** Which species a tree becomes: the map's variant (0 round · 1 tall · 2 bush) and its own random number. */
 export function speciesOf(variant: number, chance: number): number {
   const r = (chance * 7.31) % 1;
+  if (variant === 3) return 7; // a bougainvillea over a compound wall
   if (variant === 2) return r < 0.75 ? 2 : 7;
   if (variant === 1) return r < 0.55 ? 1 : 6;
   if (r < 0.36) return 0;

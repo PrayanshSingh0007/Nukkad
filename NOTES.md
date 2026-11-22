@@ -27,6 +27,27 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Drying roads, bougainvillea on walls, photo mode (2026-11-22) — owner: "more AAA"
+
+- **Roads stay wet after the rain** (`game.ts` `wetness`, `materials.ts` `wet` / `uWet`, `WorldView.setRain(rain, wet)`).
+  - Wetness soaks up within about 6 s of rain and dries over about 4 minutes once it stops.
+  - The ground and walls follow wetness, not the rain: road film, puddles, darker soil and plaster, lights mirrored in the road, lamp pools, traffic spray and your own tyre spray and skid marks. Wet roads keep spraying after the rain.
+  - It dries in stages: the glossy film goes first, then the puddles shrink to the deepest dips.
+  - Drop rings in puddles, water dimples, storm wind and lamp light in the air still follow the falling rain.
+  - Cache keys: roads-6, ground-6, facades-10.
+  - Checked at three stages: raining, just after, nearly dry.
+- **Bougainvillea over compound walls** (`prepare.ts`, `WALL_CREEPER_VARIANT` 3 in `scatter.ts`, `speciesOf`): about one wall piece in six (pieces of 3 m or more, seeded by the wall) gets a magenta bougainvillea bush spilling over the top, with fallen petals.
+  - They join the trees, shuffled in, so the quality's tree limit thins everything evenly. On Low (no leafy trees) they are plain bushes.
+  - In the owner's square that gives 1,024 bougainvillea of 3,486 trees, about half of them on walls. A first try at 1 in 3 gave 1,894, too many.
+  - Kept inside the area (one landed 4 m outside and failed the pipeline test).
+  - Checked: a bush on a wall corner and another down the street.
+- **Photo mode** (P, or the new Photo button; Esc or Done to leave):
+  - The HUD hides and cinema bars slide in. The mouse wheel pulls the camera from 1.6 to 18 m.
+  - Looks (CSS filters on the picture): Natural, Golden, Monsoon, Noir.
+  - "Save photo" renders a frame and downloads a PNG with the look baked in (`Game.takePhoto`).
+  - Checked: bars, the bar of looks, and the HUD hiding and coming back. Saving wasn't tried, because it downloads a file.
+- **Not checked:** a phone; photo mode with touch (there is no pinch zoom).
+
 ## Lightning bolts, brake lights, lamp insects, lens dirt, stars (2026-11-22) — owner: "more AAA"
 
 - **Lightning bolts** (`atmosphere/lightningBolt.ts`): every storm flash now has a visible bolt, a jagged main channel plus 2–4 forks, from the cloud base (230 m) to the ground 220–520 m away, within about 45° of where you look.

@@ -36,6 +36,14 @@ async function invite(roomId: string): Promise<string> {
   }
 }
 
+/** Photo mode looks: CSS filters on the picture (also baked into saved photos). */
+const PHOTO_LOOKS: [name: string, filter: string][] = [
+  ['Natural', ''],
+  ['Golden', 'sepia(0.28) saturate(1.3) brightness(1.04) contrast(1.05)'],
+  ['Monsoon', 'saturate(0.72) hue-rotate(-10deg) contrast(1.12) brightness(0.96)'],
+  ['Noir', 'grayscale(1) contrast(1.35) brightness(0.95)'],
+];
+
 /** Everything drawn on top of the 3D view: loading / error messages and the look panel. */
 export function App({ game, initialLook, roomId }: Props) {
   const [players, setPlayers] = useState(1);
@@ -44,9 +52,14 @@ export function App({ game, initialLook, roomId }: Props) {
   const [placesOpen, setPlacesOpen] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [photo, setPhoto] = useState(false);
+  const [photoLook, setPhotoLook] = useState(0);
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
-      if (event.code === 'KeyM' && (event.target as HTMLElement | null)?.tagName !== 'INPUT') setMapOpen((open) => !open);
+      if ((event.target as HTMLElement | null)?.tagName === 'INPUT') return;
+      if (event.code === 'KeyM') setMapOpen((open) => !open);
+      if (event.code === 'KeyP') setPhoto((on) => !on);
+      if (event.code === 'Escape') setPhoto(false);
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
@@ -59,6 +72,10 @@ export function App({ game, initialLook, roomId }: Props) {
   const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => game.onStatus(setStatus), [game]);
+  useEffect(() => {
+    game.setPhotoMode(photo);
+    if (photo) game.setPhotoFilter(PHOTO_LOOKS[photoLook][1]);
+  }, [game, photo, photoLook]);
   useEffect(() => {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
@@ -90,7 +107,26 @@ export function App({ game, initialLook, roomId }: Props) {
   return (
     <>
       {status.phase !== 'playing' && <LoadingScreen message={status.message} error={status.phase === 'error'} onBack={() => location.assign('/')} />}
-      {status.phase === 'playing' && !panelOpen && (
+      {status.phase === 'playing' && photo && (
+        <>
+          <div className="photoBars" aria-hidden="true" />
+          <div className="photoBar" role="toolbar" aria-label="Photo mode">
+            {PHOTO_LOOKS.map(([name], index) => (
+              <button key={name} type="button" className={index === photoLook ? 'picked' : ''} aria-pressed={index === photoLook} onClick={() => setPhotoLook(index)}>
+                {name}
+              </button>
+            ))}
+            <button type="button" className="save" onClick={() => game.takePhoto(PHOTO_LOOKS[photoLook][1])}>
+              Save photo
+            </button>
+            <button type="button" onClick={() => setPhoto(false)}>
+              Done
+            </button>
+            <span className="photoTip">Drag to look around · scroll to zoom · P to close</span>
+          </div>
+        </>
+      )}
+      {status.phase === 'playing' && !panelOpen && !photo && (
         <div className="hudButtons">
           <span className="people" aria-label={`${players} in this Nukkad`}>
             {players}/8
@@ -104,25 +140,28 @@ export function App({ game, initialLook, roomId }: Props) {
           <button type="button" onClick={() => setPanelOpen(true)}>
             Your look
           </button>
+          <button type="button" onClick={() => setPhoto(true)}>
+            Photo
+          </button>
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}
-      {status.phase === 'playing' && !panelOpen && !mapOpen && <MiniMap game={game} onOpen={() => setMapOpen(true)} />}
-      {status.phase === 'playing' && !panelOpen && !mapOpen && <GameClock game={game} />}
-      {status.phase === 'playing' && !panelOpen && !mapOpen && <StreetBanner game={game} />}
+      {status.phase === 'playing' && !panelOpen && !mapOpen && !photo && <MiniMap game={game} onOpen={() => setMapOpen(true)} />}
+      {status.phase === 'playing' && !panelOpen && !mapOpen && !photo && <GameClock game={game} />}
+      {status.phase === 'playing' && !panelOpen && !mapOpen && !photo && <StreetBanner game={game} />}
       {status.phase === 'playing' && mapOpen && <BigMap game={game} onClose={() => setMapOpen(false)} />}
-      {status.phase === 'playing' && speed && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
-      {status.phase === 'playing' && !panelOpen && driveLabel && (
+      {status.phase === 'playing' && speed && !photo && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
+      {status.phase === 'playing' && !panelOpen && !photo && driveLabel && (
         <button type="button" className={driveLabel === 'Get out' ? 'driveButton out' : 'driveButton'} onClick={() => game.toggleDrive()}>
           {driveLabel}
         </button>
       )}
-      {status.phase === 'playing' && !panelOpen && driveLabel !== 'Get out' && (
+      {status.phase === 'playing' && !panelOpen && !photo && driveLabel !== 'Get out' && (
         <button type="button" className={riding ? 'rideButton on' : 'rideButton'} onClick={() => game.toggleRide()}>
           {riding ? 'Walk' : 'Ride'}
         </button>
       )}
-      {status.phase === 'playing' && !panelOpen && !riding && driveLabel !== 'Get out' && (
+      {status.phase === 'playing' && !panelOpen && !photo && !riding && driveLabel !== 'Get out' && (
         <div className="emotes">
           {emoteOpen && (
             <div className="emoteMenu">
@@ -152,7 +191,7 @@ export function App({ game, initialLook, roomId }: Props) {
           </button>
         </div>
       )}
-      {status.phase === 'playing' && !panelOpen && riding && (
+      {status.phase === 'playing' && !panelOpen && !photo && riding && (
         <button
           type="button"
           className="hornButton"
@@ -163,7 +202,7 @@ export function App({ game, initialLook, roomId }: Props) {
           Horn
         </button>
       )}
-      {status.phase === 'playing' && !panelOpen && riding && (
+      {status.phase === 'playing' && !panelOpen && !photo && riding && (
         <button
           type="button"
           className="driftButton"

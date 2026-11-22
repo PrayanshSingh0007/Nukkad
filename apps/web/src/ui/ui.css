@@ -1082,3 +1082,58 @@ button {
     font-size: 17px;
   }
 }
+
+/* Photo mode: cinema bars, and a slim bar of looks and actions at the bottom. */
+.photoBars {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(#000 0 9%, transparent 9% 91%, #000 91% 100%);
+  animation: photoBarsIn 0.35s ease-out;
+}
+
+@keyframes photoBarsIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.photoBar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+}
+
+.photoBar button {
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: rgba(28, 35, 48, 0.72);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.photoBar button.picked {
+  background: #fff;
+  color: #1c2330;
+}
+
+.photoBar button.save {
+  background: var(--sun);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.photoTip {
+  width: 100%;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
