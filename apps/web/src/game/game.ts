@@ -199,6 +199,10 @@ installCloudShadows();
 /** The renderer's normal exposure (scene.ts); eye adaptation moves around it. */
 const BASE_EXPOSURE = 1.15;
 
+/** Reused for where your character looks. */
+const LOOK_DIR = new THREE.Vector3();
+const LOOK_POINT = new THREE.Vector3();
+
 /** Reused for the rain splashes' sprite size. */
 const SPLASH_VIEW = new THREE.Vector2();
 
@@ -224,6 +228,8 @@ export class Game {
   private walkers: PedestrianView | null = null;
   private birds: BirdsView | null = null;
   private readonly clouds = new CloudShadows();
+  /** How hard it rained lately (fades over about three minutes after the rain), for rainbows. */
+  private recentRain = 0;
   /** Eyes adjusting: > 1 just after stepping out into daylight (glare), < 1 just after going into a dim room. */
   private adapt = 1;
   private readonly reflections: CityReflections;
@@ -1165,6 +1171,17 @@ export class Game {
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
     }
+    // A rainbow when the rain stops while the sun is up but not high (the bow sits 42° from the
+    // point opposite the sun, so a high sun puts it below the horizon).
+    this.recentRain = Math.max(this.rain, this.recentRain - dt / 180);
+    const sunY = this.atmosphere.sky.uniforms.uSunDir.value.y;
+    this.atmosphere.sky.uniforms.uRainbow.value =
+      THREE.MathUtils.smoothstep(this.recentRain, 0.25, 0.5) *
+      (1 - THREE.MathUtils.smoothstep(this.rain, 0.12, 0.35)) *
+      THREE.MathUtils.smoothstep(sunY, 0.03, 0.12) *
+      (1 - THREE.MathUtils.smoothstep(sunY, 0.55, 0.7)) *
+      (1 - this.atmosphere.night) *
+      (1 - this.atmosphere.cloud * 0.7);
     // Eyes adjusting after a doorway (exposure eases back to normal over about 2 s).
     this.adapt += (1 - this.adapt) * Math.min(1, dt * 1.5);
     this.view3d.renderer.toneMappingExposure = BASE_EXPOSURE * this.adapt;
@@ -1172,6 +1189,15 @@ export class Game {
     const day = 1 - THREE.MathUtils.smoothstep(this.atmosphere.night, 0.1, 0.6);
     const cloudStrength = this.interior || this.level === 'low' ? 0 : 0.72 * day * (1 - this.rain) * (1 - this.atmosphere.mist);
     this.clouds.update(this.view3d.renderer, Date.now(), cloudStrength, this.atmosphere.cloud);
+    // Your character looks where the camera looks (on foot; the head turns only within reach,
+    // so looking back at your own face does not twist it).
+    if (player) {
+      const onFoot = !player.vehicle && !player.riding && player.emote === 0 && !this.introLeft;
+      if (onFoot) {
+        const dir = this.view3d.camera.getWorldDirection(LOOK_DIR);
+        player.avatar.lookAt(LOOK_POINT.set(player.x + dir.x * 10, player.y + 1.55 + dir.y * 10, player.z + dir.z * 10));
+      } else player.avatar.lookAt(null);
+    }
     // Realistic people: a rim of sky light (none indoors) and the sky's reflections.
     PEOPLE_RIM.copy(skyU.uHorizon.value).multiplyScalar(this.interior ? 0 : 0.55 * (1 - this.atmosphere.night * 0.4));
     setPeopleLight(PEOPLE_RIM, this.reflections.texture, this.interior ? 1 : this.atmosphere.night, this.interior ? 0 : this.rain);

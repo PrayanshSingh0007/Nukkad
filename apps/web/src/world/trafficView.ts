@@ -206,9 +206,16 @@ export class TrafficView {
     let heads = 0;
     this.wet.begin();
     this.cones.begin();
-    this.spray.setLevel(this.rain, this.sprayLight.setRGB(1.05, 1.07, 1.1).multiplyScalar(1 - 0.78 * this.night), dt);
+    // Wet: white spray. Dry and light out: a faint haze of brown road dust, only behind faster traffic.
+    const wet = THREE.MathUtils.smoothstep(this.rain, 0.15, 0.7);
+    const dust = (1 - THREE.MathUtils.smoothstep(this.rain, 0.02, 0.12)) * (1 - THREE.MathUtils.smoothstep(this.night, 0.3, 0.7)) * 0.55;
+    const dusty = dust > wet * 1.6;
+    if (dusty) this.sprayLight.setRGB(0.92, 0.78, 0.62).multiplyScalar(1 - 0.6 * this.night);
+    else this.sprayLight.setRGB(1.05, 1.07, 1.1).multiplyScalar(1 - 0.78 * this.night);
+    this.spray.setLevel(Math.max(wet * 1.6, dust), this.sprayLight, dt);
     this.spray.begin();
     const spraying = this.spray.active;
+    const sprayFrom = dusty ? 9 : 5;
     let beams = 0;
     this.drivers.begin();
 
@@ -255,9 +262,9 @@ export class TrafficView {
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
-      // Spray off a wet road behind it, more the faster it goes.
+      // Spray off a wet road (or dust off a dry one) behind it, more the faster it goes.
       const moving = dt > 0 ? Math.hypot(pose.x - lastX, pose.z - lastZ) / dt : 0;
-      if (spraying && d < SPRAY_M && moving > 5 && moving < 60) {
+      if (spraying && d < SPRAY_M && moving > sprayFrom && moving < 60) {
         const [hw, hl] = VEHICLE_HALF[route.kind];
         const fast = Math.min(moving, 25);
         rotation.setFromAxisAngle(up, pose.heading);

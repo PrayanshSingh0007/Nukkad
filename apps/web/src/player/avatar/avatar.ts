@@ -159,6 +159,11 @@ export class Avatar {
     return this.facingAngle;
   }
 
+  /** Where this person looks (world space; null = straight ahead). Realistic people only. */
+  lookAt(target: THREE.Vector3 | null): void {
+    if (this.person instanceof RocketboxPerson) this.person.lookAt(target);
+  }
+
   setLook(look: AvatarLook): void {
     const old = this.look;
     this.look = look;

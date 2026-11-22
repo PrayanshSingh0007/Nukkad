@@ -24,7 +24,14 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uRain;
   uniform float uFlash;
+  uniform float uRainbow;
   varying vec3 vDir;
+  /** A rainbow's colour at t = 0 (violet, inside) … 1 (red, outside). */
+  vec3 nkSpectrum(float t) {
+    float hue = (1.0 - clamp(t, 0.0, 1.0)) * 0.78;
+    vec3 k = clamp(abs(fract(hue + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
+    return k * k * (3.0 - 2.0 * k);
+  }
 
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise2(vec2 p) {
@@ -85,6 +92,21 @@ const fragmentShader = /* glsl */ `
       color += vec3(0.75, 0.8, 1.0) * uFlash * (0.4 + body) * fadeOut;
     }
 
+    // A rainbow after rain, opposite the sun: the main bow 40–42.5° from the point straight
+    // opposite it (violet inside, red outside), a fainter second bow at 50–53.5° with its colours
+    // the other way round, and the sky a little brighter inside the main bow.
+    if (uRainbow > 0.001) {
+      float bowA = degrees(acos(clamp(dot(dir, -uSunDir), -1.0, 1.0)));
+      float t1 = (bowA - 40.0) / 2.5;
+      float band1 = smoothstep(-0.1, 0.15, t1) * (1.0 - smoothstep(0.85, 1.1, t1));
+      float t2 = 1.0 - (bowA - 50.2) / 3.4;
+      float band2 = smoothstep(-0.1, 0.15, t2) * (1.0 - smoothstep(0.85, 1.1, t2));
+      float inside = 1.0 - smoothstep(34.0, 40.0, bowA);
+      float aboveGround = smoothstep(-0.01, 0.06, dir.y);
+      vec3 bow = nkSpectrum(t1) * band1 * 0.32 + nkSpectrum(t2) * band2 * 0.075 + vec3(0.05) * inside;
+      color += bow * uRainbow * aboveGround;
+    }
+
     float moon = dot(dir, uMoonDir);
     color = mix(color, vec3(0.92, 0.94, 1.0), smoothstep(0.9994, 0.9997, moon) * uNight);
 
@@ -111,6 +133,8 @@ export class Sky {
     uRain: { value: 0 },
     /** Lightning: a brief white flash in the clouds. */
     uFlash: { value: 0 },
+    /** A rainbow opposite the sun (0–1), for a few minutes after rain. */
+    uRainbow: { value: 0 },
   };
 
   constructor() {

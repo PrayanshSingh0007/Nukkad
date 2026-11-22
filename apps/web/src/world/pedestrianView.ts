@@ -8,6 +8,9 @@ import { Person, peopleReady } from '../player/avatar/people.ts';
 import { ROCKETBOX_AVATARS, RocketboxPerson, loadRocketbox, rocketboxReady } from '../player/avatar/rocketbox.ts';
 import { umbrellaColour, umbrellaGeometry, umbrellaMaterial } from '../player/avatar/umbrella.ts';
 
+/** Walkers glance at you when you are this close (and in front of or beside them). */
+const LOOK_M = 6;
+const LOOK_AT = new THREE.Vector3();
 /** About four in five walkers carry an umbrella in the rain (seeded per walker). */
 const UMBRELLA_SHARE = 0.8;
 /** Where the far crowd figures hold theirs: right hand, chest high, a little ahead; leaning in. */
@@ -257,7 +260,13 @@ export class PedestrianView {
         const startled = walker.startled > 0;
         // Turn to face whoever honked (the person's front is −z, so heading = atan2(−dx, −dz)).
         slot.person.root.rotation.y = startled ? Math.atan2(-(walker.lookX - pose.x), -(walker.lookZ - pose.z)) : pose.heading;
-        if (slot.person instanceof RocketboxPerson) slot.person.update(dt, waiting || startled ? 0 : route.speed, startled ? 4 : 0);
+        if (slot.person instanceof RocketboxPerson) {
+          // People notice you: a glance as you pass close by; whoever honked when startled.
+          if (startled) slot.person.lookAt(LOOK_AT.set(walker.lookX, heightAt(this.terrain, walker.lookX, walker.lookZ) + 1.4, walker.lookZ));
+          else if (Math.hypot(pose.x - px, pose.z - pz) < LOOK_M) slot.person.lookAt(LOOK_AT.set(px, heightAt(this.terrain, px, pz) + 1.55, pz));
+          else slot.person.lookAt(null);
+          slot.person.update(dt, waiting || startled ? 0 : route.speed, startled ? 4 : 0);
+        }
         else slot.person.update(dt, waiting || startled ? 0 : route.speed, true, null, startled ? 4 : 0);
         return;
       }

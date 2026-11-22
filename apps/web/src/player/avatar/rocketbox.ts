@@ -181,6 +181,11 @@ const RIM_PARS = /* glsl */ `
 const WET_DARKEN = /* glsl */ `
   diffuseColor.rgb *= 1.0 - 0.24 * uWet;
 `;
+const LOOK_A = new THREE.Vector3();
+const LOOK_B = new THREE.Vector3();
+const LOOK_UP = new THREE.Vector3();
+const LOOK_RIGHT = new THREE.Vector3();
+const LOOK_Q = new THREE.Quaternion();
 /** Where the hand holds an open umbrella, in the person's own space (+x = their right, −z = ahead), as a share of their height. */
 const UMBRELLA_GRIP = new THREE.Vector3(0.17, 0.71, -0.2);
 const RIM_LIGHT = /* glsl */ `
@@ -299,6 +304,15 @@ export class RocketboxPerson {
   private readonly spine: THREE.Bone | null;
   private spineBefore: THREE.Quaternion | null = null;
   private readonly pelvis: THREE.Bone | null;
+  private readonly neck: THREE.Bone | null;
+  private readonly head: THREE.Bone | null;
+  /** Where they look (world space), or null; the head and neck turn towards it within reach. */
+  private lookTarget: THREE.Vector3 | null = null;
+  private lookYaw = 0;
+  private lookPitch = 0;
+  private lookWeight = 0;
+  /** The head and neck as the clip left them, put back before the next frame's turn. */
+  private lookBefore: [THREE.Quaternion, THREE.Quaternion] | null = null;
   /** The top's dye (shared with the body material's shader). */
   private readonly top = { colour: { value: new THREE.Color() }, tint: { value: 0 }, tintIndex: 0 };
   /** 0 dry … 1 soaked (eases with the rain; less under an umbrella). */
@@ -347,6 +361,8 @@ export class RocketboxPerson {
     }
     this.spine = bone('Bip01_Spine1');
     this.pelvis = bone('Bip01_Pelvis');
+    this.neck = bone('Bip01_Neck');
+    this.head = bone('Bip01_Head');
     this.mixer = new THREE.AnimationMixer(body);
     const clips = info.female ? assets.clips.f : assets.clips.m;
     for (const [name, clip] of clips) this.actions.set(name, this.mixer.clipAction(clip));
@@ -452,6 +468,52 @@ export class RocketboxPerson {
     reach(this.root, [right], [this.root.localToWorld(grip.add(new THREE.Vector3(0, 0.05, 0)))]);
   }
 
+  /**
+   * Look at a point (world space), or stop looking (null). The head and neck turn towards it
+   * when it is in front or to the side (up to about 65° either way, a little up or down); a point
+   * behind them is ignored. Turns ease in and out.
+   */
+  lookAt(target: THREE.Vector3 | null): void {
+    if (!target) this.lookTarget = null;
+    else (this.lookTarget ??= new THREE.Vector3()).copy(target);
+  }
+
+  private applyLook(dt: number): void {
+    const head = this.head;
+    if (!head) return;
+    let yaw = 0;
+    let pitch = 0;
+    let want = 0;
+    if (this.lookTarget) {
+      this.root.updateMatrixWorld(true);
+      const from = this.root.worldToLocal(head.getWorldPosition(LOOK_A));
+      const to = this.root.worldToLocal(LOOK_B.copy(this.lookTarget)).sub(from);
+      const flat = Math.hypot(to.x, to.z);
+      const side = Math.atan2(to.x, -to.z); // + = to their right (they face −z)
+      if (Math.abs(side) < 1.75 && flat > 0.3) {
+        yaw = THREE.MathUtils.clamp(-side, -1.15, 1.15);
+        pitch = THREE.MathUtils.clamp(Math.atan2(to.y, flat), -0.45, 0.5);
+        want = 1;
+      }
+    }
+    const k = Math.min(1, dt * 4);
+    this.lookWeight += (want - this.lookWeight) * k;
+    if (want) {
+      this.lookYaw += (yaw - this.lookYaw) * k;
+      this.lookPitch += (pitch - this.lookPitch) * k;
+    }
+    if (this.lookWeight < 0.01 || !this.neck) return;
+    this.lookBefore = [this.neck.quaternion.clone(), head.quaternion.clone()];
+    const turn = this.root.getWorldQuaternion(LOOK_Q);
+    const up = LOOK_UP.set(0, 1, 0).applyQuaternion(turn);
+    const right = LOOK_RIGHT.set(1, 0, 0).applyQuaternion(turn);
+    const w = this.lookWeight;
+    turnAbout(this.neck, up, this.lookYaw * 0.4 * w);
+    turnAbout(this.neck, right, this.lookPitch * 0.35 * w);
+    turnAbout(head, up, this.lookYaw * 0.6 * w);
+    turnAbout(head, right, this.lookPitch * 0.65 * w);
+  }
+
   /** Only the top's colour changes on these models (the rest is the person's own). */
   setLook(look: AvatarLook): void {
     this.setTint(look.tint ?? 0);
@@ -466,6 +528,11 @@ export class RocketboxPerson {
     // (The street crowd calls update(dt, speed, emote).)
     const grounded = typeof groundedOrEmote === 'boolean' ? groundedOrEmote : true;
     if (typeof groundedOrEmote === 'number') emote = groundedOrEmote;
+    if (this.lookBefore && this.neck && this.head) {
+      this.neck.quaternion.copy(this.lookBefore[0]);
+      this.head.quaternion.copy(this.lookBefore[1]);
+      this.lookBefore = null;
+    }
     if (this.spine && this.spineBefore) {
       this.spine.quaternion.copy(this.spineBefore);
       this.spineBefore = null;
@@ -503,6 +570,7 @@ export class RocketboxPerson {
       this.leanTo(grips);
       reach(this.root, this.arms, grips);
     }
+    this.applyLook(dt);
     // Rain: the umbrella opens while standing or walking (not riding, in the air, running or
     // dancing), and everyone slowly gets wet — much less under an umbrella — and slowly dries.
     const open = this.umbrella !== null && rainNow > 0.15 && riding === null && grounded && emote === 0 && speed < 3.5;

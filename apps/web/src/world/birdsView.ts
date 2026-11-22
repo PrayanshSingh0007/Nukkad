@@ -16,13 +16,21 @@ const FLOCK_FOLLOW_MS = 2.5;
 const KITES_PER_CELL = 2;
 const FLOCKS = 3;
 const FLOCK_SIZE = 12;
-const CAPACITY = 9 * KITES_PER_CELL * 3 + FLOCKS * FLOCK_SIZE;
+/**
+ * Fruit bats (flying foxes): at dusk long loose streams of them cross the sky, all heading the
+ * same way out to feed, and a few stay overhead through the night.
+ */
+const BATS = 18;
+const BAT_SPEED_MS = 8.5;
+const BAT_STREAM_M = 700;
+const CAPACITY = 9 * KITES_PER_CELL * 3 + FLOCKS * FLOCK_SIZE + BATS;
 
-type Kind = 'kite' | 'pigeon' | 'crow';
+type Kind = 'kite' | 'pigeon' | 'crow' | 'bat';
 const LOOK: Record<Kind, { colour: number; span: number; rate: number }> = {
   kite: { colour: 0x3b2c22, span: 1.0, rate: 5 },
   pigeon: { colour: 0x6f737b, span: 0.42, rate: 44 },
   crow: { colour: 0x17181b, span: 0.6, rate: 30 },
+  bat: { colour: 0x231d1a, span: 0.75, rate: 22 },
 };
 
 const hash = (a: number, b: number, salt: number): number => {
@@ -125,7 +133,12 @@ export class BirdsView {
   setWorld(night: number, rain: number): void {
     const day = 1 - THREE.MathUtils.smoothstep(night, 0.15, 0.7);
     this.presence = day * (1 - 0.85 * rain);
+    // Bats: out from dusk, most at dusk itself, fewer later; they sit out heavy rain.
+    const dusk = THREE.MathUtils.smoothstep(night, 0.12, 0.4);
+    this.batPresence = dusk * (1 - 0.45 * THREE.MathUtils.smoothstep(night, 0.7, 1)) * (1 - 0.9 * rain);
   }
+
+  private batPresence = 0;
 
   setGround(y: number): void {
     this.ground = this.ground === null ? y : this.ground + (y - this.ground) * 0.02;
@@ -134,13 +147,13 @@ export class BirdsView {
   /** seconds: the room's shared clock, so everyone's birds are in the same places. */
   update(seconds: number, px: number, pz: number): void {
     this.time.value = seconds % 10000;
-    this.mesh.visible = this.presence > 0.02 && this.ground !== null;
+    this.mesh.visible = (this.presence > 0.02 || this.batPresence > 0.02) && this.ground !== null;
     if (this.ground === null || !this.mesh.visible) return;
     const ground = this.ground;
     let n = 0;
     const flap = this.flap.array as Float32Array;
     const place = (bird: Bird, x: number, y: number, z: number, heading: number, bank: number, pitch: number, beat: number): void => {
-      if (n >= CAPACITY || bird.keen > this.presence) return;
+      if (n >= CAPACITY || bird.keen > (bird.kind === 'bat' ? this.batPresence : this.presence)) return;
       const look = LOOK[bird.kind];
       this.position.set(x, y, z);
       this.euler.set(pitch, heading, bank);
@@ -220,6 +233,23 @@ export class BirdsView {
         const x = lx + ch * side + sh * back;
         const z = lz - sh * side + ch * back;
         place({ kind, keen: hash(f, b, 131) * 0.9, phase: b * 1.7 + f }, x, ground + height + up, z, heading, turn, 0, gliding ? 0.06 : 0.75);
+      }
+    }
+    // The bat stream: all flying the same way (to the north-east), spread across a wide band that
+    // passes over you, wrapping round a 700 m stretch so it never ends; each beats its wings its
+    // own way, with short glides.
+    if (this.batPresence > 0.02) {
+      const ax = 0.72;
+      const az = -0.69;
+      const heading = Math.atan2(-ax, -az);
+      for (let b = 0; b < BATS; b++) {
+        const along = ((seconds * BAT_SPEED_MS * (0.9 + 0.2 * hash(b, 1, 141)) + hash(b, 2, 151) * BAT_STREAM_M) % BAT_STREAM_M) - BAT_STREAM_M / 2;
+        const across = (hash(b, 3, 161) - 0.5) * 220 + Math.sin(seconds * 0.4 + b * 2.3) * 5;
+        const x = px + ax * along - az * across;
+        const z = pz + az * along + ax * across;
+        const height = 38 + 40 * hash(b, 4, 171) + Math.sin(seconds * 0.9 + b) * 2.5;
+        const gliding = Math.sin(seconds * 1.3 + b * 1.9) > 0.7;
+        place({ kind: 'bat', keen: hash(b, 5, 181) * 0.95, phase: b * 2.9 }, x, ground + height, z, heading + Math.sin(seconds * 0.7 + b) * 0.15, Math.sin(seconds * 1.1 + b) * 0.2, 0, gliding ? 0.1 : 0.85);
       }
     }
     this.mesh.count = n;

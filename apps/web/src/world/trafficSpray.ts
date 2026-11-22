@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 /**
- * Spray behind traffic on wet roads: a soft cloud of fine water thrown up behind each moving
- * vehicle near you, lowest and thickest at the back wheels, thinning out behind and above,
+ * Spray behind traffic on wet roads — and on dry days a light haze of road dust — a soft cloud
+ * thrown up behind each moving vehicle near you, lowest and thickest at the back wheels, thinning out behind and above,
  * churning as it drifts. One instanced draw call of soft volumes (a squashed sphere each, drawn
  * as mist: dense where you look through the middle, fading to nothing at its outline).
  */
@@ -87,10 +87,10 @@ export class TrafficSpray {
     (this.mesh as unknown as { isLine2: boolean }).isLine2 = true;
   }
 
-  /** How wet the road is (0–1), the daylight colour, and the frame time. */
-  setLevel(wet: number, light: THREE.Color, dt: number): void {
-    uniforms.uStrength.value = THREE.MathUtils.smoothstep(wet, 0.15, 0.7) * 1.6;
-    uniforms.uLight.value.copy(light);
+  /** How thick (0 none … about 1.6 a downpour's spray), its colour as lit, and the frame time. */
+  setLevel(strength: number, colour: THREE.Color, dt: number): void {
+    uniforms.uStrength.value = strength;
+    uniforms.uLight.value.copy(colour);
     uniforms.uTime.value = (uniforms.uTime.value + dt) % 1000;
   }
 

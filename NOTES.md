@@ -27,6 +27,28 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Rainbows, people look at you, road dust, fruit bats (2026-11-22) — owner: "more AAAA"
+
+- **Rainbow** (`sky.ts`, `uRainbow` set in `game.ts`): for about three minutes after rain (`recentRain` fades over 180 s), while the sun is up but under about 35°.
+  - The main bow sits 40–42.5° from the point opposite the sun (violet inside, red outside). A faint second bow at 50–53.5° has its colours reversed, and the sky is a little brighter inside the main bow.
+  - Weaker on cloudy days, none at night or while it still rains hard.
+  - Checked: a double rainbow over the street at 16:18 after a shower.
+- **People look at you** (`RocketboxPerson.lookAt`): the head (60 %) and neck (40 %) turn towards a point, up to about 65° to either side and a little up or down. A point behind them is ignored, and turns ease in and out.
+  - The head and neck are put back to the clip's pose before each frame, so turns never add up.
+  - Who looks where:
+    - Street walkers glance at you within 6 m; startled walkers look at whoever honked.
+    - Your character looks where the camera looks, on foot only (`Avatar.lookAt`). So when you swing the camera to the side, their head turns.
+  - Checked: your character looking 64° to the side versus straight ahead.
+- **Road dust** (`TrafficSpray` again): on dry days in daylight, faster traffic (over 9 m/s) leaves a faint warm-brown haze of road dust. In rain the same volumes are white spray.
+  - Checked: a light haze behind a car, made a little stronger after.
+- **Fruit bats** (`BirdsView`): at dusk, a loose stream of 18 flying foxes crosses the sky heading north-east, 38–78 m up, passing over you and wrapping round a 700 m stretch. Fewer later at night, none in heavy rain.
+  - Checked at 17:57: specks against the purple dusk sky. At full night they're dark on dark and practically invisible, which is true to life.
+- **Last round's unchecked items, now checked:**
+  - Doorway eye adaptation: exposure 0.73 → 1.03 over a second going into a home; 1.95 → 1.39 coming back out into daylight, with visible glare.
+  - The lake mirrors the late-afternoon sky.
+  - Storm wind reaches the trees (`uRain` 1 in rain). Their motion itself isn't checked in a still frame.
+- **Not checked:** a phone.
+
 ## Traffic spray, night city glow, eye adaptation, storm trees, sky-lit lakes (2026-11-22) — owner: "more aaa" (away 30 min)
 
 - **Spray behind traffic** (`world/trafficSpray.ts`): on a wet road, every vehicle near you (within 70 m) that is really moving (over 5 m/s, measured from frame to frame) throws a mist of water up behind it, in one instanced draw call.
