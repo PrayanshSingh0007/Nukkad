@@ -7,6 +7,7 @@ import { createMaterials } from './materials.ts';
 import type { WorldMaterials } from './materials.ts';
 import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { LampBeams } from './lampBeams.ts';
+import { WetReflections } from './wetReflections.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -65,6 +66,9 @@ export class WorldView {
   private lampHeads: THREE.MeshBasicMaterial | null = null;
   private halos: THREE.Points | null = null;
   private beams: LampBeams | null = null;
+  /** Lights mirrored in wet roads: [x, groundY, z, height, r, g, b, width] per light. */
+  private readonly wetLights: number[] = [];
+  private wet: WetReflections | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -221,6 +225,7 @@ export class WorldView {
     this.halos?.geometry.dispose();
     this.haloMaterial?.dispose();
     this.beams?.dispose();
+    this.wet?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -310,6 +315,10 @@ export class WorldView {
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
+    if (this.wetLights.length > 0) {
+      this.wet = new WetReflections(this.wetLights.length / 8, new Float32Array(this.wetLights));
+      this.group.add(this.wet.mesh);
+    }
     this.addCables(props.cables);
     this.counts.benches = addSimple(models.bench, props.benches, BENCH_STRIDE);
   }
@@ -383,6 +392,7 @@ export class WorldView {
       haloPositions.set([px, y + 5.08, pz], i * 3);
       beamHeads.set([px, y + 4.96, pz], i * 3);
       beamGrounds[i] = py - 0.14;
+      this.wetLights.push(px, py - 0.14, pz, y + 4.96 - (py - 0.14), 2.0, 1.3, 0.62, 0.38);
     }
     this.beams = new LampBeams(beamHeads, beamGrounds);
     this.group.add(this.beams.mesh);
@@ -409,7 +419,10 @@ export class WorldView {
     this.globeMaterial = new THREE.MeshBasicMaterial({ color: 0xe8e2d4 });
     const globes = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.17, 2), this.globeMaterial, count);
     const matrix = new THREE.Matrix4();
-    for (let i = 0; i < count; i++) globes.setMatrixAt(i, matrix.makeTranslation(lamps[i * 3], lamps[i * 3 + 1], lamps[i * 3 + 2]));
+    for (let i = 0; i < count; i++) {
+      const [x, y, z] = [lamps[i * 3], lamps[i * 3 + 1], lamps[i * 3 + 2]];
+      globes.setMatrixAt(i, matrix.makeTranslation(x, y, z));
+    }
     globes.instanceMatrix.needsUpdate = true;
     globes.computeBoundingSphere();
     this.group.add(globes);
@@ -521,6 +534,7 @@ export class WorldView {
       this.globeHaloMaterial.size = 0.75 + 0.6 * rain;
     }
     this.beams?.setLevel(night, rain);
+    this.wet?.setLevel(night, rain);
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;
       this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);

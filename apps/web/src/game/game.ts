@@ -47,7 +47,8 @@ import { SpeedLines } from './speedLines.ts';
 import { TyreFx } from './tyreFx.ts';
 import { CarLights } from './carLights.ts';
 import { CityReflections } from '../atmosphere/cityReflections.ts';
-import { RainView, rainAt } from '../atmosphere/weather.ts';
+import { CloudShadows, installCloudShadows } from '../atmosphere/cloudShadows.ts';
+import { RainSplashes, RainView, rainAt } from '../atmosphere/weather.ts';
 
 /**
  * A simple gearbox for the engine note: gears get longer as you go up, the revs climb through
@@ -191,6 +192,12 @@ const EDGE_MARGIN_M = 100; // the playable square ends this far inside the area
 const HYSTERESIS_M = 30;
 
 /** The game itself: loads a place, streams it around the player, and runs the frame loop. */
+// Before any shader is compiled: the sun's light is dimmed under drifting cloud shadows.
+installCloudShadows();
+
+/** Reused for the rain splashes' sprite size. */
+const SPLASH_VIEW = new THREE.Vector2();
+
 /** The rim light colour handed to the realistic people each frame (reused). */
 const PEOPLE_RIM = new THREE.Color();
 
@@ -212,6 +219,7 @@ export class Game {
   private traffic: TrafficView | null = null;
   private walkers: PedestrianView | null = null;
   private birds: BirdsView | null = null;
+  private readonly clouds = new CloudShadows();
   private readonly reflections: CityReflections;
   /** High only: renders through a glow pass. */
   private composer: EffectComposer | null = null;
@@ -276,6 +284,7 @@ export class Game {
   private readonly tyreFx = new TyreFx();
   private readonly carLights = new CarLights();
   private readonly rainView = new RainView();
+  private readonly splashes = new RainSplashes();
   /** `?rain=0…1` in the address fixes the weather (for testing); null = the shared weather. */
   private readonly rainOverride: number | null = null;
   private rain = 0;
@@ -295,6 +304,7 @@ export class Game {
     this.speedLines = new SpeedLines(options.canvas.parentElement ?? document.body);
     this.view3d.scene.add(this.tyreFx.group);
     this.view3d.scene.add(this.rainView.lines);
+    this.view3d.scene.add(this.splashes.points);
     const rainParam = new URLSearchParams(location.search).get('rain');
     this.rainOverride = rainParam === null ? null : Math.min(1, Math.max(0, Number(rainParam) || 0));
     this.remotes = new RemotePlayers(this.view3d.scene);
@@ -1040,7 +1050,9 @@ export class Game {
         this.tyreFx.setViewport(size.y, this.view3d.camera.fov);
         this.tyreFx.setLight(new THREE.Color(1, 1, 1).multiplyScalar(1 - this.atmosphere.night * 0.75));
         // Wet roads: tyres slide on water instead of smoking and leave hardly any rubber.
-        this.tyreFx.update(dt, wheels, skid * (1 - 0.8 * this.rain), vx, vz);
+        // ...and throw up spray behind them at speed.
+        const spray = this.interior ? 0 : THREE.MathUtils.smoothstep(this.rain, 0.1, 0.6) * THREE.MathUtils.smoothstep(Math.abs(player.rideSpeed), 5, 25);
+        this.tyreFx.update(dt, wheels, skid * (1 - 0.8 * this.rain), vx, vz, spray);
         this.sound.skid(skid);
       }
       this.sound.engine(riding ? engineRpm(riding, Math.abs(player.rideSpeed)) : 0, !riding ? 'none' : riding.code === 1 ? 'electric' : 'engine', player.throttle);
@@ -1112,6 +1124,13 @@ export class Game {
       this.introShot(player, dt);
       this.updateStreet(player, now);
       this.rainView.update(dt, this.interior ? 0 : this.rain, this.view3d.camera, this.atmosphere.sky.uniforms.uHorizon.value);
+      const ground = this.world?.terrain;
+      if (ground) {
+        const view = this.view3d.renderer.getDrawingBufferSize(SPLASH_VIEW);
+        this.splashes.setViewport(view.y, this.view3d.camera.fov);
+        // Roads sit a few centimetres above the ground: splashes a little higher, so they show on them.
+        this.splashes.update(dt, this.interior ? 0 : this.rain, player.x, player.z, (x, z) => heightAt(ground, x, z) + 0.12, this.atmosphere.sky.uniforms.uHorizon.value);
+      }
       this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0, this.rain);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
@@ -1134,6 +1153,10 @@ export class Game {
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
     }
+    // Cloud shadows by day (not indoors, not on Low); fewer in rain, when the sky is one grey sheet.
+    const day = 1 - THREE.MathUtils.smoothstep(this.atmosphere.night, 0.1, 0.6);
+    const cloudStrength = this.interior || this.level === 'low' ? 0 : 0.72 * day * (1 - this.rain);
+    this.clouds.update(this.view3d.renderer, Date.now(), cloudStrength, this.atmosphere.cloud);
     // Realistic people: a rim of sky light (none indoors) and the sky's reflections.
     PEOPLE_RIM.copy(skyU.uHorizon.value).multiplyScalar(this.interior ? 0 : 0.55 * (1 - this.atmosphere.night * 0.4));
     setPeopleLight(PEOPLE_RIM, this.reflections.texture, this.interior ? 1 : this.atmosphere.night);

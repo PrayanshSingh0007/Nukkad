@@ -10,11 +10,14 @@ import * as THREE from 'three';
  *
  * Smoke: soft round puffs (one draw call, a ring buffer of points) that start small at the
  * tyre, swell, drift up and back, and fade over about two seconds.
+ *
+ * Spray: on a wet road at speed the same puffs become a short-lived mist of water thrown up
+ * behind the tyres, trailing the vehicle (more the faster and wetter).
  */
 const MAX_SEGMENTS = 900;
 const MARK_WIDTH = 0.24;
 const MIN_STEP = 0.35; // metres between mark points
-const MAX_PUFFS = 220;
+const MAX_PUFFS = 420;
 
 interface Track {
   x: number;
@@ -41,6 +44,7 @@ export class TyreFx {
   private readonly puffVel: Float32Array;
   private nextPuff = 0;
   private emitCarry = 0;
+  private sprayCarry = 0;
 
   constructor() {
     // ---- Skid marks
@@ -107,7 +111,7 @@ export class TyreFx {
       fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 600 }, uLight: { value: new THREE.Color(1, 1, 1) } }]),
       vertexShader: /* glsl */ `
-        attribute vec4 aData; // age, life, size, seed
+        attribute vec4 aData; // age, life, size, seed (seed 1–2 = spray: thinner)
         uniform float uScale;
         varying float vFade;
         varying float vSeed;
@@ -135,7 +139,7 @@ export class TyreFx {
           float r = length(q);
           // A soft, lumpy puff: radial falloff broken up by noise.
           float lump = n(q * 5.0 + vSeed * 13.0) * 0.5 + n(q * 11.0 - vSeed * 7.0) * 0.25;
-          float a = smoothstep(0.5, 0.05, r + (lump - 0.35) * 0.35) * vFade * 0.42;
+          float a = smoothstep(0.5, 0.05, r + (lump - 0.35) * 0.35) * vFade * (vSeed >= 1.0 ? 0.17 : 0.42);
           if (a < 0.004) discard;
           vec3 c = mix(vec3(0.62, 0.62, 0.63), vec3(0.92, 0.92, 0.93), 0.6 - q.y) * uLight;
           gl_FragColor = vec4(c, a);
@@ -160,9 +164,10 @@ export class TyreFx {
 
   /**
    * One frame. `wheels` = world positions of the rear tyres (one for bikes), `amount` = how hard
-   * they are sliding (0–1), `vx, vz` = the vehicle's velocity (smoke is left behind in the air).
+   * they are sliding (0–1), `vx, vz` = the vehicle's velocity (smoke is left behind in the air),
+   * `spray` = water thrown up from a wet road (0–1).
    */
-  update(dt: number, wheels: { x: number; y: number; z: number }[], amount: number, vx: number, vz: number): void {
+  update(dt: number, wheels: { x: number; y: number; z: number }[], amount: number, vx: number, vz: number, spray = 0): void {
     const marking = amount > 0.12;
     let marksChanged = false;
     wheels.forEach((w, i) => {
@@ -219,6 +224,22 @@ export class TyreFx {
         this.puffData.set([0, 1.6 + Math.random() * 1.0, 0.7 + amount * 0.9, Math.random()], i * 4);
       }
     } else this.emitCarry = 0;
+
+    // Spray: a fine mist behind the tyres, carried along a little by the vehicle.
+    if (spray > 0.04 && wheels.length > 0) {
+      this.sprayCarry += dt * 34 * spray * wheels.length;
+      const speed = Math.hypot(vx, vz) || 1;
+      while (this.sprayCarry >= 1) {
+        this.sprayCarry -= 1;
+        const w = wheels[this.nextPuff % wheels.length];
+        const i = this.nextPuff;
+        this.nextPuff = (this.nextPuff + 1) % MAX_PUFFS;
+        const back = 0.3 + Math.random() * 0.4;
+        this.puffPos.set([w.x - (vx / speed) * back + (Math.random() - 0.5) * 0.4, w.y + 0.12, w.z - (vz / speed) * back + (Math.random() - 0.5) * 0.4], i * 3);
+        this.puffVel.set([vx * 0.42 + (Math.random() - 0.5) * 1.4, 0.7 + Math.random() * 0.9, vz * 0.42 + (Math.random() - 0.5) * 1.4], i * 3);
+        this.puffData.set([0, 0.45 + Math.random() * 0.45, 0.5 + spray * 0.8, 1 + Math.random()], i * 4);
+      }
+    } else this.sprayCarry = 0;
     let alive = false;
     for (let i = 0; i < MAX_PUFFS; i++) {
       const d = i * 4;
@@ -233,7 +254,7 @@ export class TyreFx {
       this.puffPos[i * 3 + 1] += this.puffVel[i * 3 + 1] * dt;
       this.puffPos[i * 3 + 2] += this.puffVel[i * 3 + 2] * dt;
     }
-    if (alive || amount > 0.2) {
+    if (alive || amount > 0.2 || spray > 0.04) {
       const g = this.smoke.geometry;
       (g.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
       (g.getAttribute('aData') as THREE.BufferAttribute).needsUpdate = true;

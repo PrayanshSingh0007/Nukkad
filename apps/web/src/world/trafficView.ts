@@ -3,6 +3,7 @@ import { VEHICLE_HALF, VEHICLE_HEIGHT, VEHICLE_KINDS, heightAt, trafficPose } fr
 import type { TerrainGrid, TrafficRoute } from '@nukkad/worldgen';
 import type { SolidBox } from './streetLifeView.ts';
 import { TrafficDrivers } from './trafficDrivers.ts';
+import { WetReflections } from './wetReflections.ts';
 
 type ModelSource = (name: string, light: boolean) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
@@ -52,6 +53,8 @@ function beamTexture(): THREE.CanvasTexture {
 const SOLID_COUNT = 5; // the nearest moving vehicles are solid
 /** Vehicles closer than this are drawn with their full model (further ones with the light one). */
 const FULL_MODEL_M = 40;
+/** Head and tail lights are mirrored in a wet road within this distance. */
+const WET_LIGHTS_M = 110;
 /** Mesh keys: kind for the light version, kind + FULL for the full one. */
 const FULL = 100;
 
@@ -88,6 +91,8 @@ export class TrafficView {
   private readonly tailMaterial: THREE.PointsMaterial;
   private readonly beams: THREE.InstancedMesh;
   private readonly beamMaterial: THREE.MeshBasicMaterial;
+  /** Head and tail lights mirrored in the wet road. */
+  private readonly wet: WetReflections;
   /** Someone at the wheel (or on the seat) of every moving vehicle. */
   private readonly drivers: TrafficDrivers;
 
@@ -118,6 +123,8 @@ export class TrafficView {
     this.beams.frustumCulled = false;
     this.beams.visible = false;
     this.group.add(this.beams);
+    this.wet = new WetReflections(Math.max(1, routes.length) * 4);
+    this.group.add(this.wet.mesh);
     this.drivers = new TrafficDrivers(routes.length);
     this.group.add(this.drivers.group);
   }
@@ -129,6 +136,7 @@ export class TrafficView {
     this.heads.visible = this.tails.visible = this.beams.visible = on;
     this.headMaterial.opacity = this.tailMaterial.opacity = Math.min(1, night * 1.3);
     this.beamMaterial.opacity = night * (0.32 + 0.3 * rain);
+    this.wet.setLevel(night, rain);
   }
 
   get count(): number {
@@ -175,6 +183,7 @@ export class TrafficView {
     const headPos = (this.heads.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     const tailPos = (this.tails.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     let heads = 0;
+    this.wet.begin();
     let beams = 0;
     this.drivers.begin();
 
@@ -246,6 +255,11 @@ export class TrafficView {
         for (const side of single ? [0] : [-0.72, 0.72]) {
           headPos.set([pose.x + fx2 * hl + sx * hw * side, lampY, pose.z + fz2 * hl + sz * hw * side], heads * 3);
           tailPos.set([pose.x - fx2 * hl + sx * hw * side, lampY, pose.z - fz2 * hl + sz * hw * side], heads * 3);
+          // In the wet road: white from the headlights, red from the tail lights.
+          if (d < WET_LIGHTS_M) {
+            this.wet.set(headPos[heads * 3], lane.y, headPos[heads * 3 + 2], lampY - lane.y, 2.4, 2.25, 1.95, 0.24);
+            this.wet.set(tailPos[heads * 3], lane.y, tailPos[heads * 3 + 2], lampY - lane.y, 2.1, 0.14, 0.07, 0.2);
+          }
           heads++;
         }
         const width = single ? 2.6 : 4.4;
@@ -263,6 +277,7 @@ export class TrafficView {
       this.beams.count = beams;
       this.beams.instanceMatrix.needsUpdate = true;
     }
+    this.wet.commit();
     this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
       mesh.count = counts.get(kind) ?? 0;
@@ -283,6 +298,7 @@ export class TrafficView {
     for (const points of [this.heads, this.tails]) points.geometry.dispose();
     this.headMaterial.dispose();
     this.tailMaterial.dispose();
+    this.wet.dispose();
     this.beams.dispose();
     this.beamMaterial.dispose();
     this.drivers.dispose();

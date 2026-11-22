@@ -27,6 +27,30 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Cloud shadows, wet-road reflections, tyre spray, rain splashes (2026-11-22) — owner: "make it more AAA"
+
+- **Cloud shadows** (`atmosphere/cloudShadows.ts`): soft patches of shade, 100–300 m across, drift over the whole city with the wind (about 6 m/s). They land on everything lit by the sun and come from the clock, so everyone sees the same ones.
+  - How it works:
+    - `installCloudShadows()` patches three.js's own lighting chunks once at start-up: `lights_pars_begin` gets a noise function and `lights_fragment_begin` dims the sun by the cloud pattern at that point.
+    - Under a cloud, `lights_fragment_end` also dims 35 % of the sky fill. Without that, the strong fill light made the shadows almost invisible.
+    - The settings live in one GLSL uniform, `nkCloud`, that three.js doesn't know about. `CloudShadows.update` writes it into every compiled program each frame, through `renderer.state.useProgram` so three.js's cached program stays right.
+  - How much: about 0.72 of the sun under a cloud by day, none at night, indoors or on Low, and fading in rain. How much of the ground is shaded follows the real cloud cover (`atmosphere.cloud`).
+  - Lessons:
+    - A GLSL name in the patch must be unique across all shaders: `nkShade` already existed in `materials.ts` and broke one program.
+    - The first pattern scale (260 m) was too big to see within one view.
+  - Checked from above: half the view under a cloud with flat, cool light, the rest in sun. Cost not measurable on the owner's Mac.
+- **Wet-road reflections** (`world/wetReflections.ts`): at night in the rain, street lamps and traffic's head and tail lights each leave a streak on the road.
+  - Each streak centres where the light's mirror image meets the ground (closer to you the higher the light) and smears towards you. Its width is tapered so it stays even on screen; a fixed width fanned out into glowing cones.
+  - One instanced draw call for the lamps, and one for traffic filled every frame (within 110 m).
+  - Gate globes are left out: the method can't tell when a wall or truck hides a light, and their mirror images floated in front of walls.
+  - The first version was far too bright and ran to the camera's feet, blowing out the bloom. Now it gives back about 28 % of the light.
+- **Tyre spray** (`game/tyreFx.ts`): on a wet road above about 20 km/h, rising to full at 90, a thin mist of water is thrown up behind the tyres of the vehicle you drive and trails behind it. It reuses the smoke puffs (seed 1–2 marks spray, drawn at 0.17 opacity instead of 0.42), and `MAX_PUFFS` is now 420.
+  - The first version looked like thick smoke.
+  - Only checked with spray fed in at a set speed; a real fast drive in rain wasn't possible in the pane.
+- **Rain splashes** (`RainSplashes` in `atmosphere/weather.ts`): up to 700 tiny crowns (a spreading ring and up to four droplets), each lasting about a third of a second, on the ground within 22 m of you. About 1,500 a second in a downpour, on the terrain height plus 12 cm so they show on roads.
+- **Cost:** the rain additions together are about 0.5 ms a frame at night in a downpour (5.3 → 5.8 ms, 1536×1152, preview pane).
+- **Not checked:** a phone.
+
 ## Dyed tops, film lighting for people, lamp light, birds (2026-11-21) — owner: "paint the clothing masks and make it more AAA"
 
 - **Clothing masks** (`tools/characters/rocketbox-masks.mjs`, run on the avatar folder; writes `<name>_top.png` 512 px and `masks.json`):
