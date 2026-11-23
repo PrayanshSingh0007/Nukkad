@@ -1,6 +1,23 @@
 import * as THREE from 'three';
 import { makeRng, randomLook } from '@nukkad/shared';
 import { buildAvatarGeometry } from '../player/avatar/avatarModel.ts';
+import { OUTFIT_COLORS } from '@nukkad/shared';
+import { ROCKETBOX_AVATARS, RocketboxPerson, loadRocketbox, rocketboxReady } from '../player/avatar/rocketbox.ts';
+import { umbrellaColour } from '../player/avatar/umbrella.ts';
+
+/** Within this distance the nearest few become realistic people (sitting, standing, chatting). */
+const NEAR_M = 22;
+
+interface Placement {
+  pose: Pose;
+  look: number;
+  matrix: THREE.Matrix4;
+  /** The light figure standing in for them (hidden while a realistic person is there). */
+  mesh: THREE.InstancedMesh | null;
+  index: number;
+  /** Seeded 0–1: who chats, which person, top colour. */
+  seed: number;
+}
 
 /**
  * People waiting at bus stops — one to four at each shelter, some sitting on the bench, some
@@ -47,6 +64,13 @@ export class WaitingPeople {
   readonly group = new THREE.Group();
   private readonly materials: THREE.MeshLambertMaterial[] = [];
   private readonly time = { value: 0 };
+  private readonly placements: Placement[] = [];
+  /** Realistic people up close: which placement each one stands in for. */
+  private readonly pool: { person: RocketboxPerson; at: number }[] = [];
+  private nearLimit = 4;
+  private searchIn = 0;
+  private rain = 0;
+  private readonly hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
   /**
    * stops: [x, y, z, angle] per bus shelter (its open side, the model's +z, faces the road);
@@ -82,12 +106,16 @@ export class WaitingPeople {
         if (sitting) {
           // On the bench (seat 0.48 m up at the back), facing the road (+z: turn half round).
           const lx = -1.0 + (k + r(30 + k) * 0.6) * 0.65;
-          places.sit[look].push(place(Math.min(1.0, lx), BENCH_Y - HIP_Y, -0.32, Math.PI));
+          const m = place(Math.min(1.0, lx), BENCH_Y - HIP_Y, -0.32, Math.PI);
+          places.sit[look].push(m);
+          this.placements.push({ pose: 'sit', look, matrix: m, mesh: null, index: places.sit[look].length - 1, seed: r(90 + k) });
         } else {
           // Standing under the front edge, most facing the road, some looking along it.
           const lx = (r(40 + k) - 0.5) * 3.2;
           const facing = Math.PI + (r(50 + k) < 0.35 ? (r(60 + k) < 0.5 ? 1.2 : -1.2) : (r(70 + k) - 0.5) * 0.6);
-          places.stand[look].push(place(lx, 0, 0.35 + r(80 + k) * 0.5, facing));
+          const m = place(lx, 0, 0.35 + r(80 + k) * 0.5, facing);
+          places.stand[look].push(m);
+          this.placements.push({ pose: 'stand', look, matrix: m, mesh: null, index: places.stand[look].length - 1, seed: r(90 + k) });
         }
       }
     }
@@ -107,7 +135,10 @@ export class WaitingPeople {
         // Facing the cart (people face −z: heading = atan2(−dx, −dz) towards it).
         const facing = Math.atan2(-(x - px), -(z - pz)) + (r(30 + k) - 0.5) * 0.5;
         turn.setFromAxisAngle(up, facing);
-        places.stand[Math.floor(r(40 + k) * LOOKS)].push(matrix.clone().compose(at.set(px, y, pz), turn, one));
+        const look = Math.floor(r(40 + k) * LOOKS);
+        const m = matrix.clone().compose(at.set(px, y, pz), turn, one);
+        places.stand[look].push(m);
+        this.placements.push({ pose: 'stand', look, matrix: m, mesh: null, index: places.stand[look].length - 1, seed: r(50 + k) });
       }
     }
     for (const pose of ['stand', 'sit'] as const) {
@@ -132,6 +163,7 @@ export class WaitingPeople {
         if (list.length === 0) return;
         const mesh = new THREE.InstancedMesh(geometries[look], material, list.length);
         list.forEach((m, i) => mesh.setMatrixAt(i, m));
+        for (const p of this.placements) if (p.pose === pose && p.look === look) p.mesh = mesh;
         mesh.instanceMatrix.needsUpdate = true;
         mesh.computeBoundingSphere();
         mesh.castShadow = false; // the shadow pass would draw them unposed (standing)
@@ -141,11 +173,86 @@ export class WaitingPeople {
     }
   }
 
-  update(dt: number): void {
+  /** How many realistic people may stand in up close (the quality's near-people budget). */
+  setNearLimit(limit: number): void {
+    this.nearLimit = limit;
+    if (limit > 0) void loadRocketbox();
+  }
+
+  setRain(rain: number): void {
+    this.rain = rain;
+  }
+
+  /** (x, z) = you. */
+  update(dt: number, x: number, z: number): void {
     this.time.value = (this.time.value + dt) % 1000;
+    const assets = this.nearLimit > 0 ? rocketboxReady() : null;
+    this.searchIn -= dt;
+    if (assets && this.searchIn <= 0) {
+      this.searchIn = 0.5;
+      const near = this.placements
+        .map((p, i) => ({ i, d: Math.hypot(p.matrix.elements[12] - x, p.matrix.elements[14] - z) }))
+        .filter((n) => n.d < NEAR_M)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, this.nearLimit)
+        .map((n) => n.i);
+      // Give back the light figures of those no longer near; free their realistic people.
+      for (const slot of this.pool) {
+        if (slot.at >= 0 && !near.includes(slot.at)) {
+          this.show(slot.at, true);
+          slot.at = -1;
+          slot.person.root.visible = false;
+        }
+      }
+      for (const i of near) {
+        if (this.pool.some((slot) => slot.at === i)) continue;
+        const p = this.placements[i];
+        // Neighbours are different people: spread by their place in the list as well as the seed.
+        const avatar = (i * 3 + Math.floor(p.seed * 8)) % ROCKETBOX_AVATARS.length;
+        let slot = this.pool.find((s) => s.at < 0 && s.person.avatar === avatar) ?? null;
+        if (!slot) {
+          const person = new RocketboxPerson(assets, avatar, p.seed);
+          this.group.add(person.root);
+          const free = this.pool.find((s) => s.at < 0);
+          if (free) {
+            free.person.dispose();
+            free.person = person;
+            slot = free;
+          } else {
+            slot = { person, at: -1 };
+            this.pool.push(slot);
+          }
+        }
+        slot.at = i;
+        const dye = (p.seed * 7.13) % 1;
+        slot.person.setTint(dye < 0.34 ? 0 : 1 + Math.floor(((dye - 0.34) / 0.66) * OUTFIT_COLORS.length));
+        slot.person.setUmbrella(p.pose === 'stand' && (p.seed * 3.7) % 1 < 0.8 ? umbrellaColour((p.seed * 5.3) % 1) : null);
+        // Stand where the light figure stood (seated ones: on the ground below the bench seat).
+        const e = p.matrix.elements;
+        slot.person.root.position.set(e[12], e[13] - (p.pose === 'sit' ? BENCH_Y - HIP_Y : 0), e[14]);
+        slot.person.root.quaternion.setFromRotationMatrix(p.matrix);
+        slot.person.root.visible = true;
+        this.show(i, false);
+      }
+    }
+    for (const slot of this.pool) {
+      if (slot.at < 0) continue;
+      const p = this.placements[slot.at];
+      // Sitting on the bench; standing ones chat or just wait (in the rain they keep their umbrella up).
+      const chatting = p.pose === 'stand' && this.rain < 0.15 && (p.seed * 11.1) % 1 < 0.4;
+      slot.person.update(dt, 0, p.pose === 'sit' ? 3 : chatting ? 4 : 0);
+    }
+  }
+
+  private show(i: number, visible: boolean): void {
+    const p = this.placements[i];
+    if (!p.mesh) return;
+    p.mesh.setMatrixAt(p.index, visible ? p.matrix : this.hidden);
+    p.mesh.instanceMatrix.needsUpdate = true;
   }
 
   dispose(): void {
+    for (const slot of this.pool) slot.person.dispose();
     this.group.traverse((object) => {
       const mesh = object as THREE.InstancedMesh;
       if (mesh.isInstancedMesh) mesh.geometry.dispose();

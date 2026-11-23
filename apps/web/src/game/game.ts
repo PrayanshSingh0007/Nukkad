@@ -872,6 +872,7 @@ export class Game {
       this.birds = new BirdsView();
       this.view3d.scene.add(this.birds.mesh);
       this.waiting = new WaitingPeople(ready.props.stops, this.world.carts);
+      this.waiting.setNearLimit(Math.ceil(settings.nearPeople / 2));
       this.view3d.scene.add(this.waiting.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
@@ -917,6 +918,7 @@ export class Game {
     this.traffic?.setRadius(quality.streetLifeRadius * 1.5);
     this.walkers?.setRadius(quality.streetLifeRadius * 0.8);
     this.walkers?.setNearLimit(quality.nearPeople);
+    this.waiting?.setNearLimit(Math.ceil(quality.nearPeople / 2));
     this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     this.applyBloom(quality.bloom);
@@ -1401,7 +1403,8 @@ export class Game {
           }
         } else this.traffic.takeSounds();
         this.walkers?.update(dt, seconds, player.x, player.z);
-        this.waiting?.update(dt);
+        this.waiting?.setRain(this.interior ? 0 : this.rain);
+        this.waiting?.update(dt, player.x, player.z);
         this.birds?.setGround(player.y);
         this.birds?.update(seconds, player.x, player.z);
       }

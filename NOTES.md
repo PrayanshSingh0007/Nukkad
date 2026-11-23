@@ -27,6 +27,13 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Realistic people at bus stops and carts up close (2026-11-23)
+
+- **`WaitingPeople` now swaps in Rocketbox people up close**: every placement (bench sitter, stander, cart customer) is recorded with its light-figure instance. Twice a second the nearest few within 22 m (half the quality's near-people budget: High 4, Medium 2, Low none) become realistic people, and their light figure is hidden (instance scaled to 0).
+  - Sitters use the sit clip on the bench. Standers wait (idle), or chat (talk clip) two in five of the time; in rain they keep their umbrella up instead.
+  - Each gets a seeded person, top colour and umbrella. The person is spread by list position, because the first try gave three copies of the same man at one stop.
+  - Checked: a woman standing, a woman beside her and a man on the bench at a shelter.
+
 ## Photo mode depth of field, pigeons on the ground (2026-11-23)
 
 - **Depth of field in photo mode** (three.js `BokehPass`, High only): focus follows the distance from the camera to your chest. Things nearer or further go softly out of focus (aperture 0.00035, max blur 0.009).
