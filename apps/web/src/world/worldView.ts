@@ -14,6 +14,7 @@ import { StallSteam } from './stallSteam.ts';
 import { PerchedBirds } from './perchedBirds.ts';
 import { RooftopLaundry } from './rooftopLaundry.ts';
 import { WallPosters } from './wallPosters.ts';
+import { FallingLeaves } from './fallingLeaves.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -85,6 +86,7 @@ export class WorldView {
   private perched: PerchedBirds | null = null;
   private laundry: RooftopLaundry | null = null;
   private posters: WallPosters | null = null;
+  private leaves: FallingLeaves | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -248,6 +250,7 @@ export class WorldView {
     this.perched?.dispose();
     this.laundry?.dispose();
     this.posters?.dispose();
+    this.leaves?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -338,6 +341,10 @@ export class WorldView {
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
+    if (leafy > 0) {
+      this.leaves = new FallingLeaves(this.treeMeshes);
+      this.group.add(this.leaves.points);
+    }
     if (props.stalls.length > 0) {
       this.steam = new StallSteam(props.stalls, this.materials.time);
       this.group.add(this.steam.points, this.steam.pots);
@@ -569,6 +576,7 @@ export class WorldView {
   updateNear(dt: number, x: number, z: number, scare = 6): number {
     this.insects?.update(dt, x, z);
     const tookOff = this.perched?.update(dt, x, z, scare) ?? 0;
+    this.leaves?.update(dt, x, z);
     this.laundry?.update(dt, x, z);
     return tookOff; // birds that flew off just now
   }
@@ -587,6 +595,7 @@ export class WorldView {
   setViewport(heightPx: number, fovDeg: number): void {
     this.stringLights?.setViewport(heightPx, fovDeg);
     this.steam?.setViewport(heightPx, fovDeg);
+    this.leaves?.setViewport(heightPx, fovDeg);
   }
 
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
@@ -644,6 +653,7 @@ export class WorldView {
     this.insects?.setLevel(night, rain);
     this.stringLights?.setLevel(night);
     this.perched?.setWorld(night, rain);
+    this.leaves?.setWorld(rain, STEAM_LIGHT.setRGB(1, 1, 1).multiplyScalar(1 - 0.8 * night));
     // Steam catches the daylight, or the stall's warm bulb at night.
     this.steam?.setLight(STEAM_LIGHT.setRGB(0.92, 0.92, 0.95).multiplyScalar(1 - 0.75 * night).add(STEAM_WARM.setRGB(0.42, 0.3, 0.18).multiplyScalar(night)));
     if (this.halos && this.haloMaterial) {

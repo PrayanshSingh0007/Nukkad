@@ -27,6 +27,15 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Falling leaves and petals (2026-11-23)
+
+- **Falling leaves** (`world/fallingLeaves.ts`): up to 260 at a time drift down from the drawn trees within about 38 m (looked up once a second; palms drop nothing). One draw call of points.
+  - Colours: green-gold from rain trees, ashoka and neem; orange-red petals from gulmohar; pink from tabebuia; magenta from bougainvillea.
+  - Each tumbles (a spinning, squashed ellipse) and sways down on the breeze. Gusts let more go; storms bring more, faster and further.
+  - They lie on the ground about 5 s, fade over 2 s, then start again from another tree.
+  - Point size is capped at 18 px, because one close to the camera was a big blob.
+  - Checked under a gulmohar: petals in the air and on the pavement.
+
 ## Friends walking together, chai cart crowds, speed check (2026-11-23)
 
 - **Friends walking together** (`PedestrianView`): about one walker in five has a companion 0.68 m to their left or right on the same route (160 in the owner's square). Each is a different person or look, and they stay in or go out together.
