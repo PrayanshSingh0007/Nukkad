@@ -864,6 +864,7 @@ export class Game {
       this.remotes.vehicleModels = (model) => streetLife.modelByName(model);
       this.traffic = new TrafficView(ready.traffic, this.world.terrain, (name, light) => streetLife.modelByName(name, light), (name, variant) => streetLife.paintFor(name, variant));
       this.traffic.setRadius(settings.streetLifeRadius * 1.5);
+      this.traffic.setRiderLimit(Math.floor(settings.nearPeople / 4));
       this.view3d.scene.add(this.traffic.group);
       this.walkers = new PedestrianView(ready.walkers, this.world.terrain);
       this.walkers.setRadius(settings.streetLifeRadius * 0.8);
@@ -916,6 +917,7 @@ export class Game {
     this.view3d.camera.updateProjectionMatrix();
     this.world?.setTreeLimit(quality.maxTrees);
     this.traffic?.setRadius(quality.streetLifeRadius * 1.5);
+    this.traffic?.setRiderLimit(Math.floor(quality.nearPeople / 4));
     this.walkers?.setRadius(quality.streetLifeRadius * 0.8);
     this.walkers?.setNearLimit(quality.nearPeople);
     this.waiting?.setNearLimit(Math.ceil(quality.nearPeople / 2));

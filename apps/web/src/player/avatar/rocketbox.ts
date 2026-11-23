@@ -187,6 +187,11 @@ const LOOK_B = new THREE.Vector3();
 const LOOK_UP = new THREE.Vector3();
 const LOOK_RIGHT = new THREE.Vector3();
 const LOOK_Q = new THREE.Quaternion();
+const HELMET_Q = new THREE.Quaternion();
+/** The helmet's axes (+x right, +y up, +z back) in the head bone's space (+x up, +y forward, +z left). */
+const HEAD_TO_HELMET = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, -1, 0)),
+);
 /** Where the hand holds an open umbrella, in the person's own space (+x = their right, −z = ahead), as a share of their height. */
 const UMBRELLA_GRIP = new THREE.Vector3(0.17, 0.71, -0.2);
 const RIM_LIGHT = /* glsl */ `
@@ -591,12 +596,18 @@ export class RocketboxPerson {
       reach(this.root, this.arms, grips);
     }
     this.applyLook(dt);
-    // The helmet sits on the head wherever the pose has put it (a little above the head bone).
+    // The helmet sits on the head wherever the pose has put it, tilted with it (leaning over the
+    // bars, looking round). The head bone's own +x runs up through the skull and +y out of the face.
     if (this.helmet?.visible && this.head) {
       this.root.updateMatrixWorld(true);
-      const at = this.root.worldToLocal(this.head.getWorldPosition(LOOK_A));
-      this.helmet.position.set(at.x, at.y + 0.085 * (this.height / 1.7), at.z + 0.01);
-      this.helmet.scale.setScalar(this.height / 1.7);
+      const s = this.height / 1.7;
+      this.head.getWorldQuaternion(HELMET_Q);
+      const at = this.head.getWorldPosition(LOOK_A);
+      at.addScaledVector(LOOK_UP.set(1, 0, 0).applyQuaternion(HELMET_Q), 0.03 * s);
+      at.addScaledVector(LOOK_RIGHT.set(0, 1, 0).applyQuaternion(HELMET_Q), 0.004 * s);
+      this.helmet.position.copy(this.root.worldToLocal(at));
+      this.helmet.quaternion.copy(this.root.getWorldQuaternion(LOOK_Q).invert()).multiply(HELMET_Q).multiply(HEAD_TO_HELMET);
+      this.helmet.scale.setScalar(s);
     }
     // Rain: the umbrella opens while standing or walking (not riding, in the air, running or
     // dancing), and everyone slowly gets wet — much less under an umbrella — and slowly dries.

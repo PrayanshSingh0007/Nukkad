@@ -6,6 +6,7 @@ import { TrafficDrivers } from './trafficDrivers.ts';
 import { WetReflections } from './wetReflections.ts';
 import { HeadlightCones } from './headlightCones.ts';
 import { TrafficSpray } from './trafficSpray.ts';
+import { TrafficRiders } from './trafficRiders.ts';
 
 type ModelSource = (name: string, light: boolean) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
 
@@ -124,6 +125,10 @@ export class TrafficView {
   /** Headlight light in rainy or misty air. */
   private readonly cones: HeadlightCones;
   private readonly coneMatrix = new THREE.Matrix4();
+  /** Realistic riders on the nearest two-wheelers. */
+  private readonly riders = new TrafficRiders();
+  /** Vehicles near you last frame, nearest first (who gets a realistic rider). */
+  private lastNear: { lane: object; kind: number; d: number }[] = [];
   /** What you can hear traffic doing this frame (read with takeSounds). */
   private sounds: TrafficSound[] = [];
   /** Water thrown up behind traffic on a wet road. */
@@ -170,6 +175,7 @@ export class TrafficView {
     this.group.add(this.spray.mesh);
     this.drivers = new TrafficDrivers(routes.length);
     this.group.add(this.drivers.group);
+    this.group.add(this.riders.group);
   }
 
   /** 0 = day … 1 = night (lights on from dusk); rain makes the beams on the wet road stronger. */
@@ -245,6 +251,7 @@ export class TrafficView {
     const sprayFrom = dusty ? 9 : 5;
     let beams = 0;
     this.drivers.begin();
+    this.riders.choose(this.lastNear);
 
     // Vehicles near you (positions from last frame), for keeping a gap to the one in front.
     const around = this.lanes.filter((lane) => Math.abs(lane.x - px) < this.radius + 20 && Math.abs(lane.z - pz) < this.radius + 20);
@@ -360,7 +367,8 @@ export class TrafficView {
       if (i >= mesh.instanceMatrix.count) continue;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, lane.y, pose.z), rotation, one));
-      this.drivers.place(route.kind, route.variant * 7 + Math.round(route.speed * 13), matrix);
+      if (this.riders.has(lane)) this.riders.place(lane, route.kind, ((route.variant * 7 + Math.round(route.speed * 13)) % 97) / 97, pose.x, lane.y, pose.z, pose.heading, route.speed, dt);
+      else this.drivers.place(route.kind, route.variant * 7 + Math.round(route.speed * 13), matrix);
       const name = VEHICLE_KINDS[route.kind];
       const paint = name === 'taxi' || name === 'ambulance' ? null : this.paint(name, route.variant);
       if (paint) mesh.setColorAt(i, paint);
@@ -420,11 +428,17 @@ export class TrafficView {
     }
 
     near.sort((a, b) => a.d - b.d);
+    this.lastNear = near.slice(0, 12).map(({ lane, d }) => ({ lane, kind: lane.route.kind, d }));
     return near.slice(0, SOLID_COUNT).map(({ lane }) => {
       const [hw, hl] = VEHICLE_HALF[lane.route.kind];
       const hy = VEHICLE_HEIGHT[lane.route.kind] / 2;
       return { x: lane.x, y: lane.y + hy, z: lane.z, hx: hw, hy, hz: hl, rotation: lane.heading };
     });
+  }
+
+  /** How many realistic riders the nearest two-wheelers may get (0 = none). */
+  setRiderLimit(limit: number): void {
+    this.riders.setLimit(limit);
   }
 
   /** Honks and pass-bys since the last call. */
@@ -444,6 +458,7 @@ export class TrafficView {
     this.wet.dispose();
     this.cones.dispose();
     this.spray.dispose();
+    this.riders.dispose();
     this.beams.dispose();
     this.beamMaterial.dispose();
     this.drivers.dispose();

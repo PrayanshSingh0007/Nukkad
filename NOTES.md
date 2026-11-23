@@ -27,6 +27,13 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Realistic riders on the nearest traffic two-wheelers (2026-11-23)
+
+- **`TrafficRiders`** (`world/trafficRiders.ts`): the nearest traffic scooters and motorbikes within 18 m get a Rocketbox person instead of the light rider figure. They sit on the seat with hands on the grips and feet on the pegs (IK, the same seat, grip and peg points your own riding uses), wear a seeded helmet, and have seeded clothes. How many: a quarter of the quality's near-people budget (High 2, Medium 1, Low 0). `TrafficView` picks them from last frame's nearest vehicles (`lastNear`), and skips the light rider for those vehicles.
+- **Helmet reshaped into a full-face helmet**: the shell now comes down round the jaw, with a black rubber trim at the edge, a dark visor from forehead to mouth and a chin bar. On Rocketbox people it now tilts with the head (leaning over the bars, looking round), using the head bone's own axes (+x up through the skull, +y out of the face). The light figures use the same shape.
+- Checked in game: a realistic woman on a traffic scooter (feet on the deck at 0.26 m), your own character's helmet on your scooter, and a light rider's helmet on a motorbike.
+- Not checked: a motorbike with a realistic rider (only scooters came close in the test), and how it looks at speed from your own camera while riding past.
+
 ## Helmets on two-wheeler riders (2026-11-23)
 
 - **Helmet** (`player/avatar/helmet.ts`): a rounded shell (a little longer front to back) with a dark visor across the face. Eight seeded colours, mostly black and white, some red, blue, silver or yellow.

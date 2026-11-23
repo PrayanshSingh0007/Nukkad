@@ -11,12 +11,16 @@ let geometry: THREE.BufferGeometry | null = null;
 
 export function helmetGeometry(): THREE.BufferGeometry {
   if (geometry) return geometry;
-  const shell = new THREE.SphereGeometry(0.155, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.64).scale(1, 0.98, 1.12).translate(0, 0.02, 0.01);
-  // The visor: a band of a slightly bigger sphere across the front (−z) at eye height.
-  const visor = new THREE.SphereGeometry(0.162, 12, 4, Math.PI * 1.5 - Math.PI * 0.32, Math.PI * 0.64, Math.PI * 0.42, Math.PI * 0.2).scale(1, 0.98, 1.12).translate(0, 0.02, 0.01);
+  // A full-face helmet: the shell comes down round the jaw, with a black rubber trim at the
+  // bottom edge, a dark visor over the face (forehead to mouth), and a chin bar below it.
+  const fit = (g: THREE.BufferGeometry) => g.scale(1, 0.98, 1.1).translate(0, 0.02, 0.01);
+  const shell = fit(new THREE.SphereGeometry(0.15, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.72));
+  const trim = fit(new THREE.SphereGeometry(0.149, 20, 1, 0, Math.PI * 2, Math.PI * 0.72, Math.PI * 0.05));
+  const visor = fit(new THREE.SphereGeometry(0.156, 14, 6, Math.PI * 1.5 - Math.PI * 0.3, Math.PI * 0.6, Math.PI * 0.37, Math.PI * 0.28));
   const parts: [THREE.BufferGeometry, number][] = [
     [shell, 1],
-    [visor, 0.07],
+    [trim, 0.12],
+    [visor, 0.06],
   ];
   const positions: number[] = [];
   const normals: number[] = [];
