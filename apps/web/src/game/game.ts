@@ -834,7 +834,7 @@ export class Game {
       this.view3d.scene.add(this.walkers.group);
       this.birds = new BirdsView();
       this.view3d.scene.add(this.birds.mesh);
-      this.waiting = new WaitingPeople(ready.props.stops);
+      this.waiting = new WaitingPeople(ready.props.stops, this.world.carts);
       this.view3d.scene.add(this.waiting.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);

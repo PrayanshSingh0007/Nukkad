@@ -27,6 +27,19 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Friends walking together, chai cart crowds, speed check (2026-11-23)
+
+- **Friends walking together** (`PedestrianView`): about one walker in five has a companion 0.68 m to their left or right on the same route (160 in the owner's square). Each is a different person or look, and they stay in or go out together.
+  - Up close they turn to talk to each other now and then. Looking at you, or at a horn, comes first.
+  - `poseOf` gives a walker's place with the side step. Look capacities are counted from the walkers, not the routes.
+  - Checked: two women walking side by side, and another pair behind them.
+- **Chai cart crowds** (`WaitingPeople`, now also given `WorldView.carts`): 2–4 people standing round each steaming cart, facing it. 92 posed people in all with the bus stops.
+  - Checked: a customer by a steaming cart (the rest of the ring was hidden by the wall from that angle).
+- **Speed check** (owner's Mac, preview pane, 1536 × 1152 on High, at the busy junction):
+  - A full frame (with `gl.finish`) is about 6.8 ms by day and 6.9 ms on a rainy night (p90 7.4); on Medium 4.4 ms, on Low 4.1 ms (1024 × 768).
+  - CPU: traffic about 0.2 ms, walkers about 0.2 ms, everything else under 0.1 ms. Drawing is about 5.5 ms of it.
+  - Nothing needed optimising. A phone is still unmeasured.
+
 ## Wall posters, cooker whistles, wing flutter, footsteps (2026-11-23)
 
 - **Posters on compound walls** (`world/wallPosters.ts`; spots from `houseCompounds` → `props.posters`, carried by the worker): about 45 % of front walls carry 1–3 posters on the street side. 1,808 in the owner's square, one draw call.

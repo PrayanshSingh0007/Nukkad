@@ -13,6 +13,8 @@ export class StallSteam {
   readonly points: THREE.Points;
   /** The steaming pots on the counters (one draw call). */
   readonly pots: THREE.InstancedMesh;
+  /** Where the steaming carts stand: [x, ground y, z] each (people gather round them). */
+  readonly carts: Float32Array;
   private readonly material: THREE.ShaderMaterial;
 
   /** stalls: [x, y, z, angle] per stall (the customer side faces the street). */
@@ -20,6 +22,7 @@ export class StallSteam {
     const spots: number[] = [];
     const seeds: number[] = [];
     const potAt: number[] = [];
+    const carts: number[] = [];
     for (let i = 0; i < stalls.length / 4; i++) {
       const [x, y, z, angle] = [stalls[i * 4], stalls[i * 4 + 1], stalls[i * 4 + 2], stalls[i * 4 + 3]];
       const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
@@ -30,11 +33,13 @@ export class StallSteam {
       const ex = x + Math.sin(angle) * back;
       const ez = z + Math.cos(angle) * back;
       potAt.push(ex, y + 1.17, ez);
+      carts.push(x, y, z);
       for (let k = 0; k < PUFFS; k++) {
         spots.push(ex, y + 1.43, ez);
         seeds.push(k / PUFFS + pick * 3.1, Math.random(), pick < 0.18 ? 1 : 0); // phase, wobble, smoke (frying) or steam
       }
     }
+    this.carts = new Float32Array(carts);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(spots, 3));
     geometry.setAttribute('aSeed', new THREE.Float32BufferAttribute(seeds, 3));

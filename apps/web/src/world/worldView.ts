@@ -573,6 +573,11 @@ export class WorldView {
     return tookOff; // birds that flew off just now
   }
 
+  /** Where the steaming carts stand ([x, ground y, z] each). */
+  get carts(): Float32Array {
+    return this.steam?.carts ?? new Float32Array(0);
+  }
+
   /** Roof things wait for their building (set by the game from the streamer). */
   setRoofReady(ready: (x: number, z: number) => boolean): void {
     if (this.laundry) this.laundry.roofReady = ready;

@@ -59,7 +59,20 @@ interface Walker {
   lookZ: number;
   /** 0–1, fixed per walker: who stays indoors first when it rains or gets late. */
   keen: number;
+  /** Metres to the right of the route (a companion walks beside a friend), and that friend (−1 = none). */
+  side: number;
+  partner: number;
 }
+
+/** Where a walker is: on their route, or a step to the side of it for a friend walking beside. */
+function poseOf(walker: Walker, seconds: number): { x: number; z: number; heading: number } {
+  const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
+  if (walker.side === 0) return pose;
+  return { ...pose, x: pose.x + Math.cos(pose.heading) * walker.side, z: pose.z - Math.sin(pose.heading) * walker.side };
+}
+
+/** A companion is someone else than their friend: shift their look / person. */
+const lookShift = (walker: Walker): number => (walker.side !== 0 ? 3 : 0);
 
 /** How long people stop and stare after a horn, seconds, and how far away they hear it. */
 const STARTLE_S = 1.8;
@@ -79,7 +92,15 @@ export class PedestrianView {
   private readonly pool: { person: Person | RocketboxPerson; walker: number; seen: boolean }[] = [];
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid) {
-    this.walkers = routes.map((route, index) => ({ route, delay: 0, startled: 0, lookX: 0, lookZ: 0, keen: ((index * 2654435761) >>> 0) / 4294967296 }));
+    this.walkers = routes.map((route, index) => ({ route, delay: 0, startled: 0, lookX: 0, lookZ: 0, keen: ((index * 2654435761) >>> 0) / 4294967296, side: 0, partner: -1 }));
+    // About one in five walks with a friend beside them (on their left or right), chatting.
+    for (let i = 0, count = this.walkers.length; i < count; i++) {
+      const pick = (((i + 7) * 2246822519) >>> 0) / 4294967296;
+      if (pick > 0.2) continue;
+      const friend = this.walkers[i];
+      friend.partner = this.walkers.length;
+      this.walkers.push({ route: friend.route, delay: 0, startled: 0, lookX: 0, lookZ: 0, keen: friend.keen, side: pick < 0.1 ? 0.68 : -0.68, partner: i });
+    }
     void loadRocketbox(); // realistic people for the nearest walkers, when they arrive
     this.terrain = terrain;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -92,7 +113,7 @@ export class PedestrianView {
     this.material.customProgramCacheKey = () => 'nukkad-walkers-1';
     const random = makeRng(routes.length * 7919 + 17);
     for (let look = 0; look < LOOKS; look++) {
-      const capacity = Math.max(1, routes.filter((r) => r.kind === look).length);
+      const capacity = Math.max(1, this.walkers.filter((w) => (w.route.kind + lookShift(w)) % LOOKS === look).length);
       const style = randomLook(random);
       this.looks.push(style);
       const mesh = new THREE.InstancedMesh(buildAvatarGeometry(style, true), this.material, capacity);
@@ -146,7 +167,7 @@ export class PedestrianView {
   honk(x: number, z: number): void {
     const seconds = this.lastSeconds;
     for (const walker of this.walkers) {
-      const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
+      const pose = poseOf(walker, seconds);
       if (Math.hypot(pose.x - x, pose.z - z) > HORN_HEARD_M) continue;
       walker.startled = STARTLE_S;
       walker.lookX = x;
@@ -181,7 +202,7 @@ export class PedestrianView {
     if (assets || rocketbox) {
       this.walkers.forEach((walker, index) => {
         if (walker.keen > this.presence) return; // stayed in (rain, night)
-        const pose = trafficPose(walker.route, seconds * walker.route.speed - walker.delay);
+        const pose = poseOf(walker, seconds);
         const d = Math.hypot(pose.x - px, pose.z - pz);
         if (d < NEAR_M) near.push({ index, d });
       });
@@ -196,7 +217,7 @@ export class PedestrianView {
       const route = this.walkers[index].route;
       if (rocketbox) {
         // Each walker is always the same Rocketbox person (by route), seeded height.
-        const avatar = route.kind % ROCKETBOX_AVATARS.length;
+        const avatar = (route.kind + lookShift(this.walkers[index])) % ROCKETBOX_AVATARS.length;
         let slot = this.pool.find((s) => !s.seen && s.person instanceof RocketboxPerson && s.person.avatar === avatar);
         if (!slot) {
           const free = this.pool.find((s) => !s.seen);
@@ -232,26 +253,26 @@ export class PedestrianView {
       if (!slot || !(slot.person instanceof Person)) continue;
       slot.walker = index;
       slot.seen = true;
-      slot.person.setLook(this.looks[route.kind % LOOKS]); // same colours as their crowd version
+      slot.person.setLook(this.looks[(route.kind + lookShift(this.walkers[index])) % LOOKS]); // same colours as their crowd version
     }
     for (const slot of this.pool) slot.person.root.visible = slot.seen;
 
     this.walkers.forEach((walker, index) => {
       if (walker.keen > this.presence) return; // stayed in (rain, night)
       const route = walker.route;
-      let pose = trafficPose(route, seconds * route.speed - walker.delay);
+      let pose = poseOf(walker, seconds);
       if (Math.hypot(pose.x - px, pose.z - pz) > this.radius) return;
       // Startled by a horn: stand still for a moment.
       if (walker.startled > 0) {
         walker.startled -= dt;
         walker.delay += route.speed * dt;
-        pose = trafficPose(route, seconds * route.speed - walker.delay);
+        pose = poseOf(walker, seconds);
       }
       const ahead = (px - pose.x) * -Math.sin(pose.heading) + (pz - pose.z) * -Math.cos(pose.heading);
       let waiting = false;
       if (ahead > 0 && ahead < WAIT_AHEAD_M && Math.hypot(pose.x - px, pose.z - pz) < WAIT_AHEAD_M) {
         walker.delay += route.speed * dt;
-        pose = trafficPose(route, seconds * route.speed - walker.delay);
+        pose = poseOf(walker, seconds);
         waiting = true;
       }
       const slot = nearSet.has(index) ? this.pool.find((s) => s.walker === index && s.seen) : undefined;
@@ -264,18 +285,23 @@ export class PedestrianView {
           // People notice you: a glance as you pass close by; whoever honked when startled.
           if (startled) slot.person.lookAt(LOOK_AT.set(walker.lookX, heightAt(this.terrain, walker.lookX, walker.lookZ) + 1.4, walker.lookZ));
           else if (Math.hypot(pose.x - px, pose.z - pz) < LOOK_M) slot.person.lookAt(LOOK_AT.set(px, heightAt(this.terrain, px, pz) + 1.55, pz));
-          else slot.person.lookAt(null);
+          else if (walker.partner >= 0 && Math.sin(seconds * 0.55 + index * 1.7) > -0.25) {
+            // Chatting with the friend beside them now and then.
+            const friend = poseOf(this.walkers[walker.partner], seconds);
+            slot.person.lookAt(LOOK_AT.set(friend.x, heightAt(this.terrain, friend.x, friend.z) + 1.5, friend.z));
+          } else slot.person.lookAt(null);
           slot.person.update(dt, waiting || startled ? 0 : route.speed, startled ? 4 : 0);
         }
         else slot.person.update(dt, waiting || startled ? 0 : route.speed, true, null, startled ? 4 : 0);
         return;
       }
-      const mesh = this.meshes[route.kind % LOOKS];
-      const i = counts[route.kind % LOOKS];
+      const look = (route.kind + lookShift(walker)) % LOOKS;
+      const mesh = this.meshes[look];
+      const i = counts[look];
       if (i >= mesh.instanceMatrix.count) return;
       rotation.setFromAxisAngle(up, pose.heading);
       mesh.setMatrixAt(i, matrix.compose(position.set(pose.x, heightAt(this.terrain, pose.x, pose.z), pose.z), rotation, one));
-      counts[route.kind % LOOKS] = i + 1;
+      counts[look] = i + 1;
       const colour = umbrellasOpen ? this.umbrellaOf(index) : null;
       if (colour !== null) {
         this.umbrellas.setMatrixAt(umbrellas, grip.multiplyMatrices(matrix, CROWD_GRIP));

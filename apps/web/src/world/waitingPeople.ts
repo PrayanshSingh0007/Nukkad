@@ -3,9 +3,9 @@ import { makeRng, randomLook } from '@nukkad/shared';
 import { buildAvatarGeometry } from '../player/avatar/avatarModel.ts';
 
 /**
- * People waiting at bus stops: one to four at each shelter — some sitting on the bench, some
- * standing at the front, a few turned to look down the road for their bus — the light crowd
- * figures, posed by the graphics card (sitting: thighs forward, knees down), swaying a little
+ * People waiting at bus stops — one to four at each shelter, some sitting on the bench, some
+ * standing at the front, a few turned to look down the road for their bus — and standing
+ * round the steaming carts (a chai break). The light crowd figures, posed by the graphics card (sitting: thighs forward, knees down), swaying a little
  * as they wait. One draw call per look and pose; seeded, so everyone sees the same people.
  */
 const LOOKS = 6;
@@ -48,8 +48,11 @@ export class WaitingPeople {
   private readonly materials: THREE.MeshLambertMaterial[] = [];
   private readonly time = { value: 0 };
 
-  /** stops: [x, y, z, angle] per bus shelter (its open side, the model's +z, faces the road). */
-  constructor(stops: Float32Array) {
+  /**
+   * stops: [x, y, z, angle] per bus shelter (its open side, the model's +z, faces the road);
+   * carts: [x, ground y, z] per steaming cart.
+   */
+  constructor(stops: Float32Array, carts: Float32Array = new Float32Array(0)) {
     const random = makeRng(9091);
     const geometries = Array.from({ length: LOOKS }, () => buildAvatarGeometry(randomLook(random), true));
     const places: Record<Pose, THREE.Matrix4[][]> = { stand: geometries.map(() => []), sit: geometries.map(() => []) };
@@ -86,6 +89,25 @@ export class WaitingPeople {
           const facing = Math.PI + (r(50 + k) < 0.35 ? (r(60 + k) < 0.5 ? 1.2 : -1.2) : (r(70 + k) - 0.5) * 0.6);
           places.stand[look].push(place(lx, 0, 0.35 + r(80 + k) * 0.5, facing));
         }
+      }
+    }
+    // Round the carts: two to four standing in a loose ring, facing the cart.
+    for (let i = 0; i < carts.length / 3; i++) {
+      const [x, y, z] = [carts[i * 3], carts[i * 3 + 1], carts[i * 3 + 2]];
+      const r = (salt: number): number => {
+        const v = Math.sin(x * 37.1 + z * 11.7 + salt * 5.3) * 43758.5453;
+        return v - Math.floor(v);
+      };
+      const people = 2 + Math.floor(r(1) * 3);
+      for (let k = 0; k < people; k++) {
+        const around = r(10 + k) * Math.PI * 2;
+        const distance = 1.1 + r(20 + k) * 0.5;
+        const px = x + Math.sin(around) * distance;
+        const pz = z + Math.cos(around) * distance;
+        // Facing the cart (people face −z: heading = atan2(−dx, −dz) towards it).
+        const facing = Math.atan2(-(x - px), -(z - pz)) + (r(30 + k) - 0.5) * 0.5;
+        turn.setFromAxisAngle(up, facing);
+        places.stand[Math.floor(r(40 + k) * LOOKS)].push(matrix.clone().compose(at.set(px, y, pz), turn, one));
       }
     }
     for (const pose of ['stand', 'sit'] as const) {
