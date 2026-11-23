@@ -27,6 +27,22 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Endless skyline, aeroplanes, people at bus stops (2026-11-23) — owner: "more AAA"
+
+- **The city goes on past the map** (sky shader): a skyline on the horizon, drawn on the sky dome so it is always beyond real buildings.
+  - Low rooftops of uneven height all round; clusters of towers where a noise pattern says so (up to about 2° tall); red warning lights blinking on the tallest towers.
+  - By day it is a faint layer in the haze. At night the towers go dark with lit windows in rows (about 10 % in the low sprawl, 30 % in the towers, mostly warm, some cool), against the city glow.
+  - The first night version was one flat strip of glitter, so fewer windows are lit now and the rooftops are more broken.
+  - Checked from 45 m up, day and night.
+- **Aeroplanes** (sky shader): one chance every 140 s, about two in three happen. A plane crosses the sky in 90 s at 35–65° up. By day it is a dark speck with a white contrail spreading behind it; at night a white strobe plus red and green wingtip lights. None in heavy rain.
+  - Checked by day: the speck is visible; the contrail only shows where it crosses blue sky (over white cloud it disappears).
+- **People at bus stops** (`world/waitingPeople.ts`): 1–4 at each shelter (78 in the owner's square). Some sit on the bench, some stand at the front facing the road, a few are turned to look along it for their bus, swaying a little.
+  - They are the light crowd figures, posed on the GPU like the traffic drivers, so they look plainer than the realistic people up close.
+  - They cast no shadow, because the shadow pass would draw them standing.
+  - Checked: one standing and two sitting at a shelter.
+- **Last round's checks:** the bigger festive bulbs read well along a wall; at least one home window showed the cool TV glow among warm ones.
+- **Not checked:** a phone.
+
 ## Steaming carts, birds on the wires, rooftop washing (2026-11-23) — owner: "more AAA"
 
 - **Steaming carts** (`world/stallSteam.ts`): about four street carts in ten have a steel pot on the counter (boiled peanuts, corn, chai) with soft wisps of steam rising, swelling and drifting. A few have blue-grey frying smoke instead.

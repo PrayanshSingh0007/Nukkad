@@ -31,6 +31,7 @@ import { StreetLifeView } from '../world/streetLifeView.ts';
 import { TrafficView } from '../world/trafficView.ts';
 import { PedestrianView } from '../world/pedestrianView.ts';
 import { BirdsView } from '../world/birdsView.ts';
+import { WaitingPeople } from '../world/waitingPeople.ts';
 import { setHeadlightHaze } from '../world/headlightCones.ts';
 import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
@@ -243,6 +244,7 @@ export class Game {
   private traffic: TrafficView | null = null;
   private walkers: PedestrianView | null = null;
   private birds: BirdsView | null = null;
+  private waiting: WaitingPeople | null = null;
   private readonly clouds = new CloudShadows();
   /** Photo mode: the page hides the HUD; the mouse wheel moves the camera in and out. */
   private photo = false;
@@ -537,7 +539,7 @@ export class Game {
 
   /** While inside, the city is not drawn at all (cheaper, and nothing leaks through the walls). */
   private setOutsideVisible(on: boolean): void {
-    for (const group of [this.world?.group, this.traffic?.group, this.walkers?.group, this.streetLife?.group]) if (group) group.visible = on;
+    for (const group of [this.world?.group, this.traffic?.group, this.walkers?.group, this.streetLife?.group, this.waiting?.group]) if (group) group.visible = on;
     if (this.birds) this.birds.mesh.layers.set(on ? 0 : 31); // indoors: no birds (their own update sets visible)
   }
 
@@ -832,6 +834,8 @@ export class Game {
       this.view3d.scene.add(this.walkers.group);
       this.birds = new BirdsView();
       this.view3d.scene.add(this.birds.mesh);
+      this.waiting = new WaitingPeople(ready.props.stops);
+      this.view3d.scene.add(this.waiting.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
       this.atmosphere.setPlace(ready.info.lat, ready.info.lng, ready.info.timeZone);
@@ -1333,6 +1337,7 @@ export class Game {
         const seconds = (clock.ready ? clock.renderTime(now) : Date.now()) / 1000;
         this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z, player.y));
         this.walkers?.update(dt, seconds, player.x, player.z);
+        this.waiting?.update(dt);
         this.birds?.setGround(player.y);
         this.birds?.update(seconds, player.x, player.z);
       }
