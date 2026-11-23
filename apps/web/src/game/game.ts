@@ -1289,6 +1289,7 @@ export class Game {
         const view = this.view3d.renderer.getDrawingBufferSize(SPLASH_VIEW);
         this.splashes.setViewport(view.y, this.view3d.camera.fov);
         this.world?.setViewport(view.y, this.view3d.camera.fov);
+        this.traffic?.setViewport(view.y, this.view3d.camera.fov);
         // Footsteps splash on wet ground: one splash per step, at the left or right foot.
         const walking = !player.vehicle && !player.riding && player.body.grounded && player.speed > 0.6;
         if (walking) {
@@ -1376,6 +1377,7 @@ export class Game {
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
     this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.wetness); // wet roads keep spraying after the rain
+    this.traffic?.setAir(this.interior ? 0 : this.atmosphere.mist);
     setHeadlightHaze(this.interior ? 0 : this.atmosphere.night, this.interior ? 0 : this.rain, this.interior ? 0 : this.atmosphere.mist, dt);
     this.walkers?.setWorld(this.atmosphere.night, this.rain);
     this.birds?.setWorld(this.atmosphere.night, this.rain);

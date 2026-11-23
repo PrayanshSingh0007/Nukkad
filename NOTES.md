@@ -27,6 +27,14 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Exhaust smoke from traffic (2026-11-23)
+
+- **`TrafficExhaust`** (`world/trafficExhaust.ts`): soft billowing puffs (one draw call of points, 420 at most) from vehicles within 60 m. Each puff grows, rises (warm air), slows to the air's pace, drifts on a light breeze and thins out. Ragged outlines from noise, lighter on top. Fogged like everything else, dimmed at night.
+- **Who smokes** (`TrafficView.smokeFrom`): buses, lorries and delivery trucks puff a thick burst of dark diesel soot when they pull away after waiting (≥ 0.8 s held up behind traffic or by you), thinning as they get going, and a thin grey haze while idling or cruising. Autos leave a light blue-grey trail. In morning mist (`atmosphere.mist`) cars and two-wheelers breathe white vapour. Pipes sit low at the back (a bus's on the left, a lorry's on the right, an auto's under the left).
+- Checked in game: a real bus held up by you then pulling away (dark cloud behind it), a forced trail against buildings, and autos (very faint, as with CNG autos).
+- Not checked: the misty-morning vapour on a real misty morning (only white test puffs were drawn), and night.
+- Dark soot over dark asphalt is hard to see from above; it shows best against the bus, walls and sky.
+
 ## Realistic riders on the nearest traffic two-wheelers (2026-11-23)
 
 - **`TrafficRiders`** (`world/trafficRiders.ts`): the nearest traffic scooters and motorbikes within 18 m get a Rocketbox person instead of the light rider figure. They sit on the seat with hands on the grips and feet on the pegs (IK, the same seat, grip and peg points your own riding uses), wear a seeded helmet, and have seeded clothes. How many: a quarter of the quality's near-people budget (High 2, Medium 1, Low 0). `TrafficView` picks them from last frame's nearest vehicles (`lastNear`), and skips the light rider for those vehicles.

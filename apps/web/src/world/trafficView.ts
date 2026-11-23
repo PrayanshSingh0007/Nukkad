@@ -6,6 +6,7 @@ import { TrafficDrivers } from './trafficDrivers.ts';
 import { WetReflections } from './wetReflections.ts';
 import { HeadlightCones } from './headlightCones.ts';
 import { TrafficSpray } from './trafficSpray.ts';
+import { SMOKE, TrafficExhaust, type Smoke } from './trafficExhaust.ts';
 import { TrafficRiders } from './trafficRiders.ts';
 
 type ModelSource = (name: string, light: boolean) => { geometry: THREE.BufferGeometry; material: THREE.Material | THREE.Material[] } | null;
@@ -65,6 +66,9 @@ const CONE_AT = new THREE.Vector3();
 const CONE_SCALE = new THREE.Vector3();
 /** Headlight light in the air is drawn within this distance. */
 const CONES_M = 90;
+/** Exhaust puffs come from vehicles within this distance. */
+const EXHAUST_M = 60;
+const EXHAUST_LIGHT = new THREE.Color();
 /** Mesh keys: kind for the light version, kind + FULL for the full one. */
 const FULL = 100;
 
@@ -82,6 +86,11 @@ interface Lane {
   /** Its distance to you last frame and whether it was getting closer (for the pass-by sound). */
   lastD: number;
   closing: boolean;
+  /** Seconds it has been held up (standing), and seconds left of pulling away again. */
+  held: number;
+  pullAway: number;
+  /** Exhaust puffs owed (emitted when it reaches 1). */
+  smoke: number;
 }
 
 /** Something traffic did this frame that you can hear: where, and how fast it went. */
@@ -137,9 +146,13 @@ export class TrafficView {
   private readonly sprayLight = new THREE.Color();
   /** Someone at the wheel (or on the seat) of every moving vehicle. */
   private readonly drivers: TrafficDrivers;
+  /** Exhaust smoke from the traffic near you. */
+  private readonly exhaust = new TrafficExhaust();
+  /** 0–1: how cold and damp the air is (morning mist): engines breathe white vapour. */
+  private cold = 0;
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paint: (name: string, variant: number) => THREE.Color | null) {
-    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0, blocked: 0, lastD: Infinity, closing: false }));
+    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0, blocked: 0, lastD: Infinity, closing: false, held: 0, pullAway: 0, smoke: Math.random() }));
     this.terrain = terrain;
     this.models = models;
     this.paint = paint;
@@ -176,6 +189,16 @@ export class TrafficView {
     this.drivers = new TrafficDrivers(routes.length);
     this.group.add(this.drivers.group);
     this.group.add(this.riders.group);
+    this.group.add(this.exhaust.points);
+  }
+
+  /** 0–1: cold, damp air (morning mist) makes every engine's exhaust show as white vapour. */
+  setAir(cold: number): void {
+    this.cold = cold;
+  }
+
+  setViewport(heightPx: number, fovDeg: number): void {
+    this.exhaust.setViewport(heightPx, fovDeg);
   }
 
   /** 0 = day … 1 = night (lights on from dusk); rain makes the beams on the wet road stronger. */
@@ -187,6 +210,7 @@ export class TrafficView {
     this.beamMaterial.opacity = night * (0.32 + 0.3 * rain);
     this.wet.setLevel(night, rain);
     this.rain = rain;
+    this.exhaust.setLight(EXHAUST_LIGHT.setScalar(1 - 0.72 * night));
   }
 
   get count(): number {
@@ -326,6 +350,7 @@ export class TrafficView {
           brakes++;
         }
       }
+      if (d < EXHAUST_M && dt > 0) this.smokeFrom(lane, pose.x, pose.z, pose.heading, moving, dt);
       // Turn signals: drivers blink before a turn (the road 12 m ahead bends over ~30°), on
       // that side, front and back, about 1.5 times a second.
       if (d < 90 && moving > 1) {
@@ -420,6 +445,7 @@ export class TrafficView {
     (this.blinkers.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     this.blinkers.visible = blinks > 0;
     this.spray.commit();
+    this.exhaust.update(dt);
     this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
       mesh.count = counts.get(kind) ?? 0;
@@ -448,6 +474,62 @@ export class TrafficView {
     return out;
   }
 
+  /**
+   * Exhaust from one vehicle: buses and lorries puff dark diesel smoke as they pull away after
+   * waiting (and a thin haze otherwise), autos a light blue-grey trail, and in cold misty air
+   * everything else breathes white vapour.
+   */
+  private smokeFrom(lane: Lane, x: number, z: number, heading: number, moving: number, dt: number): void {
+    const kind = lane.route.kind;
+    const name = VEHICLE_KINDS[kind];
+    const diesel = name === 'bus' || name === 'truck' || name === 'delivery';
+    const auto = name === 'auto';
+    const twoWheel = name === 'two_wheeler' || name === 'motorbike';
+    // Waiting, then moving again: pulling away.
+    if (moving < 1.2) lane.held += dt;
+    else {
+      if (lane.held > 0.8) lane.pullAway = diesel ? 2.6 : 1.4;
+      lane.held = 0;
+    }
+    lane.pullAway = Math.max(0, lane.pullAway - dt);
+    let smoke: Smoke;
+    let rate: number;
+    let strength = 1;
+    if (diesel) {
+      smoke = lane.pullAway > 0 ? SMOKE.heavy : SMOKE.diesel;
+      // A thick burst where it stood, thinning as it gets going.
+      rate = lane.pullAway > 0 ? 4 + 34 * (lane.pullAway / 2.6) ** 2 : moving < 1.2 ? 2.6 : 1.8;
+    } else if (auto) {
+      smoke = SMOKE.auto;
+      rate = lane.pullAway > 0 ? 9 : 3.5;
+      strength = lane.pullAway > 0 ? 2 : 1;
+    } else {
+      if (this.cold < 0.05) return;
+      smoke = SMOKE.vapour;
+      rate = twoWheel ? 2 : 3;
+      strength = this.cold;
+    }
+    lane.smoke += rate * dt;
+    if (lane.smoke < 1) return;
+    // The pipe: low at the back (a bus's on the left, a lorry's on the right ahead of the tail,
+    // an auto's under the left side, a car's on the right, a two-wheeler's by the back wheel).
+    const [hw, hl] = VEHICLE_HALF[kind];
+    const [side, height, back] = name === 'truck' ? [0.7 * hw, 0.55, hl - 0.4] : diesel ? [-0.6 * hw, 0.45, hl] : auto ? [-0.35, 0.3, hl] : twoWheel ? [0.18, 0.38, hl - 0.15] : [0.55 * hw, 0.28, hl];
+    const bx = Math.sin(heading);
+    const bz = Math.cos(heading);
+    // (bz, −bx) points to the vehicle's right.
+    const px = x + bx * back + bz * side;
+    const pz = z + bz * back - bx * side;
+    const vx = -bx * moving;
+    const vz = -bz * moving;
+    while (lane.smoke >= 1) {
+      lane.smoke -= 1;
+      // Spread over the distance it moved this frame, so a fast vehicle leaves a trail, not clumps.
+      const along = Math.random() * dt;
+      this.exhaust.emit(px - vx * along, lane.y + height, pz - vz * along, bx, bz, vx, vz, smoke, strength);
+    }
+  }
+
   dispose(): void {
     for (const mesh of this.meshes.values()) mesh.dispose();
     for (const points of [this.heads, this.tails, this.brakes, this.blinkers]) points.geometry.dispose();
@@ -458,6 +540,7 @@ export class TrafficView {
     this.wet.dispose();
     this.cones.dispose();
     this.spray.dispose();
+    this.exhaust.dispose();
     this.riders.dispose();
     this.beams.dispose();
     this.beamMaterial.dispose();
