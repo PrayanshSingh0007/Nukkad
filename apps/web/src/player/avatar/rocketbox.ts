@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OUTFIT_COLORS } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
 import { umbrellaGeometry, umbrellaMaterial } from './umbrella.ts';
+import { helmetGeometry } from './helmet.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
@@ -324,6 +325,8 @@ export class RocketboxPerson {
   private readonly speeds = new Map<RocketboxClip, number>();
   private umbrella: THREE.Mesh | null = null;
   private umbrellaColour: number | null = null;
+  /** A helmet while riding a two-wheeler (null = none). */
+  private helmet: THREE.Mesh | null = null;
 
   constructor(assets: RocketboxAssets, avatar: number, seed = 0.5) {
     this.avatar = avatar % ROCKETBOX_AVATARS.length;
@@ -453,6 +456,23 @@ export class RocketboxPerson {
     this.root.add(this.umbrella);
   }
 
+  /** Put a helmet on (a colour) or take it off (null). */
+  setHelmet(colour: number | null): void {
+    if (colour === null) {
+      if (this.helmet) this.helmet.visible = false;
+      return;
+    }
+    if (!this.helmet) {
+      this.helmet = new THREE.Mesh(helmetGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.1 }));
+      this.helmet.castShadow = true;
+      this.root.add(this.helmet);
+      this.materials.push(this.helmet.material as THREE.Material);
+      this.roughness.push(0.35);
+    }
+    (this.helmet.material as THREE.MeshStandardMaterial).color.setHex(colour);
+    this.helmet.visible = true;
+  }
+
   /** The open umbrella over the head, the right hand on its handle (by IK). */
   private holdUmbrella(): void {
     const umbrella = this.umbrella;
@@ -571,6 +591,13 @@ export class RocketboxPerson {
       reach(this.root, this.arms, grips);
     }
     this.applyLook(dt);
+    // The helmet sits on the head wherever the pose has put it (a little above the head bone).
+    if (this.helmet?.visible && this.head) {
+      this.root.updateMatrixWorld(true);
+      const at = this.root.worldToLocal(this.head.getWorldPosition(LOOK_A));
+      this.helmet.position.set(at.x, at.y + 0.085 * (this.height / 1.7), at.z + 0.01);
+      this.helmet.scale.setScalar(this.height / 1.7);
+    }
     // Rain: the umbrella opens while standing or walking (not riding, in the air, running or
     // dancing), and everyone slowly gets wet — much less under an umbrella — and slowly dries.
     const open = this.umbrella !== null && rainNow > 0.15 && riding === null && grounded && emote === 0 && speed < 3.5;

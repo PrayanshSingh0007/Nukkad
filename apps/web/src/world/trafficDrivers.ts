@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { makeRng, randomLook } from '@nukkad/shared';
 import { VEHICLE_HALF, VEHICLE_KINDS } from '@nukkad/worldgen';
 import { buildAvatarGeometry } from '../player/avatar/avatarModel.ts';
+import { helmetColour, helmetGeometry } from '../player/avatar/helmet.ts';
 
 /**
  * People driving the traffic: every moving vehicle has someone in it. They are the light crowd
@@ -95,6 +96,11 @@ export class TrafficDrivers {
   private readonly counts: Record<Pose, number[]> = { seat: new Array(LOOKS).fill(0), ride: new Array(LOOKS).fill(0) };
   private readonly matrix = new THREE.Matrix4();
   private readonly offset = new THREE.Matrix4();
+  /** Helmets on two-wheeler riders (one draw call). */
+  private readonly helmets: THREE.InstancedMesh;
+  private helmetCount = 0;
+  private readonly helmetOffset = new THREE.Matrix4();
+  private readonly colour = new THREE.Color();
 
   constructor(capacity: number) {
     const random = makeRng(4242);
@@ -121,12 +127,18 @@ export class TrafficDrivers {
         this.group.add(mesh);
       }
     }
+    this.helmets = new THREE.InstancedMesh(helmetGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.1 }), Math.max(1, capacity));
+    this.helmets.count = 0;
+    this.helmets.frustumCulled = false;
+    this.helmets.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, capacity) * 3), 3);
+    this.group.add(this.helmets);
   }
 
   /** Call before placing this frame's vehicles. */
   begin(): void {
     this.counts.seat.fill(0);
     this.counts.ride.fill(0);
+    this.helmetCount = 0;
   }
 
   /** The driver of one vehicle, from the vehicle's own matrix. `id` picks a look. */
@@ -139,6 +151,16 @@ export class TrafficDrivers {
     this.offset.makeTranslation(seat.x, seat.hip - HIP_Y, seat.z);
     mesh.setMatrixAt(i, this.matrix.multiplyMatrices(vehicle, this.offset));
     this.counts[seat.pose][look] = i + 1;
+    // A helmet on the rider's head: the head (1.64 m on the light figure) turned with the
+    // lean about the waist (0.94 m), the same way the pose shader turns it.
+    if (seat.pose === 'ride' && this.helmetCount < this.helmets.instanceMatrix.count) {
+      const lean = POSES.ride.lean;
+      const above = 1.64 - 0.94;
+      this.helmetOffset.makeRotationX(lean).setPosition(seat.x, seat.hip - HIP_Y + 0.94 + above * Math.cos(lean) + 0.03, seat.z + above * Math.sin(lean));
+      this.helmets.setMatrixAt(this.helmetCount, this.matrix.multiplyMatrices(vehicle, this.helmetOffset));
+      this.helmets.setColorAt(this.helmetCount, this.colour.setHex(helmetColour(((id * 2654435761) >>> 0) / 4294967296)));
+      this.helmetCount++;
+    }
   }
 
   /** Call after placing. */
@@ -149,11 +171,15 @@ export class TrafficDrivers {
         mesh.instanceMatrix.needsUpdate = true;
       });
     }
+    this.helmets.count = this.helmetCount;
+    this.helmets.instanceMatrix.needsUpdate = true;
+    if (this.helmets.instanceColor) this.helmets.instanceColor.needsUpdate = true;
   }
 
   dispose(): void {
     for (const pose of ['seat', 'ride'] as const) for (const mesh of this.meshes[pose]) mesh.geometry.dispose();
     for (const material of this.materials) material.dispose();
+    (this.helmets.material as THREE.Material).dispose(); // the geometry is shared
     this.group.removeFromParent();
   }
 }

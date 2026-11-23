@@ -27,6 +27,14 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Helmets on two-wheeler riders (2026-11-23)
+
+- **Helmet** (`player/avatar/helmet.ts`): a rounded shell (a little longer front to back) with a dark visor across the face. Eight seeded colours, mostly black and white, some red, blue, silver or yellow.
+- **Traffic riders** (`TrafficDrivers`): every two-wheeler rider (scooters, motorbikes) wears one, placed with the same lean about the waist the pose shader uses (head 1.64 m on the light figure). One extra draw call. Car, bus, truck and auto drivers don't.
+- **Your character**: puts one on while riding your own scooter or any leaning vehicle (`Motion.helmet` from `LocalPlayer`). It follows the head bone (`RocketboxPerson.setHelmet`). The colour is seeded from your look. Classic bodies don't get one.
+- Remote players don't show helmets yet (their motion doesn't say what they ride).
+- Checked: your character on the scooter, and a traffic scooter rider.
+
 ## Realistic people at bus stops and carts up close (2026-11-23)
 
 - **`WaitingPeople` now swaps in Rocketbox people up close**: every placement (bench sitter, stander, cart customer) is recorded with its light-figure instance. Twice a second the nearest few within 22 m (half the quality's near-people budget: High 4, Medium 2, Low none) become realistic people, and their light figure is hidden (instance scaled to 0).

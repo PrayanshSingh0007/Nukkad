@@ -6,6 +6,7 @@ import { BONE, JOINTS, buildAvatarGeometry, buildSkeleton } from './avatarModel.
 import { Person, loadPeople, peopleReady } from './people.ts';
 import { RocketboxPerson, loadRocketbox, rocketboxReady } from './rocketbox.ts';
 import { umbrellaColour } from './umbrella.ts';
+import { helmetColour } from './helmet.ts';
 
 const lookKey = (look: AvatarLook): string => `${look.build},${look.hair},${look.outfit},${look.skin >= 3}`;
 
@@ -44,6 +45,8 @@ export interface Motion {
   lean?: number;
   /** Show your own scooter under you (false when riding someone else's two-wheeler or an auto). */
   scooter?: boolean;
+  /** On a two-wheeler: wear a helmet. */
+  helmet?: boolean;
   /** EMOTES index (wave, dance, sit, talk), 0 = none. */
   emote?: number;
   /** Handlebar grip of the vehicle you sit on: [half width, height, z] in metres, front is −z. */
@@ -214,6 +217,7 @@ export class Avatar {
       // Points are in the vehicle's frame; the body group is shifted by the seat.
       return [this.body.localToWorld(new THREE.Vector3(-w, h - 0.16 - seatUp, z - seatZ)), this.body.localToWorld(new THREE.Vector3(w, h - 0.16 - seatUp, z - seatZ))];
     };
+    if (this.person instanceof RocketboxPerson) this.person.setHelmet(motion.riding && motion.helmet ? helmetColour(((this.look.person * 37 + this.look.tint * 11 + this.look.skin) % 97) / 97) : null);
     this.person?.update(dt, motion.speed, motion.grounded, motion.riding ? (motion.scooter === false ? 'seat' : 'stand') : null, motion.emote ?? 0, pair(motion.grip), pair(motion.feet));
     // Blink every few seconds (a quick 0.12 s), sometimes twice.
     this.nextBlink -= dt;
