@@ -4,15 +4,16 @@ import { hash32, makeRng } from '@nukkad/shared';
 import type { Door, InteriorKind } from '@nukkad/worldgen';
 
 /**
- * The inside of a building, built on this device when you walk through its front door.
- * Like most open-world games, the inside is its own room (placed deep under the building,
- * so friends who go through the same door end up in the same room and see each other).
- * Everything is boxes merged into ONE mesh with the light baked into the colours
- * (no extra lights = no shader rebuild, cheap on phones), plus solid boxes for physics.
+ * The inside of a building, built on this device as you walk up to its front door, right where
+ * the building stands: the doorway in the wall opens and you just walk in (no button, no
+ * loading), see the street behind you through it, and walk out again. Friends who go in are in
+ * the same place and see each other. Everything is boxes merged into ONE mesh with the light
+ * baked into the colours (no extra lights = no shader rebuild, cheap on phones), plus solid
+ * boxes for physics.
  */
 
-/** How far below the street the insides are, metres (each building a little different, so neighbours never overlap). */
-export const INTERIOR_DEPTH = 60;
+/** The inside's walls stand this far in from the outside of the building. */
+const INSET = 0.03;
 
 export interface Solid {
   x: number;
@@ -32,12 +33,12 @@ export interface Interior {
   solids: Solid[];
   /** Chairs, sofas and benches (world position; facing = the avatar's facing angle). */
   seats: { x: number; y: number; z: number; facing: number }[];
-  /** Where you appear inside, and which way you face. */
-  spawn: { x: number; z: number; heading: number };
-  /** Inside if (x, z) is within the room (used to show friends who are in here too). */
+  /** The doorway cut in the building's wall: centre on the ground, facing, half width, height, depth into the wall. */
+  hole: { x: number; y: number; z: number; face: number; half: number; top: number; depth: number };
+  /** Inside the room. */
   contains(x: number, y: number, z: number): boolean;
-  /** Near the way out. */
-  nearExit(x: number, z: number): boolean;
+  /** In the doorway (or just in front of it): the building's outer wall must let you through here. */
+  doorway(x: number, y: number, z: number): boolean;
   dispose(): void;
 }
 
@@ -58,16 +59,34 @@ class Room {
   readonly d: number;
   readonly h: number;
   readonly rng: () => number;
+  /** The doorway: its middle across the room (x), half width and height. */
+  readonly doorX: number;
+  readonly doorHalf: number;
+  readonly doorTop: number;
+  /** While the shell is built (walls, floor): nothing is kept out of the way in. */
+  structural = false;
 
-  constructor(w: number, d: number, h: number, rng: () => number) {
+  constructor(w: number, d: number, h: number, rng: () => number, doorX = 0, doorHalf = 0.6, doorTop = 2.2) {
     this.w = w;
     this.d = d;
     this.h = h;
     this.rng = rng;
+    this.doorX = doorX;
+    this.doorHalf = doorHalf;
+    this.doorTop = doorTop;
+  }
+
+  /** The way in stays clear: furniture that would stand in it is left out. */
+  private inTheWay(x0: number, y1: number, z0: number, x1: number, z1: number): boolean {
+    if (this.structural || y1 <= 0.05) return false;
+    const a = this.doorX - this.doorHalf - 0.35;
+    const b = this.doorX + this.doorHalf + 0.35;
+    return Math.min(x0, x1) < b && Math.max(x0, x1) > a && Math.min(z0, z1) < 1.7;
   }
 
   /** A box from (x0, y0, z0) to (x1, y1, z1). `solid` = you bump into it. */
   box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string | Rgb, solid = false, glow = false): void {
+    if (this.inTheWay(x0, Math.max(y0, y1), z0, x1, z1)) return;
     const sx = Math.abs(x1 - x0);
     const sy = Math.abs(y1 - y0);
     const sz = Math.abs(z1 - z0);
@@ -117,6 +136,7 @@ const T = 0.2; // wall thickness
 
 /** Floor, walls, ceiling lights and the way out — the same for every room. */
 function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void {
+  r.structural = true;
   const { w, d, h } = r;
   // Checked floor tiles (two shades), then walls and ceiling.
   const nx = Math.max(1, Math.round(w / tiles));
@@ -126,11 +146,16 @@ function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void 
   if (nx * nz <= 900) {
     for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) r.panel(-w / 2 + i * tw, -0.05, k * td, -w / 2 + (i + 1) * tw - 0.01, 0, (k + 1) * td - 0.01, floor[(i + k) % 2]);
   } else r.panel(-w / 2, -0.05, 0, w / 2, 0, d, floor[0]);
-  r.box(-w / 2 - 1, -0.6, -1, w / 2 + 1, -0.05, d + 1, '#a39d92', true); // solid floor slab (shows as grout between tiles)
+  r.box(-w / 2 - T, -0.6, -T, w / 2 + T, -0.05, d + T, '#a39d92', true); // solid floor slab (shows as grout between tiles)
   r.box(-w / 2 - T, 0, -T, -w / 2, h, d + T, wall, true);
   r.box(w / 2, 0, -T, w / 2 + T, h, d + T, wall, true);
   r.box(-w / 2, 0, d, w / 2, h, d + T, wall, true);
-  r.box(-w / 2, 0, -T, w / 2, h, 0, wall, true); // door wall
+  // The door wall, with the doorway in it (where the building's own door is).
+  const dx0 = r.doorX - r.doorHalf;
+  const dx1 = r.doorX + r.doorHalf;
+  r.box(-w / 2, 0, -T, dx0, h, 0, wall, true);
+  r.box(dx1, 0, -T, w / 2, h, 0, wall, true);
+  r.box(dx0, r.doorTop, -T, dx1, h, 0, wall, true);
   r.box(-w / 2 - T, h, -T, w / 2 + T, h + 0.2, d + T, '#f3f1ec', true); // ceiling
   // Skirting.
   r.panel(-w / 2, 0, d - 0.02, w / 2, 0.1, d, '#8b8378');
@@ -138,11 +163,18 @@ function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void 
   r.panel(w / 2 - 0.02, 0, 0, w / 2, 0.1, d, '#8b8378');
   // Ceiling lamps every ~4 m (glowing panels).
   for (let x = -w / 2 + 2; x < w / 2 - 1; x += 4) for (let z = 2; z < d - 1; z += 4) r.panel(x - 0.5, h - 0.03, z - 0.25, x + 0.5, h, z + 0.25, '#ffffff', true);
-  // The way out: a door in the door wall with a green EXIT strip above it.
-  r.panel(-0.6, 0, 0, 0.6, 2.2, 0.04, '#5c3d2a');
-  r.panel(-0.65, 2.2, 0, 0.65, 2.3, 0.05, '#d8d0bf');
-  r.panel(-0.3, 2.42, 0, 0.3, 2.6, 0.05, '#1fa35a', true);
-  r.panel(-0.6, 0, 0.1, 0.6, 0.01, 1.0, '#7a4b3a'); // doormat
+  // The doorway: a frame round it, the door itself swung open against the wall (a wooden door)
+  // or a green EXIT sign above it (a glass shop door, slid away), and a doormat.
+  r.panel(dx0 - 0.1, 0, 0, dx0, r.doorTop + 0.1, 0.03, '#d8d0bf');
+  r.panel(dx1, 0, 0, dx1 + 0.1, r.doorTop + 0.1, 0.03, '#d8d0bf');
+  r.panel(dx0, r.doorTop, 0, dx1, r.doorTop + 0.1, 0.03, '#d8d0bf');
+  r.panel(dx0, r.doorTop - 0.02, -T, dx1, r.doorTop, 0, '#d8d0bf');
+  r.panel(dx0, 0, -T, dx0 + 0.02, r.doorTop, 0, '#d8d0bf');
+  r.panel(dx1 - 0.02, 0, -T, dx1, r.doorTop, 0, '#d8d0bf');
+  if (r.doorHalf < 0.9) r.panel(dx0 - 0.06, 0.01, 0.04, dx0 - 0.01, r.doorTop - 0.03, 0.04 + 2 * r.doorHalf - 0.08, '#5c3d2a');
+  else if (r.doorTop + 0.36 < h) r.panel(r.doorX - 0.3, r.doorTop + 0.16, 0, r.doorX + 0.3, r.doorTop + 0.34, 0.05, '#1fa35a', true);
+  r.panel(dx0 + 0.05, 0, 0.1, dx1 - 0.05, 0.01, 1.0, '#7a4b3a');
+  r.structural = false;
 }
 
 /** Windows: bright panels on the side walls (daylight look). */
@@ -488,21 +520,63 @@ export function carSpots(interior: Interior): { x: number; z: number; heading: n
 
 const material = new THREE.MeshBasicMaterial({ vertexColors: true });
 
-export function buildInterior(door: Door): Interior {
+/**
+ * Builds the inside of a building where it stands: a room that fits inside its walls (no
+ * bigger than its kind's largest), its doorway exactly where the building's door is, under its
+ * roof. `ground` gives the ground height (the floor sits on the highest ground under the room).
+ * Null when the building is too awkward a shape to go into.
+ */
+export function buildInterior(door: Door, ground: (x: number, z: number) => number): Interior | null {
+  if (door.depth <= 0) return null;
   const layout = LAYOUTS[door.kind];
-  const w = Math.min(layout.max[0], Math.max(layout.min[0], Math.round(door.w)));
-  const d = Math.min(layout.max[1], Math.max(layout.min[1], Math.round(door.d)));
+  const half = door.wide ? 1.2 : 0.55;
+  const doorTop = door.wide ? 2.6 : 2.15;
+  // Across: as wide as the building allows, keeping the doorway inside.
+  let left = door.left;
+  let right = door.right;
+  if (right - left > layout.max[0]) {
+    let a = -layout.max[0] / 2;
+    let b = layout.max[0] / 2;
+    if (a < left) {
+      b += left - a;
+      a = left;
+    }
+    if (b > right) {
+      a -= b - right;
+      b = right;
+    }
+    left = a;
+    right = b;
+  }
+  const w = right - left;
+  const d = Math.min(door.depth, layout.max[1]) - T - INSET - T;
+  if (w < 2.2 || d < 2.2) return null;
+  const centre = (left + right) / 2;
+  // The walls along the door wall and into the building (world).
+  const nx = Math.sin(door.face);
+  const nz = Math.cos(door.face);
+  const ux = -nz;
+  const uz = nx;
+  // The floor: on the highest ground under the room (so the ground never shows through it).
+  let floorY = door.y;
+  for (let u = left; u <= right + 0.01; u += Math.max(1, w / 6)) {
+    for (let v = 0.5; v <= d + 0.01; v += Math.max(1, d / 6)) floorY = Math.max(floorY, ground(door.x + ux * u - nx * v, door.z + uz * u - nz * v));
+  }
+  floorY = Math.min(floorY, door.y + 0.35) + 0.03;
+  const height = Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const rng = makeRng(hash32(door.id, 4242));
-  const room = new Room(w, d, layout.height, rng);
+  const room = new Room(w, d, height, rng, -centre, half, doorTop);
   layout.build(room);
   const geometry = mergeGeometries(room.parts);
   for (const part of room.parts) part.dispose();
   const mesh = new THREE.Mesh(geometry, material);
 
-  const floorY = door.y - INTERIOR_DEPTH - (hash32(door.id, 7) % 6) * 8;
   const group = new THREE.Group();
   group.add(mesh);
-  group.position.set(door.x, floorY, door.z);
+  // Room frame: x across (= along the door wall), z into the building; its door wall stands
+  // just inside the building's own wall.
+  const inward = T + INSET;
+  group.position.set(door.x + ux * centre - nx * inward, floorY, door.z + uz * centre - nz * inward);
   group.rotation.y = door.face + Math.PI; // local +z points into the building
   group.userData.d = d;
   group.updateMatrixWorld(true);
@@ -514,7 +588,6 @@ export function buildInterior(door: Door): Interior {
   });
   const inverse = group.matrixWorld.clone().invert();
   const local = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(inverse);
-  const spawnAt = toWorld(0, 0, 2.6);
   const seats = room.seats.map((s) => {
     const p = toWorld(s.x, 0, s.z);
     return { x: p.x, y: floorY, z: p.z, facing: s.dz === -1 ? group.rotation.y : group.rotation.y + Math.PI };
@@ -525,14 +598,14 @@ export function buildInterior(door: Door): Interior {
     floorY,
     solids,
     seats,
-    spawn: { x: spawnAt.x, z: spawnAt.z, heading: door.face + Math.PI },
+    hole: { x: door.x, y: door.y, z: door.z, face: door.face, half: half + 0.03, top: doorTop + 0.04, depth: inward + 0.06 },
     contains(x, y, z) {
       const p = local(x, y, z);
-      return Math.abs(p.x) < w / 2 + 0.5 && p.z > -0.5 && p.z < d + 0.5 && p.y > -1 && p.y < layout.height + 1;
+      return Math.abs(p.x) < w / 2 && p.z > 0 && p.z < d && p.y > -1 && p.y < height + 0.5;
     },
-    nearExit(x, z) {
-      const p = local(x, floorY, z);
-      return Math.abs(p.x) < 1.6 && p.z < 2.1;
+    doorway(x, y, z) {
+      const p = local(x, y, z);
+      return Math.abs(p.x + centre) < half && p.z > -T - 1.1 && p.z < 0.6 && p.y > -1 && p.y < doorTop;
     },
     dispose() {
       geometry.dispose();

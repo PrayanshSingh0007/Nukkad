@@ -638,6 +638,47 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain
   material.customProgramCacheKey = () => 'nukkad-wind-4';
 }
 
+/**
+ * The open doorway of the building you are walking up to: the wall (and its painted door) is cut
+ * away there so you can see in and walk through. One at a time. (x, y, z) = the door on the
+ * ground, w = its facing; size = half width, height, how far into the wall (0 = no hole).
+ */
+const DOOR_HOLE = { uNkHole: { value: new THREE.Vector4(0, -1e6, 0, 0) }, uNkHoleSize: { value: new THREE.Vector3(0, 0, 0) } };
+
+export function setDoorHole(x: number, y: number, z: number, face: number, halfWidth: number, height: number, depth: number): void {
+  DOOR_HOLE.uNkHole.value.set(x, y, z, face);
+  DOOR_HOLE.uNkHoleSize.value.set(halfWidth, height, depth);
+}
+
+export function clearDoorHole(): void {
+  DOOR_HOLE.uNkHoleSize.value.set(0, 0, 0);
+}
+
+function doorHole(material: THREE.Material): void {
+  const before = material.onBeforeCompile;
+  const key = material.customProgramCacheKey;
+  material.onBeforeCompile = (shader, renderer) => {
+    before.call(material, shader, renderer);
+    Object.assign(shader.uniforms, DOOR_HOLE);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvNkHoleP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;\nuniform vec4 uNkHole;\nuniform vec3 uNkHoleSize;')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>
+        if (uNkHoleSize.x > 0.0) {
+          vec3 nkD = vNkHoleP - uNkHole.xyz;
+          float nkOut = nkD.x * sin(uNkHole.w) + nkD.z * cos(uNkHole.w);
+          float nkAlong = nkD.x * cos(uNkHole.w) - nkD.z * sin(uNkHole.w);
+          if (abs(nkAlong) < uNkHoleSize.x && nkD.y > -0.4 && nkD.y < uNkHoleSize.y && nkOut > -uNkHoleSize.z && nkOut < 0.35) discard;
+        }`,
+      );
+  };
+  material.customProgramCacheKey = () => `${key.call(material)}-hole1`;
+}
+
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
   const night = { value: 0 };
   const time = { value: 0 };
@@ -651,6 +692,7 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   groundDetail(terrain, surfaces, weather);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
   if (windows) facades(buildings, night, surfaces, lightDir, sky, wet, time); // walls dry like the ground
+  doorHole(buildings);
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces, weather);

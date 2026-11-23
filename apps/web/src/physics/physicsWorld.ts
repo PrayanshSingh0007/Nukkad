@@ -37,10 +37,22 @@ export class PhysicsWorld {
     this.terrain = this.world.createCollider(ColliderDesc.trimesh(positions, new Uint32Array(indices), TriMeshFlags.FIX_INTERNAL_EDGES));
   }
 
-  private addMesh(mesh: MeshData | null, into: Collider[]): void {
+  private addMesh(mesh: MeshData | null, into: Collider[], building = false): void {
     if (!mesh) return;
-    into.push(this.world.createCollider(this.rapier.ColliderDesc.trimesh(mesh.positions, new Uint32Array(mesh.indices))));
+    const collider = this.world.createCollider(this.rapier.ColliderDesc.trimesh(mesh.positions, new Uint32Array(mesh.indices)));
+    if (building) this.buildingHandles.add(collider.handle);
+    into.push(collider);
   }
+
+  /** The buildings' outer walls (one collider per chunk), which a walker can pass while going in through a door. */
+  private readonly buildingHandles = new Set<number>();
+  /**
+   * True while you are in a front doorway or inside a building: the outer walls stop counting
+   * for your body, and the inside's own walls (with the doorway gap) hold you instead.
+   */
+  ghostBuildings = false;
+  /** For the character controller: everything except the outer walls. */
+  readonly withoutBuildings = (collider: Collider): boolean => !this.buildingHandles.has(collider.handle);
 
   /**
    * Keeps colliders only for the chunks within `radius` chunks of (cx, cz) — 3 × 3 for radius 1.
@@ -61,14 +73,17 @@ export class PhysicsWorld {
           continue;
         }
         const colliders: Collider[] = [];
-        this.addMesh(chunk.buildings, colliders);
+        this.addMesh(chunk.buildings, colliders, true);
         this.addMesh(chunk.ground, colliders); // road strips: their 8 cm lip is the kerb
         this.chunkColliders.set(key, colliders);
       }
     }
     for (const [key, colliders] of this.chunkColliders) {
       if (wanted.has(key)) continue;
-      for (const collider of colliders) this.world.removeCollider(collider, false);
+      for (const collider of colliders) {
+        this.buildingHandles.delete(collider.handle);
+        this.world.removeCollider(collider, false);
+      }
       this.chunkColliders.delete(key);
     }
     return complete;

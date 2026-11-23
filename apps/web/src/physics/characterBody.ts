@@ -57,7 +57,8 @@ export class CharacterBody {
     // Going up after a jump; otherwise always push down a little so the controller can tell
     // that we are standing on something.
     const dy = this.fallSpeed < 0 ? -this.fallSpeed * dt : -Math.max(this.fallSpeed * dt, 0.02);
-    this.controller.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz });
+    const physics = this.physics;
+    this.controller.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz }, undefined, undefined, physics.ghostBuildings ? physics.withoutBuildings : undefined);
     const moved = this.controller.computedMovement();
     this.grounded = this.rising > 0 ? false : this.controller.computedGrounded();
     this.x += moved.x;

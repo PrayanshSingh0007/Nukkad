@@ -27,6 +27,16 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Walk-in buildings, no button (2026-11-23)
+
+- **Owner's ask: "go in any house without pressing buttons and just walk in", like GTA.** The old way (press "Go inside", teleport to a room 60 m under the street, press "Go outside") is gone.
+- **Insides are built where the building stands** (`buildInterior(door, ground)` in `world/interiors.ts`). Each door now carries a room rectangle that fits inside the building's outline (`fitRoom` in worldgen `doors.ts`: `left`/`right` along the door wall, `depth` in, shrunk until every 1 m sample is inside) and the roof height (`top`). 4,079 of the 4,090 buildings in the test area can be walked into. The room's doorway sits exactly at the building's own door; furniture is kept out of the way in; homes get the wooden door swung open against the wall, shops a green EXIT sign.
+- **Walking up opens it**: within 9 m of a front door (on foot), its inside is built in place and the doorway is cut out of the wall by the building shader (`setDoorHole` in `materials.ts`, one at a time), so you see in from the street and out from inside. The last 6 insides are kept, so walking along a row of shops doesn't rebuild them.
+- **Walking through**: while you are in the doorway or inside, the buildings' outer walls stop counting for your body (`PhysicsWorld.ghostBuildings`, a filter in the character controller) and the inside's own walls hold you. Beside the doorway the wall stays solid (checked: you stop 0.33 m from it).
+- Inside: the same indoor light, no rain, eyes adjusting, and an "Inside: …" note; the street stays drawn (you can see it through the doorway). Friends are shown where they really are.
+- Checked in game: walked into a house and out again with W only, looked out through the open door from inside, and saw an office's wide entrance open from the street.
+- Not yet: the outside seen from inside is lit with the indoor light; rain stops while you are inside even looking out; a big inside can take a moment to build the first time.
+
 ## Exhaust smoke from traffic (2026-11-23)
 
 - **`TrafficExhaust`** (`world/trafficExhaust.ts`): soft billowing puffs (one draw call of points, 420 at most) from vehicles within 60 m. Each puff grows, rises (warm air), slows to the air's pace, drifts on a light breeze and thins out. Ragged outlines from noise, lighter on top. Fogged like everything else, dimmed at night.

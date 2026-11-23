@@ -37,6 +37,7 @@ import { setHeadlightHaze } from '../world/headlightCones.ts';
 import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
+import { clearDoorHole, setDoorHole } from '../world/materials.ts';
 import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES, gearAt, gearTop, specForModel } from './vehicleSpecs.ts';
@@ -312,7 +313,10 @@ export class Game {
   /** Front doors by 10 m grid cell, the door you are standing at, and the building you are inside. */
   private readonly sound = new Sound();
   private doorGrid = new Map<string, Door[]>();
-  private doorNear: Door | null = null;
+  /** The building whose front door you are near: its inside is built where it stands and its doorway is open. */
+  private building: Interior | null = null;
+  /** Insides built lately (by building id; null = can't go in), so walking past a row of shops doesn't rebuild them. */
+  private builtInsides = new Map<number, Interior | null>();
   private interior: Interior | null = null;
   /** Called with a short message for the player ("Inside: Mango Hypermarket"). */
   onToast: ((text: string) => void) | null = null;
@@ -516,17 +520,17 @@ export class Game {
     this.onRiding?.(player.riding);
   }
 
-  /** The front door you are standing at (on foot), if any. */
-  private findDoor(x: number, z: number): Door | null {
+  /** The nearest front door within `reach` metres you can go in through, if any. */
+  private findDoor(x: number, z: number, reach = 2.2): Door | null {
     let best: Door | null = null;
-    let bestD = 2.2;
+    let bestD = reach;
     const gx = Math.floor(x / 10);
     const gz = Math.floor(z / 10);
     for (let i = -1; i <= 1; i++)
       for (let k = -1; k <= 1; k++)
         for (const door of this.doorGrid.get(`${gx + i},${gz + k}`) ?? []) {
           const d = Math.hypot(door.x - x, door.z - z);
-          if (d < bestD) {
+          if (d < bestD && door.depth > 0) {
             bestD = d;
             best = door;
           }
@@ -534,50 +538,72 @@ export class Game {
     return best;
   }
 
-  /** Walks you through a front door into the building's inside. */
-  private goInside(door: Door): void {
+  /**
+   * Walk-in buildings: as you walk up to a front door (on foot), the building's inside is built
+   * where it stands and its doorway opens, so you see in and just walk through. While you are
+   * in the doorway or inside, the building's outer walls let you pass and the inside's own walls
+   * (with the doorway gap) hold you. Called every frame before you move.
+   */
+  private updateBuilding(): void {
     const player = this.player;
     const physics = this.physics;
-    if (!player || !physics) return;
-    player.seat = null;
-    player.emote = 0;
-    const inside = buildInterior(door);
-    this.interior = inside;
+    const world = this.world;
+    if (!player || !physics || !world) return;
+    const onFoot = !player.vehicle && !player.riding && !this.driving;
+    // Pick the building: keep the one you are inside; otherwise the nearest door within 9 m.
+    if (!this.interior) {
+      const door = onFoot ? this.findDoor(player.x, player.z, 9) : null;
+      if (door?.id !== this.building?.door.id) this.openBuilding(door);
+    }
+    const building = this.building;
+    const inside = building !== null && onFoot && building.contains(player.x, player.y, player.z);
+    physics.ghostBuildings = building !== null && onFoot && (inside || building.doorway(player.x, player.y, player.z));
+    if (inside && !this.interior) {
+      this.interior = building;
+      player.seat = null;
+      // Out of the daylight the room looks dark for a moment, until your eyes adjust.
+      this.adapt = 1 - 0.45 * (1 - this.atmosphere.night);
+      const door = building.door;
+      this.onToast?.(door.name ? `Inside: ${door.name}` : `Inside: ${INTERIOR_NAMES[door.kind]}`);
+    } else if (!inside && this.interior) {
+      this.interior = null;
+      // Stepping out into daylight: glare for a moment (at night the street is the darker place).
+      this.adapt = this.atmosphere.night > 0.5 ? 0.75 : 1.8;
+    }
+  }
+
+  /** Opens this building's doorway and puts its inside in place (null = close the current one). */
+  private openBuilding(door: Door | null): void {
+    const physics = this.physics;
+    const world = this.world;
+    if (!physics || !world) return;
+    this.building?.group.removeFromParent();
+    this.building = null;
+    physics.setInterior([]);
+    clearDoorHole();
+    if (!door) return;
+    let inside = this.builtInsides.get(door.id);
+    if (inside !== undefined) {
+      // Most recently used goes to the end (the oldest is let go first).
+      this.builtInsides.delete(door.id);
+      this.builtInsides.set(door.id, inside);
+    } else {
+      inside = buildInterior(door, (x, z) => heightAt(world.terrain, x, z));
+      if (inside && door.kind === 'showroom') this.addShowroomCars(inside);
+      this.builtInsides.set(door.id, inside);
+      // Keep the last few; let older ones go.
+      if (this.builtInsides.size > 6) {
+        const [oldest, old] = this.builtInsides.entries().next().value as [number, Interior | null];
+        old?.dispose();
+        this.builtInsides.delete(oldest);
+      }
+    }
+    if (!inside) return;
+    this.building = inside;
     this.view3d.scene.add(inside.group);
     physics.setInterior(inside.solids);
-    player.body.teleport(inside.spawn.x, inside.floorY + 0.9, inside.spawn.z);
-    player.resetMotion();
-    this.rig.yaw = door.face; // look into the room
-    this.setOutsideVisible(false);
-    // Out of the daylight the room looks dark for a moment, until your eyes adjust.
-    this.adapt = 1 - 0.55 * (1 - this.atmosphere.night);
-    if (door.kind === 'showroom') this.addShowroomCars(inside);
-    this.onToast?.(door.name ? `Inside: ${door.name}` : `Inside: ${INTERIOR_NAMES[door.kind]}`);
-  }
-
-  /** Back out through the door you came in. */
-  private goOutside(): void {
-    const player = this.player;
-    const inside = this.interior;
-    if (!player || !inside || !this.physics) return;
-    const door = inside.door;
-    const out = 1.6;
-    player.body.teleport(door.x + Math.sin(door.face) * out, door.y + 0.9, door.z + Math.cos(door.face) * out);
-    player.resetMotion();
-    this.rig.yaw = door.face + Math.PI; // look back out at the street
-    this.physics.setInterior([]);
-    inside.dispose();
-    this.interior = null;
-    this.setOutsideVisible(true);
-    // Stepping out into daylight: glare for a moment, then your eyes adjust (at night the street
-    // is the darker place).
-    this.adapt = this.atmosphere.night > 0.5 ? 0.65 : 2.1;
-  }
-
-  /** While inside, the city is not drawn at all (cheaper, and nothing leaks through the walls). */
-  private setOutsideVisible(on: boolean): void {
-    for (const group of [this.world?.group, this.traffic?.group, this.walkers?.group, this.streetLife?.group, this.waiting?.group]) if (group) group.visible = on;
-    if (this.birds) this.birds.mesh.layers.set(on ? 0 : 31); // indoors: no birds (their own update sets visible)
+    const hole = inside.hole;
+    setDoorHole(hole.x, hole.y, hole.z, hole.face, hole.half, hole.top, hole.depth);
   }
 
   private addShowroomCars(inside: Interior): void {
@@ -674,8 +700,8 @@ export class Game {
     return {
       picture: this.mapPicture,
       half: ready.info.halfSize,
-      x: inside ? inside.door.x : player.x,
-      z: inside ? inside.door.z : player.z,
+      x: player.x,
+      z: player.z,
       yaw: this.rig.yaw,
       facing: player.vehicle ? player.heading : player.avatar.facing,
       driving: player.vehicle !== null,
@@ -691,22 +717,7 @@ export class Game {
     const player = this.player;
     const streetLife = this.streetLife;
     if (!player || !streetLife) return;
-    if (this.interior) {
-      if (this.interior.nearExit(player.x, player.z)) {
-        player.seat = null;
-        this.goOutside();
-      }
-      return;
-    }
-    if (!this.driving && !player.riding && this.doorNear) {
-      // A parked car right next to you wins only if it is closer than the door.
-      const parked = streetLife.nearestVehicle(player.x, player.z, 3.5);
-      const carD = parked ? Math.hypot(parked.item.x - player.x, parked.item.z - player.z) : Infinity;
-      if (carD > Math.hypot(this.doorNear.x - player.x, this.doorNear.z - player.z)) {
-        this.goInside(this.doorNear);
-        return;
-      }
-    }
+    if (this.interior) return;
     if (this.driving) {
       const left = player.exitVehicle();
       if (left) streetLife.park(this.driving, left.x, left.y, left.z, left.heading);
@@ -766,18 +777,12 @@ export class Game {
   private updateDriveHint(): void {
     const player = this.player;
     let label: string | null = null;
-    this.doorNear = null;
-    if (player && this.interior) {
-      if (this.interior.nearExit(player.x, player.z)) label = 'Go outside';
-    } else if (player && this.driving) label = 'Get out';
+    if (player && this.interior) label = null;
+    else if (player && this.driving) label = 'Get out';
     else if (player && !player.riding && this.streetLife) {
       const parked = this.streetLife.nearestVehicle(player.x, player.z, 3.5);
       const spec = parked ? VEHICLES[parked.kind.name] : undefined;
-      const door = this.findDoor(player.x, player.z);
-      this.doorNear = door;
-      const carD = parked ? Math.hypot(parked.item.x - player.x, parked.item.z - player.z) : Infinity;
-      if (door && (!spec || carD > Math.hypot(door.x - player.x, door.z - player.z))) label = 'Go inside';
-      else if (spec) label = `Drive ${spec.label}`;
+      if (spec) label = `Drive ${spec.label}`;
     }
     if (label !== this.driveHint) {
       this.driveHint = label;
@@ -844,11 +849,8 @@ export class Game {
         list.push(door);
         this.doorGrid.set(key, list);
       }
-      this.remotes.canSee = (x, y, z) => {
-        const me = this.interior;
-        if (me) return me.contains(x, y, z);
-        return y > heightAt((this.world as WorldView).terrain, x, z) - 10;
-      };
+      // Friends are shown where they are (insides are built in place, so that includes indoors).
+      this.remotes.canSee = (x, y, z) => y > heightAt((this.world as WorldView).terrain, x, z) - 10;
       const settings = QUALITY[this.level];
       this.world = new WorldView(ready, {
         maxTrees: settings.maxTrees,
@@ -1172,6 +1174,7 @@ export class Game {
       player.handbrake = this.input.handbrake;
       // Space on foot: a jump (about 0.6 m with the game's gravity). In vehicles it stays the handbrake.
       if (this.input.consumeJump() && !player.vehicle && !player.riding && player.seat === null && !player.emote) player.body.jump(5.2);
+      this.updateBuilding();
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       if (this.driveMesh) {
         this.driveMesh.position.set(player.x, player.y, player.z);

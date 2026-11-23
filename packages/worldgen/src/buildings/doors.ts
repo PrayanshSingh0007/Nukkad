@@ -31,6 +31,55 @@ export interface Door {
   name?: string;
   /** Wide glass door (shops) instead of a wooden one. */
   wide: boolean;
+  /**
+   * The inside you can walk into, built where the building stands: a rectangle that fits in its
+   * outline, from `left` to `right` metres along the door wall (the door is at 0; along
+   * (−cos face, sin face)) and `depth` metres in from it. 0 depth = too awkward to go in.
+   */
+  left: number;
+  right: number;
+  depth: number;
+  /** The roof, as a world height (the inside stays under it). */
+  top: number;
+}
+
+/**
+ * The biggest simple room that fits: start from the outline's full extent along and behind the
+ * door wall, then pull in whichever side pokes out of the outline until every sample point of
+ * the rectangle (1 m grid) is inside.
+ */
+export function fitRoom(ring: number[], x: number, z: number, nx: number, nz: number, minU: number, maxU: number, depth: number): { left: number; right: number; depth: number } {
+  // Along the wall the same way as the outline's extent (minU, maxU) was measured.
+  const ux = -nz;
+  const uz = nx;
+  let left = Math.min(-0.9, minU + 0.3);
+  let right = Math.max(0.9, maxU - 0.3);
+  let deep = depth - 0.3;
+  const inside = (u: number, v: number): boolean => pointInRing(x + ux * u - nx * v, z + uz * u - nz * v, ring);
+  for (let iteration = 0; iteration < 40; iteration++) {
+    let outLeft = false;
+    let outRight = false;
+    let outBack = false;
+    const stepsU = Math.max(2, Math.ceil(right - left));
+    const stepsV = Math.max(2, Math.ceil(deep));
+    for (let i = 0; i <= stepsU; i++) {
+      const u = left + ((right - left) * i) / stepsU;
+      for (let k = 0; k <= stepsV; k++) {
+        const v = 0.25 + ((deep - 0.25) * k) / stepsV;
+        if (inside(u, v)) continue;
+        if (v > deep * 0.6) outBack = true;
+        if (u < -0.9) outLeft = true;
+        if (u > 0.9) outRight = true;
+        if (u >= -0.9 && u <= 0.9 && v <= deep * 0.6) outBack = true;
+      }
+    }
+    if (!outLeft && !outRight && !outBack) return { left, right, depth: deep };
+    if (outLeft) left = Math.min(-0.9, left * 0.88);
+    if (outRight) right = Math.max(0.9, right * 0.88);
+    if (outBack) deep *= 0.88;
+    if (deep < 2.4) break;
+  }
+  return { left: 0, right: 0, depth: 0 };
 }
 
 const BY_PLACE: Partial<Record<PlaceKind, InteriorKind>> = {
@@ -160,6 +209,10 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
       depth = Math.max(depth, -(dx * door.nx + dz * door.nz));
     }
     const wide = kind !== 'home' && kind !== 'worship';
+    // The building's own ground (its lowest point) and roof.
+    let ground = Infinity;
+    for (let i = 0; i < ring.length; i += 2) ground = Math.min(ground, heightAt(terrain, ring[i], ring[i + 1]));
+    const room = fitRoom(ring, door.x, door.z, door.nx, door.nz, minU, maxU, depth);
     doors.push({
       id: building.id,
       x: door.x,
@@ -172,6 +225,8 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
       floors: building.floors,
       ...(name ? { name } : {}),
       wide,
+      ...room,
+      top: ground + building.h,
     });
   }
   return doors;
