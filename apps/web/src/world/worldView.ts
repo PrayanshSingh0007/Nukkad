@@ -576,6 +576,11 @@ export class WorldView {
   }
 
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
+  /** The true sun direction (glare off wet roads; the light direction is lifted at low sun). */
+  setSunDir(dir: THREE.Vector3): void {
+    this.materials.sunDir.value.copy(dir);
+  }
+
   setLightDir(dir: THREE.Vector3): void {
     this.materials.lightDir.value.copy(dir);
   }

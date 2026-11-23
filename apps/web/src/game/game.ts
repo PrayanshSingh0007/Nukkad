@@ -1320,6 +1320,7 @@ export class Game {
     }
     world?.setNight(this.atmosphere.night);
     world?.setLightDir(this.atmosphere.lightDir);
+    world?.setSunDir(skyU.uSunDir.value);
     world?.setSky(skyU.uTop.value, skyU.uHorizon.value);
     this.streetLife?.setNight(this.atmosphere.night);
     this.traffic?.setNight(this.interior ? 0 : this.atmosphere.night, this.wetness); // wet roads keep spraying after the rain

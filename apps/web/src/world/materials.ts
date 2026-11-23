@@ -21,6 +21,8 @@ export interface WorldMaterials {
   rain: { value: number };
   /** 0 = dry … 1 = soaked: how wet the ground and walls are (stays after the rain, dries slowly). */
   wet: { value: number };
+  /** The true sun direction (for glare off wet roads). */
+  sunDir: { value: THREE.Vector3 };
   terrain: THREE.MeshLambertMaterial;
   buildings: THREE.MeshLambertMaterial;
   ground: THREE.MeshLambertMaterial;
@@ -42,12 +44,15 @@ export interface SkyUniforms {
 export interface WeatherUniforms extends SkyUniforms {
   uRain: { value: number };
   uWet: { value: number };
+  /** The true sun direction (not lifted at low sun like the light), for glare off wet roads. */
+  uSunDir: { value: THREE.Vector3 };
   uNkTime: { value: number };
   uNight: { value: number };
 }
 const WEATHER_PARS_GLSL = /* glsl */ `
   uniform float uRain;
   uniform float uWet;
+  uniform vec3 uSunDir;
   uniform float uNkTime;
   uniform float uNight;
   uniform vec3 uSkyTop;
@@ -360,6 +365,17 @@ const WET_GLSL = /* glsl */ `
     // A mirror of the sky, dimmed: a wet road reads as dark and glossy, silvery only far off.
     vec3 mirrored = mix(uSkyHorizon, uSkyTop, 0.4) * 0.6 * (1.0 - uNight * 0.85);
     nkWet = mirrored * (grazing * 0.4 * wet + puddle * (0.1 + 0.45 * grazing) + ring * 0.25 * uRain);
+    // The sun (or moon) mirrored in the wet: a hard glint in puddles, a broad sheen on damp tar,
+    // blinding when you look into a low sun across a wet street. Rippled a little.
+    vec3 nkN = normalize(vec3((nkNoise(wp * 1.7) - 0.5) * 0.07, 1.0, (nkNoise(wp * 1.7 + 7.3) - 0.5) * 0.07));
+    vec3 nkR = reflect(Vw, nkN);
+    float nkUp = uSunDir.y;
+    vec3 nkSunCol = mix(vec3(1.0, 0.5, 0.22), vec3(1.0, 0.93, 0.82), smoothstep(0.05, 0.45, nkUp));
+    float nkSun = smoothstep(-0.03, 0.02, nkUp) * (1.0 - uNight);
+    float nkMoon = uNight * 0.12;
+    float nkAlign = max(dot(nkR, nkUp > -0.05 ? uSunDir : normalize(vec3(-uSunDir.x, abs(uSunDir.y) + 0.2, -uSunDir.z))), 0.0);
+    float nkGlare = pow(nkAlign, 500.0) * puddle * 8.0 + pow(nkAlign, 40.0) * wet * 0.5;
+    nkWet += (nkSunCol * nkSun + vec3(0.75, 0.82, 1.0) * nkMoon) * nkGlare * (1.0 - uRain * 0.75);
   }
 `;
 
@@ -489,7 +505,7 @@ function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, w
          }`,
       );
   };
-  material.customProgramCacheKey = () => 'nukkad-roads-6';
+  material.customProgramCacheKey = () => 'nukkad-roads-7';
 }
 
 /** Breaks up the flat ground colour with soft blotches and fine grain. */
@@ -530,7 +546,7 @@ function groundDetail(material: THREE.MeshLambertMaterial, surfaces: SurfaceUnif
        diffuseColor.rgb *= nkShade;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-ground-6';
+  material.customProgramCacheKey = () => 'nukkad-ground-7';
 }
 
 /** Lakes and pools: moving ripples, the sky mirrored at flat angles, and sun glitter. */
@@ -586,7 +602,21 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain
       '#include <normal_fragment_begin>',
       '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n  normal *= faceDirection;\n#endif',
     );
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uRain;').replace(
+    // Whitewashed trunks with a red band, the way roadside trees are painted in India: bark-
+    // coloured parts below about 1.1 m (the trunk's own height, before wind and growth).
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTrunkY;').replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      #ifdef USE_COLOR
+        float nkBark = step(vColor.g * 1.25, vColor.r) * step(vColor.b * 1.15, vColor.g) * step(vColor.r, 0.3);
+        if (nkBark > 0.5 && vTrunkY < 1.15) {
+          float band = step(0.76, vTrunkY) * step(vTrunkY, 0.92);
+          vec3 paint = mix(vec3(0.8, 0.8, 0.76), vec3(0.6, 0.06, 0.05), band);
+          diffuseColor.rgb = mix(paint, diffuseColor.rgb, smoothstep(1.06, 1.15, vTrunkY));
+        }
+      #endif`,
+    );
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uRain;\nvarying float vTrunkY;').replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
        #ifdef USE_INSTANCING
@@ -594,6 +624,7 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain
        #else
          float phase = 0.0;
        #endif
+       vTrunkY = position.y;
        float bend = max(0.0, transformed.y - 1.4);
        // Storms: stronger sway, gusts that lean the whole crown, and leaves thrashing.
        float storm = 1.0 + 2.4 * uRain;
@@ -604,7 +635,7 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain
        transformed.y += sin(uTime * 3.1 + position.x * 4.0 + position.z * 3.0 + phase) * flutter;`,
     );
   };
-  material.customProgramCacheKey = () => 'nukkad-wind-3';
+  material.customProgramCacheKey = () => 'nukkad-wind-4';
 }
 
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
@@ -614,7 +645,8 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const sky: SkyUniforms = { uSkyTop: { value: new THREE.Color(0.25, 0.42, 0.8) }, uSkyHorizon: { value: new THREE.Color(0.7, 0.74, 0.8) }, uSkyGain: { value: 1 } };
   const rain = { value: 0 };
   const wet = { value: 0 };
-  const weather: WeatherUniforms = { ...sky, uRain: rain, uWet: wet, uNkTime: time, uNight: night };
+  const sunDir = { value: new THREE.Vector3(0.4, 0.6, 0.3) };
+  const weather: WeatherUniforms = { ...sky, uRain: rain, uWet: wet, uSunDir: sunDir, uNkTime: time, uNight: night };
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   groundDetail(terrain, surfaces, weather);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -629,5 +661,5 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
     ? new THREE.MeshLambertMaterial({ vertexColors: true, map: leaves, alphaTest: 0.4, side: THREE.DoubleSide })
     : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time, rain);
-  return { night, time, lightDir, sky, rain, wet, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
+  return { night, time, lightDir, sunDir, sky, rain, wet, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
 }

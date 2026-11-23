@@ -21,6 +21,7 @@ const PARS_VERTEX = /* glsl */ `
   varying float vBack;   // and the short tail towards the light (m)
   varying float vAcross; // -1 … 1
   varying float vDist;
+  varying float vFar;
 `;
 const MAIN_VERTEX = /* glsl */ `
   vec2 toCam = cameraPosition.xz - aLight.xz;
@@ -31,7 +32,7 @@ const MAIN_VERTEX = /* glsl */ `
   // Distance from the light's foot to its mirror image's point on the ground.
   float mirror = d * aLight.w / (aLight.w + eye);
   // A rough wet road smears the image along your line of sight: longer the further it is.
-  float reach = 0.6 + mirror * 0.22;
+  float reach = 0.6 + mirror * 0.12;
   float back = 0.25 + mirror * 0.06;
   float sFrom = max(0.0, mirror - back * 2.5);
   float sTo = max(sFrom, min(d - 1.2, mirror + reach * 2.5));
@@ -40,7 +41,8 @@ const MAIN_VERTEX = /* glsl */ `
   // comes towards you): narrower in metres the nearer it gets.
   vec3 centre = vec3(aLight.x + dir.x * along, aLight.y + 0.16, aLight.z + dir.y * along);
   vec3 mirrorPoint = vec3(aLight.x + dir.x * mirror, aLight.y + 0.16, aLight.z + dir.y * mirror);
-  float width = aTint.w * length(cameraPosition - centre) / max(0.5, length(cameraPosition - mirrorPoint));
+  // ...and a little wider far off (a rough road blurs a far light more).
+  float width = aTint.w * (1.0 + mirror * 0.025) * length(cameraPosition - centre) / max(0.5, length(cameraPosition - mirrorPoint));
   vec2 xz = centre.xz + side * position.x * width;
   vec4 world = vec4(xz.x, centre.y, xz.y, 1.0);
   vec4 view = viewMatrix * world;
@@ -48,6 +50,7 @@ const MAIN_VERTEX = /* glsl */ `
   vTint = aTint.rgb;
   vDelta = along - mirror;
   vReach = reach;
+  vFar = mirror;
   vBack = back;
   vAcross = position.x * 2.0;
   vDist = -view.z;
@@ -60,6 +63,7 @@ const FRAGMENT = /* glsl */ `
   varying float vBack;
   varying float vAcross;
   varying float vDist;
+  varying float vFar;
   void main() {
     // Brightest at the mirror point, a long soft tail towards you, a short one towards the light.
     float k = vDelta / (vDelta > 0.0 ? vReach : vBack);
@@ -69,7 +73,8 @@ const FRAGMENT = /* glsl */ `
     // Gone far away, and fading right at your feet.
     float fade = (1.0 - smoothstep(60.0, 140.0, vDist)) * smoothstep(1.5, 5.0, vDist);
     // A wet road gives back about a third of a light (more in a puddle, less on rough tar).
-    float glow = uStrength * 0.28 * along * across * fade;
+    // Far lights' mirror images are dimmer (more road between, more of it rough).
+    float glow = uStrength * 0.28 * along * across * fade * mix(1.0, 0.35, smoothstep(10.0, 45.0, vFar));
     if (glow < 0.002) discard;
     gl_FragColor = vec4(vTint * glow, 1.0);
   }

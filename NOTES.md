@@ -27,6 +27,16 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Sun glare on wet roads, painted tree trunks (2026-11-23) — owner: "keep making it AAA … for hours"
+
+- **Sun glare on wet roads** (`WET_GLSL`, new `uSunDir` = the true sun direction, set by `WorldView.setSunDir`; the light direction is lifted at low sun so it can't be used): the sun mirrored in wet ground. A hard glint in puddles and a broad sheen on damp tar, blinding when you look into a low sun across a wet street; a faint cold glint from the moon at night. Weaker while it still rains.
+  - Cache keys: roads-7, ground-7.
+  - Checked at 17:33 just after rain: a golden glare on the road with your character silhouetted; none on the same road dry.
+- **Wet streaks from far lamps** were long thin glowing poles from a low camera. Now they are shorter (reach 0.6 + 0.12 × distance), a little wider far off, and dimmer (down to 35 % beyond about 45 m).
+- **Whitewashed tree trunks** (`wind` in `materials.ts`, `nukkad-wind-4`): bark-coloured parts below 1.1 m are painted white with a red band (0.76–0.92 m) and a ragged top edge, as roadside trees in India are.
+  - Checked on a roadside tree.
+- The camera already widened at speed (`BASE_FOV + ease × 20`), so nothing was added there.
+
 ## Endless skyline, aeroplanes, people at bus stops (2026-11-23) — owner: "more AAA"
 
 - **The city goes on past the map** (sky shader): a skyline on the horizon, drawn on the sky dome so it is always beyond real buildings.
