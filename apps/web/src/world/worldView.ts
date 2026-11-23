@@ -12,6 +12,7 @@ import { LampInsects } from './lampInsects.ts';
 import { StringLights } from './stringLights.ts';
 import { StallSteam } from './stallSteam.ts';
 import { PerchedBirds } from './perchedBirds.ts';
+import { StreetDogs } from './streetDogs.ts';
 import { RooftopLaundry } from './rooftopLaundry.ts';
 import { WallPosters } from './wallPosters.ts';
 import { FallingLeaves } from './fallingLeaves.ts';
@@ -84,6 +85,8 @@ export class WorldView {
   private stringLights: StringLights | null = null;
   private steam: StallSteam | null = null;
   private perched: PerchedBirds | null = null;
+  /** Street dogs round the bus stops and carts. */
+  private dogs: StreetDogs | null = null;
   private laundry: RooftopLaundry | null = null;
   private posters: WallPosters | null = null;
   /** Where ground pigeons gather: [x, y, z] (carts and bus stops), set before the cables are added. */
@@ -251,6 +254,7 @@ export class WorldView {
     this.stringLights?.dispose();
     this.steam?.dispose();
     this.perched?.dispose();
+    this.dogs?.dispose();
     this.laundry?.dispose();
     this.posters?.dispose();
     this.leaves?.dispose();
@@ -343,6 +347,17 @@ export class WorldView {
     };
     for (let i = 0; i < props.stalls.length; i += 4) this.groundFlockSpots.push(props.stalls[i], props.stalls[i + 1], props.stalls[i + 2]);
     for (let i = 0; i < props.stops.length; i += 4) this.groundFlockSpots.push(props.stops[i], props.stops[i + 1], props.stops[i + 2]);
+    // Street dogs: beside the bus shelters, behind the carts and some benches (the way away from
+    // the road is the opposite of where each one faces).
+    const dogSpots: number[] = [];
+    for (let i = 0; i < props.stops.length; i += 4) dogSpots.push(props.stops[i], props.stops[i + 1], props.stops[i + 2], -Math.sin(props.stops[i + 3]), -Math.cos(props.stops[i + 3]), 0);
+    for (let i = 0; i < props.stalls.length; i += 4) dogSpots.push(props.stalls[i], props.stalls[i + 1], props.stalls[i + 2], -Math.sin(props.stalls[i + 3]), -Math.cos(props.stalls[i + 3]), 1);
+    // And behind some benches (in parks and along streets).
+    for (let i = 0; i < props.benches.length; i += BENCH_STRIDE) dogSpots.push(props.benches[i], props.benches[i + 1], props.benches[i + 2], -Math.sin(props.benches[i + 3]), -Math.cos(props.benches[i + 3]), 2);
+    if (dogSpots.length > 0) {
+      this.dogs = new StreetDogs(dogSpots, this.terrain);
+      this.group.add(this.dogs.group);
+    }
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
@@ -606,6 +621,7 @@ export class WorldView {
   updateNear(dt: number, x: number, z: number, scare = 6): number {
     this.insects?.update(dt, x, z);
     const tookOff = this.perched?.update(dt, x, z, scare) ?? 0;
+    this.dogs?.update(dt, x, z, scare);
     this.leaves?.update(dt, x, z);
     this.laundry?.update(dt, x, z);
     return tookOff; // birds that flew off just now
@@ -645,6 +661,7 @@ export class WorldView {
    */
   setRain(rain: number, wet = rain): void {
     this.laundry?.setWorld(rain);
+    this.dogs?.setRain(rain, wet);
     this.materials.rain.value = rain;
     this.materials.wet.value = wet;
     this.rainLevel = rain;

@@ -27,6 +27,14 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Street dogs (2026-11-23)
+
+- **`StreetDogs`** (`world/streetDogs.ts`, made in `WorldView` next to the pigeons): Indian street (pariah) dogs at about half the bus stops (beside the shelter, not in it), half the food carts (between the cart and its shopfront) and 30 % of benches (behind them). 1–2 per spot. Coats: tan, fawn, ginger, brown, black, cream, grey-brown, each a little different; about half have creamy chest, socks, muzzle and tail tip.
+- **Looks**: built in code from simple shapes, two instanced meshes (standing; lying with chin on the paws). Deep chest, tucked waist, short thick neck, wedge head, upright ears, tail curled over the back. The shader moves legs (a diagonal trot), head (up, down to sniff), tail (wag) and breathing, and shades fur: a darker saddle, a paler belly, uneven patches, fine streaks, a soft sheen at the edges. Wet fur is darker (from the ground wetness).
+- **Behaviour** (only dogs within 70 m update): most sleep; within 4.5 m they lift their head and thump the tail; come closer than `scare × 0.45` (2.7 m on foot, more on a vehicle, 8 m with the horn) and they get up and trot off along their pavement, then settle again. About 40 % wander their stretch: stand, sniff, walk; on foot within 5 m they turn to look at you and wag. In the rain they lie down.
+- Checked in game (my own dev server on port 5174, daylight): sleeping → head up at 3.6 m; trotting away when you walk up to 1.8 m (legs in a diagonal trot); walking; sniffing (head down); turning to you and wagging at 3.6 m; lying down in rain (`?rain=1`).
+- Not checked / limits: the dogs at benches and the wet-fur darkening were added last and not yet seen on screen. Getting up and lying down is an instant swap between the two meshes (no animation). Shadows don't move the legs (the shadow pass uses the still shape). Dogs walk through shelters, carts and people (no collisions). 8 of the first 25 dogs sit beyond the walkable edge (seen, not reached). No barking yet. Dogs are the same for everyone only because they are seeded; their moves are not shared over the network.
+
 ## Walk-in buildings, no button (2026-11-23)
 
 - **Owner's ask: "go in any house without pressing buttons and just walk in", like GTA.** The old way (press "Go inside", teleport to a room 60 m under the street, press "Go outside") is gone.

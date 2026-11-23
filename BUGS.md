@@ -68,6 +68,15 @@ Template:
 - Expected / actual: you join the room / "This invite link has expired or is wrong."
 - Notes: live positions are fine to lose; the room id + place must survive restarts.
 
+### B-033 Two dev servers in one folder crash each other's room saves
+- Type: crash (development only)
+- Status: OPEN
+- Found: 2026-11-24, running a second dev copy on ports 5174/8788 while another session used 5173/8787
+- Steps to reproduce:
+  1. Start `npm run dev:http`. 2. In the same folder start a second server with `PORT=8788 npm run dev -w @nukkad/server`. 3. Join rooms on both.
+- Expected / actual: both keep running / one dies with `ENOENT … rename '.cache/rooms/rooms.json.tmp'` (both write the same temp file, and one renames it away first).
+- Notes: fix by giving each save its own temp name (e.g. add the process id), or a `NUKKAD_CACHE_DIR` per server. Until then, run only one dev server per folder.
+
 ## Fixed
 
 ### B-032 Realistic people glided forward and snapped back every step
