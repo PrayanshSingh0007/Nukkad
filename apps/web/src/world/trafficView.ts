@@ -76,6 +76,21 @@ interface Lane {
   heading: number;
   /** Height of the vehicle's wheels (ground, or the flyover deck). */
   y: number;
+  /** Seconds it has been held up by you standing in front of it (it honks after a while). */
+  blocked: number;
+  /** Its distance to you last frame and whether it was getting closer (for the pass-by sound). */
+  lastD: number;
+  closing: boolean;
+}
+
+/** Something traffic did this frame that you can hear: where, and how fast it went. */
+export interface TrafficSound {
+  kind: 'honk' | 'pass';
+  x: number;
+  z: number;
+  speed: number;
+  /** The vehicle kind (heavy vehicles sound deeper). */
+  vehicle: number;
 }
 
 /**
@@ -109,6 +124,8 @@ export class TrafficView {
   /** Headlight light in rainy or misty air. */
   private readonly cones: HeadlightCones;
   private readonly coneMatrix = new THREE.Matrix4();
+  /** What you can hear traffic doing this frame (read with takeSounds). */
+  private sounds: TrafficSound[] = [];
   /** Water thrown up behind traffic on a wet road. */
   private readonly spray: TrafficSpray;
   private rain = 0;
@@ -117,7 +134,7 @@ export class TrafficView {
   private readonly drivers: TrafficDrivers;
 
   constructor(routes: TrafficRoute[], terrain: TerrainGrid, models: ModelSource, paint: (name: string, variant: number) => THREE.Color | null) {
-    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0 }));
+    this.lanes = routes.map((route) => ({ route, delay: 0, x: 0, y: 0, z: 0, heading: 0, blocked: 0, lastD: Infinity, closing: false }));
     this.terrain = terrain;
     this.models = models;
     this.paint = paint;
@@ -264,7 +281,14 @@ export class TrafficView {
       if (ahead > 0 && ahead < STOP_AHEAD_M && side < 1.8 && sameLevel) {
         lane.delay += route.speed * dt;
         pose = trafficPose(route, seconds * route.speed - lane.delay);
-      }
+        // Held up by you: after a moment the driver leans on the horn, then again every few seconds.
+        const before = lane.blocked;
+        lane.blocked += dt;
+        const beat = (t: number): number => Math.floor((t - 1.4) / 2.6);
+        if (lane.blocked > 1.4 && (before <= 1.4 || beat(lane.blocked) !== beat(before))) {
+          this.sounds.push({ kind: 'honk', x: pose.x, z: pose.z, speed: 0, vehicle: route.kind });
+        }
+      } else lane.blocked = 0;
       lane.x = pose.x;
       lane.z = pose.z;
       lane.heading = pose.heading;
@@ -272,6 +296,13 @@ export class TrafficView {
       const d = Math.hypot(pose.x - px, pose.z - pz);
       if (d > this.radius) continue;
       near.push({ lane, d });
+      // Pass-by: the moment a quick vehicle that was coming closer starts to move away, close to you.
+      const movingNow = dt > 0 ? Math.hypot(pose.x - lastX, pose.z - lastZ) / dt : 0;
+      if (lane.closing && d > lane.lastD && lane.lastD < 9 && movingNow > 6 && movingNow < 60) {
+        this.sounds.push({ kind: 'pass', x: pose.x, z: pose.z, speed: movingNow, vehicle: route.kind });
+      }
+      lane.closing = d < lane.lastD;
+      lane.lastD = d;
       // How fast it really moved since the last frame (it may be held up behind someone).
       const moving = dt > 0 ? Math.hypot(pose.x - lastX, pose.z - lastZ) / dt : 0;
       // Brake lights while it is held up (queueing behind another vehicle, or stopped for you).
@@ -394,6 +425,13 @@ export class TrafficView {
       const hy = VEHICLE_HEIGHT[lane.route.kind] / 2;
       return { x: lane.x, y: lane.y + hy, z: lane.z, hx: hw, hy, hz: hl, rotation: lane.heading };
     });
+  }
+
+  /** Honks and pass-bys since the last call. */
+  takeSounds(): TrafficSound[] {
+    const out = this.sounds;
+    this.sounds = [];
+    return out;
   }
 
   dispose(): void {

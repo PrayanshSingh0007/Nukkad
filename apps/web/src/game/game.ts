@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
 import type { AvatarLook } from '@nukkad/shared';
-import { BENCH_STRIDE, StreetFinder, heightAt } from '@nukkad/worldgen';
+import { BENCH_STRIDE, StreetFinder, VEHICLE_KINDS, heightAt } from '@nukkad/worldgen';
 import { Atmosphere, cycleHour, partOfDay } from '../atmosphere/atmosphere.ts';
 import { DebugOverlay } from '../debug/overlay.ts';
 import { buildReport } from '../debug/report.ts';
@@ -215,6 +215,9 @@ installCloudShadows();
 
 /** The renderer's normal exposure (scene.ts); eye adaptation moves around it. */
 const BASE_EXPOSURE = 1.15;
+
+/** Reused for panning traffic sounds. */
+const SOUND_RIGHT = new THREE.Vector3();
 
 /** Reused for where your character looks. */
 const LOOK_DIR = new THREE.Vector3();
@@ -1339,6 +1342,21 @@ export class Game {
         const clock = this.remotes.clock;
         const seconds = (clock.ready ? clock.renderTime(now) : Date.now()) / 1000;
         this.physics?.setMovers(this.traffic.update(dt, seconds, player.x, player.z, player.y));
+        // Traffic you can hear: horns from drivers you are holding up, rushes of passing cars.
+        if (!this.interior) {
+          const camera = this.view3d.camera;
+          const right = SOUND_RIGHT.set(1, 0, 0).applyQuaternion(camera.quaternion);
+          for (const event of this.traffic.takeSounds()) {
+            const dx = event.x - camera.position.x;
+            const dz = event.z - camera.position.z;
+            const distance = Math.hypot(dx, dz) || 1;
+            const pan = (dx * right.x + dz * right.z) / distance;
+            const name = VEHICLE_KINDS[event.vehicle];
+            const voice = name === 'bus' || name === 'truck' ? 'heavy' : name === 'auto' || name === 'two_wheeler' || name === 'motorbike' ? 'small' : 'car';
+            if (event.kind === 'honk') this.sound.hornAt(pan, distance, voice);
+            else this.sound.whoosh(pan, event.speed, distance);
+          }
+        } else this.traffic.takeSounds();
         this.walkers?.update(dt, seconds, player.x, player.z);
         this.waiting?.update(dt);
         this.birds?.setGround(player.y);

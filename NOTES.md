@@ -27,6 +27,13 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Traffic you can hear: honks and pass-bys (2026-11-23)
+
+- **Honks at you** (`TrafficView` `lane.blocked`, `takeSounds`): a vehicle held up by you standing in front of it honks after 1.4 s, then every 2.6 s. Buses and trucks sound deep, autos and two-wheelers high and thin, cars in between; one long blast or two short ones. Panned by where it is and quieter further off (`Sound.hornAt`).
+- **Pass-bys** (`Sound.whoosh`): the moment a vehicle going over 6 m/s that came within 9 m of you starts to move away, a rush of air and tyre noise falls in pitch (Doppler-ish) and swings across.
+- Panned relative to the camera (its right vector); nothing indoors.
+- Checked that the events fire: 4 honks in about 10 s standing in front of traffic; 5 pass-bys in about 13 s at the roadside. **Not listened to.**
+
 ## Shop light on the pavement at night (2026-11-23)
 
 - **Shop light pools** (`Signs.pools`): in front of every signboard (shops, schools, offices), a soft pool of cool-white light on the ground at night. It is a little wider than the board, reaches about 4.5 m out, and fades to nothing outwards and to the sides (a fall-off picture drawn per pixel).

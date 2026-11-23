@@ -259,6 +259,81 @@ export class Sound {
     };
   }
 
+  /**
+   * A horn from a vehicle near you: pan −1 (left) … 1 (right), distance in metres, heavy =
+   * a bus or truck (deeper), small = an auto or two-wheeler (higher, thinner).
+   */
+  hornAt(pan: number, distance: number, voice: 'heavy' | 'car' | 'small'): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || this.muted) return;
+    const now = context.currentTime;
+    const level = Math.min(0.12, 1.6 / Math.max(4, distance)) * 0.45;
+    const base = voice === 'heavy' ? 220 : voice === 'small' ? 520 : 370;
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2600 - Math.min(1800, distance * 30);
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const panner = context.createStereoPanner ? context.createStereoPanner() : null;
+    if (panner) panner.pan.value = Math.max(-1, Math.min(1, pan));
+    filter.connect(gain).connect(panner ?? this.outdoorFilter);
+    if (panner) panner.connect(this.outdoorFilter);
+    // One long blast or two short ones (an impatient driver).
+    const twice = Math.random() < 0.5;
+    let t = now + 0.02;
+    for (let i = 0; i < (twice ? 2 : 1); i++) {
+      const length = twice ? 0.18 : 0.55 + Math.random() * 0.3;
+      gain.gain.setTargetAtTime(level, t, 0.01);
+      gain.gain.setTargetAtTime(0, t + length, 0.03);
+      t += length + 0.12;
+    }
+    const oscs = [base, base * 1.26].map((f) => {
+      const osc = context.createOscillator();
+      osc.type = voice === 'small' ? 'square' : 'sawtooth';
+      osc.frequency.value = f;
+      osc.connect(filter);
+      osc.start(now);
+      osc.stop(t + 0.2);
+      return osc;
+    });
+    oscs[0].onended = () => {
+      for (const node of [...oscs, filter, gain, panner]) node?.disconnect();
+    };
+  }
+
+  /** A vehicle rushing past close by: a rush of air and tyre noise that falls in pitch. */
+  whoosh(pan: number, speed: number, distance: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || !this.whiteNoise || this.muted) return;
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    source.buffer = this.whiteNoise;
+    source.playbackRate.value = 0.9 + Math.random() * 0.2;
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.7;
+    const fast = Math.min(1, speed / 25);
+    filter.frequency.setValueAtTime(900 + fast * 1400, now);
+    filter.frequency.exponentialRampToValueAtTime(260 + fast * 300, now + 0.7); // Doppler-ish drop as it goes by
+    const gain = context.createGain();
+    const level = Math.min(0.16, (0.05 + fast * 0.1) * (4 / Math.max(2.5, distance)));
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(level, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.9);
+    const panner = context.createStereoPanner ? context.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)) * 0.6, now);
+      panner.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, pan)), now + 0.6);
+    }
+    source.connect(filter).connect(gain).connect(panner ?? this.outdoorFilter);
+    if (panner) panner.connect(this.outdoorFilter);
+    source.start(now, Math.random() * 1.5);
+    source.stop(now + 1);
+    source.onended = () => {
+      for (const node of [source, filter, gain, panner]) node?.disconnect();
+    };
+  }
+
   /** Wings beating as birds take off nearby (n = how many). */
   flutter(n: number): void {
     const context = this.context;
