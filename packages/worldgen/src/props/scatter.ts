@@ -24,6 +24,8 @@ export interface PropSet extends StreetLife {
   benches: Float32Array;
   /** Globe lamps on house gate pillars: x, y, z (the centre of the glass ball). */
   gateLamps: Float32Array;
+  /** Festive string lights along some compound walls: [x, y, z, n] (n = bulb number on its string). */
+  stringLights: Float32Array;
   /** Overhead cables between neighbouring street poles: [ax, ay, az, bx, by, bz] (pole feet). */
   cables: Float32Array;
 }
@@ -239,5 +241,6 @@ export function scatterProps(pack: AreaPack, terrain: TerrainGrid): PropSet {
     ...placeStreetLife(pack, terrain, occupancy),
     tanks: placeRoofTanks(pack, terrain),
     gateLamps: new Float32Array(0), // filled in by prepareWorld (needs the doors)
+    stringLights: new Float32Array(0), // filled in by prepareWorld (needs the compound walls)
   };
 }

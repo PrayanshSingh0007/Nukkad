@@ -122,7 +122,7 @@ export function App({ game, initialLook, roomId }: Props) {
             <button type="button" onClick={() => setPhoto(false)}>
               Done
             </button>
-            <span className="photoTip">Drag to look around · scroll to zoom · P to close</span>
+            <span className="photoTip">Drag to look around · scroll or pinch to zoom · P to close</span>
           </div>
         </>
       )}

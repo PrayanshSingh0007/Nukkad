@@ -247,6 +247,8 @@ export class Game {
   /** Photo mode: the page hides the HUD; the mouse wheel moves the camera in and out. */
   private photo = false;
   private photoDistance = 5.2;
+  /** Counts footsteps (one per ~0.65 m walked), for splashes on wet ground. */
+  private stepClock = 0;
   /** How wet the streets are: soaks up within seconds of rain, dries over about four minutes. */
   private wetness = 0;
   /** How hard it rained lately (fades over about three minutes after the rain), for rainbows. */
@@ -390,6 +392,24 @@ export class Game {
       },
       { passive: false },
     );
+    // ...and on a phone, pinching does the same.
+    let pinch = 0;
+    options.canvas.addEventListener(
+      'touchmove',
+      (event) => {
+        if (!this.photo || event.touches.length !== 2) {
+          pinch = 0;
+          return;
+        }
+        event.preventDefault();
+        const [a, b] = [event.touches[0], event.touches[1]];
+        const spread = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        if (pinch > 0 && spread > 0) this.photoDistance = THREE.MathUtils.clamp(this.photoDistance * (pinch / spread), 1.6, 18);
+        pinch = spread;
+      },
+      { passive: false },
+    );
+    options.canvas.addEventListener('touchend', () => (pinch = 0));
     this.applyQuality();
     this.view3d.renderer.setAnimationLoop((now) => this.frame(now));
   }
@@ -1215,6 +1235,20 @@ export class Game {
       if (ground) {
         const view = this.view3d.renderer.getDrawingBufferSize(SPLASH_VIEW);
         this.splashes.setViewport(view.y, this.view3d.camera.fov);
+        this.world?.setViewport(view.y, this.view3d.camera.fov);
+        // Footsteps splash on wet ground: one splash per step, at the left or right foot.
+        const walking = !player.vehicle && !player.riding && player.body.grounded && player.speed > 0.6 && !this.interior;
+        if (walking && this.wetness > 0.3) {
+          const before = Math.floor(this.stepClock);
+          this.stepClock += dt * player.speed / 0.65;
+          if (Math.floor(this.stepClock) !== before) {
+            const facing = player.avatar.facing;
+            const side = Math.floor(this.stepClock) % 2 === 0 ? 0.12 : -0.12;
+            const fx = player.x + Math.cos(facing) * side - Math.sin(facing) * 0.15;
+            const fz = player.z - Math.sin(facing) * side - Math.cos(facing) * 0.15;
+            this.splashes.splashAt(fx, heightAt(ground, fx, fz) + 0.12, fz, this.wetness > 0.6 ? 4 : 2);
+          }
+        }
         // Roads sit a few centimetres above the ground: splashes a little higher, so they show on them.
         this.splashes.update(dt, this.interior ? 0 : this.rain, player.x, player.z, (x, z) => heightAt(ground, x, z) + 0.12, this.atmosphere.sky.uniforms.uHorizon.value);
       }

@@ -98,6 +98,8 @@ export class TrafficView {
   private readonly tails: THREE.Points;
   /** Brake lights: vehicles slowing or queueing light up red, day and night. */
   private readonly brakes: THREE.Points;
+  /** Turn signals: amber blinkers on the side a vehicle is about to turn to. */
+  private readonly blinkers: THREE.Points;
   private readonly headMaterial: THREE.PointsMaterial;
   private readonly tailMaterial: THREE.PointsMaterial;
   private readonly beams: THREE.InstancedMesh;
@@ -135,6 +137,7 @@ export class TrafficView {
     [this.heads, this.headMaterial] = points(new THREE.Color(3.2, 3.0, 2.6), 0.5);
     [this.tails, this.tailMaterial] = points(new THREE.Color(2.6, 0.18, 0.1), 0.34);
     [this.brakes] = points(new THREE.Color(3.6, 0.22, 0.12), 0.4);
+    [this.blinkers] = points(new THREE.Color(3.4, 1.55, 0.1), 0.3);
     this.beamMaterial = new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d6, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: true });
     const beam = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0, -0.5);
     this.beams = new THREE.InstancedMesh(beam, this.beamMaterial, Math.max(1, routes.length));
@@ -209,6 +212,8 @@ export class TrafficView {
     let heads = 0;
     let brakes = 0;
     const brakePos = (this.brakes.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    let blinks = 0;
+    const blinkPos = (this.blinkers.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     this.wet.begin();
     this.cones.begin();
     // Wet: white spray. Dry and light out: a faint haze of brown road dust, only behind faster traffic.
@@ -283,6 +288,30 @@ export class TrafficView {
           brakes++;
         }
       }
+      // Turn signals: drivers blink before a turn (the road 12 m ahead bends over ~30°), on
+      // that side, front and back, about 1.5 times a second.
+      if (d < 90 && moving > 1) {
+        const ahead = trafficPose(route, seconds * route.speed - lane.delay + 12);
+        let bend = ahead.heading - pose.heading;
+        bend = Math.atan2(Math.sin(bend), Math.cos(bend));
+        const phase = (seconds * 1.5 + (route.variant * 0.37 + route.kind * 0.13)) % 1;
+        if (Math.abs(bend) > 0.5 && phase < 0.5) {
+          const [hw, hl] = VEHICLE_HALF[route.kind];
+          const name = VEHICLE_KINDS[route.kind];
+          const lampY = lane.y + (ONE_LAMP.has(name) ? 0.95 : Math.min(0.85, VEHICLE_HEIGHT[route.kind] * 0.38));
+          const fx = -Math.sin(pose.heading);
+          const fz = -Math.cos(pose.heading);
+          // Heading growing = turning left; (−fz, fx) points to the vehicle's right.
+          const side = bend > 0 ? -1 : 1;
+          const rx = -fz * side * hw * 0.92;
+          const rz = fx * side * hw * 0.92;
+          for (const end of [hl, -hl]) {
+            if (blinks * 3 + 3 > blinkPos.length) break;
+            blinkPos.set([pose.x + fx * end + rx, lampY, pose.z + fz * end + rz], blinks * 3);
+            blinks++;
+          }
+        }
+      }
       // Spray off a wet road (or dust off a dry one) behind it, more the faster it goes.
       if (spraying && d < SPRAY_M && moving > sprayFrom && moving < 60) {
         const [hw, hl] = VEHICLE_HALF[route.kind];
@@ -348,6 +377,9 @@ export class TrafficView {
     this.brakes.geometry.setDrawRange(0, brakes);
     (this.brakes.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     this.brakes.visible = brakes > 0;
+    this.blinkers.geometry.setDrawRange(0, blinks);
+    (this.blinkers.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.blinkers.visible = blinks > 0;
     this.spray.commit();
     this.drivers.end();
     for (const [kind, mesh] of this.meshes) {
@@ -366,7 +398,8 @@ export class TrafficView {
 
   dispose(): void {
     for (const mesh of this.meshes.values()) mesh.dispose();
-    for (const points of [this.heads, this.tails, this.brakes]) points.geometry.dispose();
+    for (const points of [this.heads, this.tails, this.brakes, this.blinkers]) points.geometry.dispose();
+    (this.blinkers.material as THREE.Material).dispose();
     (this.brakes.material as THREE.Material).dispose();
     this.headMaterial.dispose();
     this.tailMaterial.dispose();

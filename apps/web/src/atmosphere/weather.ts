@@ -199,6 +199,17 @@ export class RainSplashes {
     this.material.uniforms.uScale.value = heightPx / (2 * Math.tan((fovDeg * Math.PI) / 360));
   }
 
+  /** A footstep (or anything) landing in water at (x, y, z): a few splashes close together. */
+  splashAt(x: number, y: number, z: number, count = 3): void {
+    for (let k = 0; k < count; k++) {
+      const i = this.next;
+      this.next = (this.next + 1) % SPLASHES;
+      this.position.set([x + (Math.random() - 0.5) * 0.3, y, z + (Math.random() - 0.5) * 0.3], i * 3);
+      this.data.set([0, 0.25 + Math.random() * 0.15, Math.random()], i * 3);
+    }
+    this.points.visible = true;
+  }
+
   /**
    * rain 0–1; (x, z) = where the player is; groundAt = the ground's height there (splashes sit on
    * it); light = the sky's brightness.

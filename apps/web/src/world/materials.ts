@@ -291,6 +291,14 @@ const FACADE_GLSL = /* glsl */ `
     // Shops at night blaze like real ones (bright tube lights, goods on display) and are bright
     // enough for the bloom to give the shopfront a glow on the street; homes stay softer.
     nkEmit = glow * glassMask * lit * uNight * (kind == 1 ? 0.35 : (kind == 2 ? 2.4 : 0.8)) * (1.0 - fres * 0.6);
+    // A television on in some lit homes: cool, flickering light that jumps with each cut.
+    float tv = kind == 0 ? step(0.86, fract(tone * 3.71 + id.x * 0.61 + id.y * 0.29)) * lit : 0.0;
+    if (tv > 0.0) {
+      float cut = nkH(vec2(floor(uNkTime * 0.9 + nkH(id) * 5.0), id.x + id.y * 7.0));
+      float flick = (0.35 + 0.65 * cut) * (0.88 + 0.12 * sin(uNkTime * 19.0 + id.x * 9.0));
+      vec3 tvLight = mix(vec3(0.42, 0.56, 1.0), vec3(0.75, 0.85, 1.0), cut) * flick * 0.85;
+      nkEmit = mix(nkEmit, tvLight * glassMask * uNight * (1.0 - fres * 0.6) * (1.0 - shutter) * (1.0 - bar), tv);
+    }
     // The sun flashing off panes that face it.
     float glint = pow(max(dot(R, uLightDir), 0.0), 90.0) * day * (kind == 1 ? 0.0 : 1.0) * (1.0 - shutter);
     nkEmit += vec3(1.0, 0.93, 0.8) * glint * glassMask * 2.2;
@@ -441,9 +449,10 @@ const ROAD_GLSL = /* glsl */ `
   }
 `;
 
-function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms, lightDir: { value: THREE.Vector3 }, sky: SkyUniforms, rain: { value: number }): void {
+function facades(material: THREE.MeshLambertMaterial, night: { value: number }, surfaces: SurfaceUniforms, lightDir: { value: THREE.Vector3 }, sky: SkyUniforms, rain: { value: number }, time: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = night;
+    shader.uniforms.uNkTime = time;
     shader.uniforms.uLightDir = lightDir;
     Object.assign(shader.uniforms, sky);
     shader.uniforms.uRain = rain;
@@ -452,11 +461,11 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aWin;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\nuniform vec3 uLightDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHorizon;\nuniform float uSkyGain;\nuniform float uRain;\n${FACADE_PARS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWin;\nuniform float uNight;\nuniform vec3 uLightDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHorizon;\nuniform float uSkyGain;\nuniform float uRain;\nuniform float uNkTime;\n${FACADE_PARS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\ndiffuseColor.rgb *= 1.0 - 0.16 * uRain; // wet plaster\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-10';
+  material.customProgramCacheKey = () => 'nukkad-facades-11';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, weather: WeatherUniforms): void {
@@ -609,7 +618,7 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
   const terrain = new THREE.MeshLambertMaterial({ map: groundMap });
   groundDetail(terrain, surfaces, weather);
   const buildings = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (windows) facades(buildings, night, surfaces, lightDir, sky, wet); // walls dry like the ground
+  if (windows) facades(buildings, night, surfaces, lightDir, sky, wet, time); // walls dry like the ground
   // Roads and water lie just above the ground; the offset stops them flickering against it.
   const ground = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   roads(ground, surfaces, weather);

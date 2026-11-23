@@ -6,7 +6,7 @@ import { TREE_STRIDE, WALL_CREEPER_VARIANT, scatterProps, shuffleAndCap } from '
 import type { PropSet } from '../props/scatter.ts';
 import type { RibbonRun, RoadDisc } from '../roads/groundMesh.ts';
 import type { GateSpot } from '../buildings/compoundMesh.ts';
-import { GATE_LAMP_HEIGHT } from '../buildings/compoundMesh.ts';
+import { GATE_LAMP_HEIGHT, HOUSE_WALL_TOP_M } from '../buildings/compoundMesh.ts';
 import { HOUSE_WALL_STRIDE, PILLAR_STRIDE, houseCompounds } from '../buildings/houseCompounds.ts';
 import { findDoors } from '../buildings/doors.ts';
 import type { Door } from '../buildings/doors.ts';
@@ -174,6 +174,24 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     if (Math.abs(x) > half - 2 || Math.abs(z) > half - 2) continue; // inside the area, like every tree
     creepers.push(x, heightAt(terrain, x, z), z, 0.85 + 0.4 * spot(ax, bz, 3), spot(bx, az, 4) * Math.PI * 2, WALL_CREEPER_VARIANT, spot(x, z, 5));
   }
+  // Serial lights: about one wall piece in nine is strung with a line of small coloured bulbs
+  // along its top (as Bengaluru homes are for Deepavali and weddings), one every 30 cm.
+  const bulbs: number[] = [];
+  for (let i = 0; i + 4 < compounds.walls.length; i += HOUSE_WALL_STRIDE) {
+    const [ax, az, bx, bz] = [compounds.walls[i], compounds.walls[i + 1], compounds.walls[i + 2], compounds.walls[i + 3]];
+    const length = Math.hypot(bx - ax, bz - az);
+    if (length < 1.5 || spot(az, bx, 6) > 0.11) continue;
+    const top = Math.max(heightAt(terrain, ax, az), heightAt(terrain, bx, bz)) + HOUSE_WALL_TOP_M + 0.1;
+    const count = Math.floor(length / 0.3);
+    for (let j = 0; j < count; j++) {
+      const t = (j + 0.5) / count;
+      const x = ax + (bx - ax) * t;
+      const z = az + (bz - az) * t;
+      if (Math.abs(x) > half - 1 || Math.abs(z) > half - 1) continue;
+      bulbs.push(x, top, z, j);
+    }
+  }
+  props.stringLights = new Float32Array(bulbs);
   if (creepers.length > 0) {
     const all = [...props.trees, ...creepers];
     props.trees = shuffleAndCap(all, TREE_STRIDE, all.length / TREE_STRIDE, 4242);

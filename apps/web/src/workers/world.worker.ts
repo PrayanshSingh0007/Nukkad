@@ -58,6 +58,7 @@ async function load(url: string): Promise<void> {
     tanks: world.props.tanks.slice(),
     gateLamps: world.props.gateLamps.slice(),
     cables: world.props.cables.slice(),
+    stringLights: world.props.stringLights.slice(),
   };
   const prepareMs = performance.now() - prepareStart;
 
@@ -110,6 +111,7 @@ async function load(url: string): Promise<void> {
       props.tanks.buffer,
       props.gateLamps.buffer,
       props.cables.buffer,
+      props.stringLights.buffer,
       ...meshBuffers(water),
     ],
   );

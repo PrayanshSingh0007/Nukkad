@@ -117,6 +117,8 @@ export function appendGate(mesh: MeshBuilder, gate: GateSpot, terrain: TerrainGr
 
 /** House compound walls: lower than a society's, plastered in the colours Bengaluru homes use. */
 const HOUSE_WALL_HEIGHT = 1.45;
+/** Top of a house compound wall's coping above the higher end's ground. */
+export const HOUSE_WALL_TOP_M = HOUSE_WALL_HEIGHT + 0.07;
 const HOUSE_WALL_HALF_THICK = 0.1;
 const HOUSE_TONES: Rgb[] = ['#efe6cf', '#f0dc9a', '#e9b98f', '#d2d3cd', '#f3f1ea', '#c97a55'].map(linear);
 const PILLAR_HALF = 0.22;

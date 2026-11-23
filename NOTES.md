@@ -27,6 +27,21 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Turn signals, TV glow, festive lights, footstep splashes, pinch zoom (2026-11-23) — owner: "more AAA"
+
+- **Turn signals** (`TrafficView`): a vehicle within 90 m whose road bends more than about 30° in the next 12 m blinks amber at the front and back on that side, about 1.5 times a second (one more points draw call).
+  - Seen in the data: 2 blinkers while a vehicle turned.
+- **TV light** (facade shader, `nukkad-facades-11`, which now gets the time): about one lit home window in seven has a television on. It gives a cool blue-white flicker that jumps in brightness and colour with each "cut" (about one a second).
+- **Festive string lights** (`world/stringLights.ts`, data from `prepare.ts` → `props.stringLights`, carried by the worker): about one compound wall piece in nine has a string of bulbs on its coping, one every 30 cm.
+  - The bulbs are red, green, amber and blue, chasing along the string, bright enough to bloom, at night only. One draw call of points.
+  - 5,547 bulbs in the owner's square.
+  - Checked at night: strings along walls. They were tiny specks at 11 m, so they were made bigger.
+- **Footstep splashes** (`RainSplashes.splashAt`): on wet ground (wetness over 0.3), each step you take (one per 0.65 m) throws 2–4 splashes at the left or right foot.
+  - Checked in the data: running on a wet road made splashes.
+- **Photo mode pinch zoom** on phones (two fingers). Not tried on a phone.
+- **`.claude/launch.json` was missing** on 2026-11-23: the `.claude` folder had been recreated empty. It's ignored by git, so it was rebuilt: `nukkad-dev-http` runs `npm run dev:http` on port 5173.
+- **Not checked:** a phone.
+
 ## Drying roads, bougainvillea on walls, photo mode (2026-11-22) — owner: "more AAA"
 
 - **Roads stay wet after the rain** (`game.ts` `wetness`, `materials.ts` `wet` / `uWet`, `WorldView.setRain(rain, wet)`).

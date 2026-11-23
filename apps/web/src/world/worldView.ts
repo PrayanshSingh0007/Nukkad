@@ -9,6 +9,7 @@ import { LAMP_HEAD_OFFSET, createPropModels } from './propModels.ts';
 import { LampBeams } from './lampBeams.ts';
 import { WetReflections } from './wetReflections.ts';
 import { LampInsects } from './lampInsects.ts';
+import { StringLights } from './stringLights.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -71,6 +72,7 @@ export class WorldView {
   private readonly wetLights: number[] = [];
   private wet: WetReflections | null = null;
   private insects: LampInsects | null = null;
+  private stringLights: StringLights | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -229,6 +231,7 @@ export class WorldView {
     this.beams?.dispose();
     this.wet?.dispose();
     this.insects?.dispose();
+    this.stringLights?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -319,6 +322,10 @@ export class WorldView {
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
+    if (props.stringLights && props.stringLights.length > 0) {
+      this.stringLights = new StringLights(props.stringLights, this.materials.time);
+      this.group.add(this.stringLights.points);
+    }
     if (this.wetLights.length > 0) {
       this.wet = new WetReflections(this.wetLights.length / 8, new Float32Array(this.wetLights));
       this.group.add(this.wet.mesh);
@@ -507,6 +514,11 @@ export class WorldView {
     this.insects?.update(dt, x, z);
   }
 
+  /** Sprite sizes for screen-sized points (string lights). */
+  setViewport(heightPx: number, fovDeg: number): void {
+    this.stringLights?.setViewport(heightPx, fovDeg);
+  }
+
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
   setLightDir(dir: THREE.Vector3): void {
     this.materials.lightDir.value.copy(dir);
@@ -554,6 +566,7 @@ export class WorldView {
     this.beams?.setLevel(night, rain);
     this.wet?.setLevel(night, this.wetLevel);
     this.insects?.setLevel(night, rain);
+    this.stringLights?.setLevel(night);
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;
       this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);
