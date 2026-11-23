@@ -41,7 +41,10 @@ function paintSign(c: CanvasRenderingContext2D, x: number, y: number, place: Pac
 
 export class Signs {
   readonly mesh: THREE.Mesh | null = null;
+  /** Shop light spilling onto the pavement in front of each signboard at night. */
+  readonly pools: THREE.Mesh | null = null;
   private readonly material: THREE.MeshBasicMaterial | null = null;
+  private readonly poolMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly texture: THREE.CanvasTexture | null = null;
 
   constructor(places: PackPlace[], terrain: TerrainGrid, anisotropy: number) {
@@ -55,6 +58,7 @@ export class Signs {
     const positions = new Float32Array(list.length * 4 * 3);
     const uvs = new Float32Array(list.length * 4 * 2);
     const indices = new Uint16Array(list.length * 6);
+    const poolPositions = new Float32Array(list.length * 4 * 3);
     list.forEach((place, i) => {
       const column = i % COLUMNS;
       const row = Math.floor(i / COLUMNS);
@@ -78,6 +82,21 @@ export class Signs {
       corners.forEach(([side, up], k) => {
         positions.set([x + rx * side, base + up, z + rz * side], (i * 4 + k) * 3);
       });
+      // The light pool: on the ground in front of the shop, a little wider than the board,
+      // reaching about 4.5 m out.
+      const fx = Math.sin(angle);
+      const fz = Math.cos(angle);
+      const ground = heightAt(terrain, x + fx * 2, z + fz * 2) + 0.13;
+      const halfW = Math.max(2.2, width * 0.75);
+      const pool: [number, number][] = [
+        [-halfW, -0.4],
+        [halfW, -0.4],
+        [halfW, 4.5],
+        [-halfW, 4.5],
+      ];
+      pool.forEach(([side, out], k) => {
+        poolPositions.set([x + rx * side + fx * out, ground, z + rz * side + fz * out], (i * 4 + k) * 3);
+      });
       const u0 = column / COLUMNS;
       const u1 = (column + 1) / COLUMNS;
       const vTop = 1 - row / ROWS;
@@ -99,16 +118,65 @@ export class Signs {
     // Unlit: signs read clearly by day and look lit at night.
     this.material = new THREE.MeshBasicMaterial({ map: this.texture, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     this.mesh = new THREE.Mesh(geometry, this.material);
+
+    // The pools share the boards' corners and order; their own picture is a soft fall-off
+    // (bright at the shop, fading out across the pavement and to the sides).
+    const poolGeometry = new THREE.BufferGeometry();
+    poolGeometry.setAttribute('position', new THREE.BufferAttribute(poolPositions, 3));
+    poolGeometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(list.flatMap(() => [0, 0, 1, 0, 1, 1, 0, 1])), 2));
+    poolGeometry.setIndex(new THREE.BufferAttribute(indices.slice(), 1));
+    poolGeometry.computeBoundingSphere();
+    const fall = document.createElement('canvas');
+    fall.width = 64;
+    fall.height = 64;
+    const f = fall.getContext('2d') as CanvasRenderingContext2D;
+    // Fades to nothing outwards and to both sides (no hard edges).
+    const image = f.createImageData(64, 64);
+    for (let py = 0; py < 64; py++)
+      for (let px = 0; px < 64; px++) {
+        const u = px / 63;
+        const v = py / 63;
+        const across = Math.max(0, 1 - Math.abs(2 * u - 1));
+        const a = Math.pow(1 - v, 1.6) * Math.pow(across, 0.9) * Math.min(1, across * 3);
+        const o = (py * 64 + px) * 4;
+        image.data.set([255, 255, 255, Math.round(255 * a)], o);
+      }
+    f.putImageData(image, 0, 0);
+    const fallTexture = new THREE.CanvasTexture(fall);
+    fallTexture.flipY = false; // v = 0 at the shop
+    this.poolMaterial = new THREE.MeshBasicMaterial({
+      map: fallTexture,
+      color: 0xfff1dc,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits: -5,
+      fog: true,
+    });
+    this.pools = new THREE.Mesh(poolGeometry, this.poolMaterial);
+    this.pools.visible = false;
   }
 
-  /** A little dimmer in daylight, full brightness at night. */
-  setNight(night: number): void {
+  /** A little dimmer in daylight, full brightness at night; shop light on the pavement (more when wet). */
+  setNight(night: number, wet = 0): void {
     this.material?.color.setScalar(0.82 + night * 0.18);
+    if (this.pools && this.poolMaterial) {
+      const on = THREE.MathUtils.smoothstep(night, 0.35, 0.8);
+      this.pools.visible = on > 0.01;
+      this.poolMaterial.opacity = on * (0.42 + 0.3 * wet);
+    }
   }
 
   dispose(): void {
     this.mesh?.geometry.dispose();
     this.material?.dispose();
+    this.pools?.geometry.dispose();
+    this.poolMaterial?.map?.dispose();
+    this.poolMaterial?.dispose();
     this.texture?.dispose();
   }
 }

@@ -140,6 +140,7 @@ export class WorldView {
     }
     this.signs = new Signs(ready.places, this.terrain, options.anisotropy);
     if (this.signs.mesh) this.group.add(this.signs.mesh);
+    if (this.signs.pools) this.group.add(this.signs.pools);
     this.setTreeLimit(options.maxTrees);
 
     this.borders = this.buildChunkBorders(ready.info.chunksPerSide);
@@ -631,7 +632,7 @@ export class WorldView {
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
   setNight(night: number): void {
     this.materials.night.value = night;
-    this.signs.setNight(night);
+    this.signs.setNight(night, this.wetLevel);
     // At night the heads are brighter than white (HDR), so the bloom pass gives them a glow.
     const lit = 1 + night * 5;
     this.lampHeads?.color.setRGB((0.85 + night * 0.15) * lit, (0.82 + night * 0.06) * lit, (0.75 - night * 0.2) * lit);

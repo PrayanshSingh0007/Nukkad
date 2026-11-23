@@ -27,6 +27,13 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Shop light on the pavement at night (2026-11-23)
+
+- **Shop light pools** (`Signs.pools`): in front of every signboard (shops, schools, offices), a soft pool of cool-white light on the ground at night. It is a little wider than the board, reaches about 4.5 m out, and fades to nothing outwards and to the sides (a fall-off picture drawn per pixel).
+  - Stronger when the ground is wet (`setNight(night, wet)`). One extra draw call.
+  - The first version had hard side edges (a radial gradient that didn't reach zero at the sides).
+  - Checked in front of a lit building at 21:00.
+
 ## Falling leaves and petals (2026-11-23)
 
 - **Falling leaves** (`world/fallingLeaves.ts`): up to 260 at a time drift down from the drawn trees within about 38 m (looked up once a second; palms drop nothing). One draw call of points.
