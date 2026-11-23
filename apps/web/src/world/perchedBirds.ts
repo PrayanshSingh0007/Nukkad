@@ -139,10 +139,12 @@ export class PerchedBirds {
   }
 
   /** (x, z) = you; scare = how close you may come before they fly (metres; more for traffic and horns). */
-  update(dt: number, x: number, z: number, scare: number): void {
+  /** Returns how many birds took off this frame (for the sound of wings). */
+  update(dt: number, x: number, z: number, scare: number): number {
     this.time.value = (this.time.value + dt) % 1000;
     this.group.visible = this.visible > 0.05;
-    if (!this.group.visible) return;
+    if (!this.group.visible) return 0;
+    let tookOff = 0;
     this.searchIn -= dt;
     if (this.searchIn <= 0) {
       this.searchIn = 0.5;
@@ -166,6 +168,7 @@ export class PerchedBirds {
       if (s === 0 && d < scare * (0.8 + 0.4 * keen)) {
         // Off it goes, away from you and a little to one side.
         s = 0.0001;
+        if (d < 30) tookOff++;
         const ax = (px - x) / (d || 1);
         const az = (pz - z) / (d || 1);
         const veer = (keen - 0.5) * 1.2;
@@ -203,6 +206,7 @@ export class PerchedBirds {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    return tookOff;
   }
 
   dispose(): void {

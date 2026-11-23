@@ -27,6 +27,20 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Wall posters, cooker whistles, wing flutter, footsteps (2026-11-23)
+
+- **Posters on compound walls** (`world/wallPosters.ts`; spots from `houseCompounds` → `props.posters`, carried by the worker): about 45 % of front walls carry 1–3 posters on the street side. 1,808 in the owner's square, one draw call.
+  - 16 invented designs drawn into one canvas atlas: tuition classes, house for rent and a missing cat (with Kannada), yoga and dance classes, a made-up film ("ನಮ್ಮ ಊರು"), sale, live music, computer classes, blood donation, a cricket tournament, spoken English, water tanker, an old sun-bleached one, and a stencilled "Stick no bills" and a hand-painted tailor's sign straight on the plaster.
+  - No brands, real names or real numbers (phone numbers are "9xxxx xxxxx").
+  - Weathered in the shader: torn ragged edges, peeled patches on the oldest, sun-fading and grime; pasted ones are tilted a little.
+  - Checked: two posters on a wall.
+- **Sounds** (`audio/sound.ts`, all made in code):
+  - Pressure-cooker whistles from nearby kitchens at breakfast (6:30–9:30) and dinner (18:30–21:00), every 6–24 s.
+  - A burst of wingbeats when birds take off from the wires near you (`PerchedBirds.update` now returns how many flew; `WorldView.updateNear` passes it on).
+  - Footsteps: a soft tap on dry ground, a splash when wet.
+  - `ambience` takes the game hour.
+  - Checked that they all run without errors; **nobody has listened to them yet.**
+
 ## Sun glare on wet roads, painted tree trunks (2026-11-23) — owner: "keep making it AAA … for hours"
 
 - **Sun glare on wet roads** (`WET_GLSL`, new `uSunDir` = the true sun direction, set by `WorldView.setSunDir`; the light direction is lifted at low sun so it can't be used): the sun mirrored in wet ground. A hard glint in puddles and a broad sheen on damp tar, blinding when you look into a low sun across a wet street; a faint cold glint from the moon at night. Weaker while it still rains.

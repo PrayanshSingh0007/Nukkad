@@ -13,6 +13,7 @@ import { StringLights } from './stringLights.ts';
 import { StallSteam } from './stallSteam.ts';
 import { PerchedBirds } from './perchedBirds.ts';
 import { RooftopLaundry } from './rooftopLaundry.ts';
+import { WallPosters } from './wallPosters.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -83,6 +84,7 @@ export class WorldView {
   private steam: StallSteam | null = null;
   private perched: PerchedBirds | null = null;
   private laundry: RooftopLaundry | null = null;
+  private posters: WallPosters | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -245,6 +247,7 @@ export class WorldView {
     this.steam?.dispose();
     this.perched?.dispose();
     this.laundry?.dispose();
+    this.posters?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -342,6 +345,10 @@ export class WorldView {
     if (props.tanks.length > 0) {
       this.laundry = new RooftopLaundry(props.tanks);
       this.group.add(this.laundry.group);
+    }
+    if (props.posters && props.posters.length > 0) {
+      this.posters = new WallPosters(props.posters);
+      this.group.add(this.posters.mesh);
     }
     if (props.stringLights && props.stringLights.length > 0) {
       this.stringLights = new StringLights(props.stringLights, this.materials.time);
@@ -557,11 +564,13 @@ export class WorldView {
   /**
    * Things that only matter near you (insects round the nearest lamps, birds on the wires,
    * washing on the roofs). Call every frame. scare = how close the birds let you come (metres).
+   * Returns how many birds took off this frame.
    */
-  updateNear(dt: number, x: number, z: number, scare = 6): void {
+  updateNear(dt: number, x: number, z: number, scare = 6): number {
     this.insects?.update(dt, x, z);
-    this.perched?.update(dt, x, z, scare);
+    const tookOff = this.perched?.update(dt, x, z, scare) ?? 0;
     this.laundry?.update(dt, x, z);
+    return tookOff; // birds that flew off just now
   }
 
   /** Roof things wait for their building (set by the game from the streamer). */

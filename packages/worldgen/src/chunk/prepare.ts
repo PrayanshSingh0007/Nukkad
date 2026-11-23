@@ -192,6 +192,16 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
     }
   }
   props.stringLights = new Float32Array(bulbs);
+  // Posters: on the street face of the wall (0.11 m out from its middle line), middle 0.85 m up.
+  const posters: number[] = [];
+  for (let i = 0; i + 4 < compounds.posters.length; i += 5) {
+    const [x, z, nx, nz, seed] = compounds.posters.slice(i, i + 5);
+    const px = x + nx * 0.112;
+    const pz = z + nz * 0.112;
+    if (Math.abs(px) > half - 1 || Math.abs(pz) > half - 1) continue;
+    posters.push(px, heightAt(terrain, x, z) + 0.85, pz, Math.atan2(nx, nz), seed);
+  }
+  props.posters = new Float32Array(posters);
   if (creepers.length > 0) {
     const all = [...props.trees, ...creepers];
     props.trees = shuffleAndCap(all, TREE_STRIDE, all.length / TREE_STRIDE, 4242);

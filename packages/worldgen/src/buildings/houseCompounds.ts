@@ -25,6 +25,8 @@ export interface HouseCompounds {
   walls: number[];
   pillars: number[];
   lamps: number[];
+  /** Posters on the street side of front walls: [x, z, nx, nz, seed] (n = facing the street). */
+  posters: number[];
 }
 
 const HOME_KINDS = new Set(['house', 'apartments', 'generic']);
@@ -51,7 +53,7 @@ const hash = (n: number, salt: number): number => {
 };
 
 export function houseCompounds(pack: AreaPack, doors: Door[]): HouseCompounds {
-  const out: HouseCompounds = { walls: [], pillars: [], lamps: [] };
+  const out: HouseCompounds = { walls: [], pillars: [], lamps: [], posters: [] };
   const metres = (ring: number[]): number[] => ring.map((v) => v / UNITS_PER_METRE);
 
   // Road segments in a grid.
@@ -200,11 +202,20 @@ export function houseCompounds(pack: AreaPack, doors: Door[]): HouseCompounds {
       [bx, bz, fx(length), fz(length)],
     ];
     let kept = 0;
-    for (const [px, pz, qx, qz] of pieces) {
-      if (Math.hypot(qx - px, qz - pz) < 0.4 || !clear(px, pz, qx, qz, index)) continue;
+    pieces.forEach(([px, pz, qx, qz], k) => {
+      if (Math.hypot(qx - px, qz - pz) < 0.4 || !clear(px, pz, qx, qz, index)) return;
       out.walls.push(px, pz, qx, qz, tone);
       kept++;
-    }
+      // Posters pasted on the street side of the front walls (the first two pieces).
+      const length = Math.hypot(qx - px, qz - pz);
+      if (k < 2 && length > 1.4 && hash(building.id, 10 + k) < 0.45) {
+        const posters = 1 + Math.floor(hash(building.id, 20 + k) * Math.min(3, length / 1.2));
+        for (let j = 0; j < posters; j++) {
+          const t = (j + 0.5) / posters + (hash(building.id, 30 + k * 4 + j) - 0.5) * 0.15;
+          out.posters.push(px + (qx - px) * t, pz + (qz - pz) * t, nx, nz, hash(building.id, 40 + k * 4 + j));
+        }
+      }
+    });
     if (kept === 0) return;
     // Two pillars either side of the gate, each with a globe lamp.
     for (const side of [-1, 1]) {

@@ -1245,11 +1245,13 @@ export class Game {
         this.splashes.setViewport(view.y, this.view3d.camera.fov);
         this.world?.setViewport(view.y, this.view3d.camera.fov);
         // Footsteps splash on wet ground: one splash per step, at the left or right foot.
-        const walking = !player.vehicle && !player.riding && player.body.grounded && player.speed > 0.6 && !this.interior;
-        if (walking && this.wetness > 0.3) {
+        const walking = !player.vehicle && !player.riding && player.body.grounded && player.speed > 0.6;
+        if (walking) {
           const before = Math.floor(this.stepClock);
           this.stepClock += dt * player.speed / 0.65;
-          if (Math.floor(this.stepClock) !== before) {
+          const stepped = Math.floor(this.stepClock) !== before;
+          if (stepped) this.sound.step(this.interior ? 0 : this.wetness);
+          if (stepped && this.wetness > 0.3 && !this.interior) {
             const facing = player.avatar.facing;
             const side = Math.floor(this.stepClock) % 2 === 0 ? 0.12 : -0.12;
             const fx = player.x + Math.cos(facing) * side - Math.sin(facing) * 0.15;
@@ -1260,7 +1262,7 @@ export class Game {
         // Roads sit a few centimetres above the ground: splashes a little higher, so they show on them.
         this.splashes.update(dt, this.interior ? 0 : this.rain, player.x, player.z, (x, z) => heightAt(ground, x, z) + 0.12, this.atmosphere.sky.uniforms.uHorizon.value);
       }
-      this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0, this.rain);
+      this.sound.ambience(dt, this.atmosphere.night, this.interior !== null, vehicle ? kmh : 0, this.rain, this.atmosphere.override ?? 12);
 
       if (this.governor.frame(dtMs, this.benchmarking) === 'down') {
         const index = QUALITY_LEVELS.indexOf(this.level);
@@ -1345,7 +1347,8 @@ export class Game {
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
       // Birds on the wires let you come within 6 m on foot; traffic-speed or a horn scares them sooner.
       const scare = this.hornOn ? 18 : player.vehicle || player.riding ? 6 + Math.min(10, Math.abs(player.rideSpeed) * 0.6) : 6;
-      world?.updateNear(dt, player.x, player.z, scare);
+      const flew = world?.updateNear(dt, player.x, player.z, scare) ?? 0;
+      if (flew > 0) this.sound.flutter(flew);
     }
     else if (ready) this.placeSun(ready.info.spawn[0], 0, ready.info.spawn[1]);
 

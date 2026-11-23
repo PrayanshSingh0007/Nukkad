@@ -30,6 +30,8 @@ export class Sound {
   private windFilter: BiquadFilterNode | null = null;
   private rainGain: GainNode | null = null;
   private brownNoise: AudioBuffer | null = null;
+  private whiteNoise: AudioBuffer | null = null;
+  private nextCooker = 0;
   private swell = 0;
   private nextHorn = 0;
   private nextBird = 0;
@@ -134,6 +136,7 @@ export class Sound {
     hum.connect(humFilter).connect(this.humGain).connect(this.outdoorFilter);
     hum.start();
     this.brownNoise = brown;
+    this.whiteNoise = noise;
     // Rain: a soft hiss (noise with the deep and the shrill parts taken out).
     const rainSource = context.createBufferSource();
     rainSource.buffer = noise;
@@ -168,7 +171,7 @@ export class Sound {
    * The city around you; call every frame while playing. `night` 0–1 (fewer horns, no birds),
    * `indoors` muffles it, `kmh` = your speed in a vehicle (wind), `rain` 0–1.
    */
-  ambience(dt: number, night: number, indoors: boolean, kmh: number, rain = 0): void {
+  ambience(dt: number, night: number, indoors: boolean, kmh: number, rain = 0, hour = 12): void {
     const context = this.context;
     if (!context || !this.humGain || !this.outdoorFilter || !this.outdoorGain || !this.windGain || !this.windFilter) return;
     const now = context.currentTime;
@@ -205,6 +208,118 @@ export class Sound {
       if (this.nextBird > 0) this.birdCall(now);
       this.nextBird = now + 1.5 + Math.random() * 7;
     }
+    // Breakfast and dinner time: pressure cookers whistling in the houses around you.
+    const cooking = (hour > 6.5 && hour < 9.5) || (hour > 18.5 && hour < 21);
+    if (cooking && now > this.nextCooker) {
+      if (this.nextCooker > 0) this.cookerWhistle(now);
+      this.nextCooker = now + 6 + Math.random() * 18;
+    }
+  }
+
+  /** A pressure cooker's whistle from a kitchen nearby: a hissing shriek that builds and stops. */
+  private cookerWhistle(now: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || !this.whiteNoise) return;
+    const source = context.createBufferSource();
+    source.buffer = this.whiteNoise;
+    source.loop = true;
+    const band = context.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 2300 + Math.random() * 900;
+    band.Q.value = 9;
+    const tone = context.createOscillator();
+    tone.type = 'sine';
+    tone.frequency.value = band.frequency.value * (0.98 + Math.random() * 0.04);
+    const toneGain = context.createGain();
+    toneGain.gain.value = 0.25;
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const far = context.createBiquadFilter();
+    far.type = 'lowpass';
+    far.frequency.value = 3500 + Math.random() * 3000; // walls and distance take the edge off
+    const pan = context.createStereoPanner ? context.createStereoPanner() : null;
+    if (pan) pan.pan.value = Math.random() * 1.6 - 0.8;
+    source.connect(band).connect(gain);
+    tone.connect(toneGain).connect(gain);
+    gain.connect(far).connect(pan ?? this.outdoorFilter);
+    if (pan) pan.connect(this.outdoorFilter);
+    const level = 0.018 + Math.random() * 0.03;
+    const length = 1.4 + Math.random() * 1.6;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(level * 0.4, now + 0.25);
+    gain.gain.linearRampToValueAtTime(level, now + 0.6);
+    gain.gain.setValueAtTime(level, now + length);
+    gain.gain.linearRampToValueAtTime(0, now + length + 0.35);
+    source.start(now);
+    tone.start(now);
+    source.stop(now + length + 0.4);
+    tone.stop(now + length + 0.4);
+    source.onended = () => {
+      for (const node of [source, tone, band, toneGain, gain, far, pan]) node?.disconnect();
+    };
+  }
+
+  /** Wings beating as birds take off nearby (n = how many). */
+  flutter(n: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || !this.whiteNoise || this.muted || n <= 0) return;
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    source.buffer = this.whiteNoise;
+    source.loop = true;
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 900;
+    filter.Q.value = 0.8;
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    source.connect(filter).connect(gain).connect(this.outdoorFilter);
+    // Rapid wingbeats (about 14 a second), loudest at the start, dying away as they leave.
+    const level = Math.min(0.09, 0.03 + n * 0.015);
+    let t = now;
+    for (let i = 0; i < 12; i++) {
+      const fade = 1 - i / 12;
+      gain.gain.setValueAtTime(level * fade, t);
+      gain.gain.linearRampToValueAtTime(level * 0.2 * fade, t + 0.035);
+      t += 0.07 + Math.random() * 0.02;
+    }
+    gain.gain.linearRampToValueAtTime(0, t + 0.05);
+    source.start(now);
+    source.stop(t + 0.1);
+    source.onended = () => {
+      source.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
+  }
+
+  /** A footstep: a soft tap on dry ground, a splash on wet (wet 0–1). */
+  step(wet: number): void {
+    const context = this.context;
+    if (!context || !this.outdoorFilter || !this.whiteNoise || this.muted) return;
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    source.buffer = this.whiteNoise;
+    source.playbackRate.value = 0.8 + Math.random() * 0.4;
+    const filter = context.createBiquadFilter();
+    const splash = wet > 0.3;
+    filter.type = splash ? 'bandpass' : 'lowpass';
+    filter.frequency.value = splash ? 1800 + Math.random() * 800 : 500 + Math.random() * 200;
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    const level = splash ? 0.05 : 0.035;
+    const length = splash ? 0.12 : 0.05;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(level, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + length);
+    source.connect(filter).connect(gain).connect(this.outdoorFilter);
+    source.start(now, Math.random() * 1.5);
+    source.stop(now + length + 0.02);
+    source.onended = () => {
+      source.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
   }
 
   /**
