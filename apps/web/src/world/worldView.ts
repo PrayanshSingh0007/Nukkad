@@ -10,6 +10,9 @@ import { LampBeams } from './lampBeams.ts';
 import { WetReflections } from './wetReflections.ts';
 import { LampInsects } from './lampInsects.ts';
 import { StringLights } from './stringLights.ts';
+import { StallSteam } from './stallSteam.ts';
+import { PerchedBirds } from './perchedBirds.ts';
+import { RooftopLaundry } from './rooftopLaundry.ts';
 import { createLeafyTrees, leafAtlas, speciesOf } from './treeModels.ts';
 import { GrassView } from './grassView.ts';
 import { buildPetals, buildWires } from './streetDressing.ts';
@@ -49,6 +52,10 @@ function meshToGeometry(mesh: MeshData, extraName = 'aWin'): THREE.BufferGeometr
 }
 
 /** Everything of one loaded world that is on screen: terrain, water, props and chunk meshes. */
+/** Reused for the steam's light. */
+const STEAM_LIGHT = new THREE.Color();
+const STEAM_WARM = new THREE.Color();
+
 export class WorldView {
   readonly group = new THREE.Group();
   readonly terrain: TerrainGrid;
@@ -73,6 +80,9 @@ export class WorldView {
   private wet: WetReflections | null = null;
   private insects: LampInsects | null = null;
   private stringLights: StringLights | null = null;
+  private steam: StallSteam | null = null;
+  private perched: PerchedBirds | null = null;
+  private laundry: RooftopLaundry | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
   private globeMaterial: THREE.MeshBasicMaterial | null = null;
@@ -232,6 +242,9 @@ export class WorldView {
     this.wet?.dispose();
     this.insects?.dispose();
     this.stringLights?.dispose();
+    this.steam?.dispose();
+    this.perched?.dispose();
+    this.laundry?.dispose();
     this.globeHalos?.geometry.dispose();
     this.globeHaloMaterial?.dispose();
     this.globeMaterial?.dispose();
@@ -322,6 +335,14 @@ export class WorldView {
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
+    if (props.stalls.length > 0) {
+      this.steam = new StallSteam(props.stalls, this.materials.time);
+      this.group.add(this.steam.points, this.steam.pots);
+    }
+    if (props.tanks.length > 0) {
+      this.laundry = new RooftopLaundry(props.tanks);
+      this.group.add(this.laundry.group);
+    }
     if (props.stringLights && props.stringLights.length > 0) {
       this.stringLights = new StringLights(props.stringLights, this.materials.time);
       this.group.add(this.stringLights.points);
@@ -494,6 +515,30 @@ export class WorldView {
         }
       }
     }
+    // Birds sitting on the top wire: none on about half the spans, up to five on the rest.
+    const perches: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const [ax, ay, az, bx, by, bz] = spans.subarray(i * 6, i * 6 + 6);
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      const sx = -(bz - az) / length;
+      const sz = (bx - ax) / length;
+      const [height, side, sag] = WIRES[0];
+      const droop = sag * (length / 32) * (0.85 + 0.3 * (((i * 7919) % 13) / 13));
+      const r = (salt: number): number => {
+        const v = Math.sin(i * 91.7 + salt * 47.3) * 43758.5453;
+        return v - Math.floor(v);
+      };
+      const birds = r(1) < 0.5 ? 0 : 1 + Math.floor(r(2) * 5);
+      for (let b = 0; b < birds; b++) {
+        const t = 0.15 + 0.7 * r(10 + b);
+        const facing = r(20 + b) < 0.5 ? 1 : -1;
+        perches.push(ax + (bx - ax) * t + sx * side, ay + (by - ay) * t + height - droop * 4 * t * (1 - t), az + (bz - az) * t + sz * side, Math.atan2(-sx * facing, -sz * facing));
+      }
+    }
+    if (perches.length > 0) {
+      this.perched = new PerchedBirds(new Float32Array(perches));
+      this.group.add(this.perched.group);
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.computeBoundingSphere();
@@ -509,14 +554,25 @@ export class WorldView {
     this.beams?.update(dt);
   }
 
-  /** Things that only matter near you (insects round the nearest lamps). Call every frame. */
-  updateNear(dt: number, x: number, z: number): void {
+  /**
+   * Things that only matter near you (insects round the nearest lamps, birds on the wires,
+   * washing on the roofs). Call every frame. scare = how close the birds let you come (metres).
+   */
+  updateNear(dt: number, x: number, z: number, scare = 6): void {
     this.insects?.update(dt, x, z);
+    this.perched?.update(dt, x, z, scare);
+    this.laundry?.update(dt, x, z);
   }
 
-  /** Sprite sizes for screen-sized points (string lights). */
+  /** Roof things wait for their building (set by the game from the streamer). */
+  setRoofReady(ready: (x: number, z: number) => boolean): void {
+    if (this.laundry) this.laundry.roofReady = ready;
+  }
+
+  /** Sprite sizes for screen-sized points (string lights, steam). */
   setViewport(heightPx: number, fovDeg: number): void {
     this.stringLights?.setViewport(heightPx, fovDeg);
+    this.steam?.setViewport(heightPx, fovDeg);
   }
 
   /** The direction the sun (or moon) shines from, for glints on glass and water. */
@@ -530,6 +586,7 @@ export class WorldView {
    * road) — it stays after the rain and dries slowly. Defaults to the rain.
    */
   setRain(rain: number, wet = rain): void {
+    this.laundry?.setWorld(rain);
     this.materials.rain.value = rain;
     this.materials.wet.value = wet;
     this.rainLevel = rain;
@@ -567,6 +624,9 @@ export class WorldView {
     this.wet?.setLevel(night, this.wetLevel);
     this.insects?.setLevel(night, rain);
     this.stringLights?.setLevel(night);
+    this.perched?.setWorld(night, rain);
+    // Steam catches the daylight, or the stall's warm bulb at night.
+    this.steam?.setLight(STEAM_LIGHT.setRGB(0.92, 0.92, 0.95).multiplyScalar(1 - 0.75 * night).add(STEAM_WARM.setRGB(0.42, 0.3, 0.18).multiplyScalar(night)));
     if (this.halos && this.haloMaterial) {
       this.halos.visible = night > 0.05;
       this.haloMaterial.opacity = night * (0.32 + 0.4 * rain);

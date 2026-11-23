@@ -247,6 +247,8 @@ export class Game {
   /** Photo mode: the page hides the HUD; the mouse wheel moves the camera in and out. */
   private photo = false;
   private photoDistance = 5.2;
+  /** The horn is held (birds on the wires take off). */
+  private hornOn = false;
   /** Counts footsteps (one per ~0.65 m walked), for splashes on wet ground. */
   private stepClock = 0;
   /** How wet the streets are: soaks up within seconds of rain, dries over about four minutes. */
@@ -706,6 +708,7 @@ export class Game {
   setHorn(on: boolean): void {
     const vehicle = this.player?.vehicle;
     this.sound.unlock();
+    this.hornOn = on && !!vehicle;
     if (!on || !vehicle) {
       this.sound.horn(false);
       return;
@@ -840,6 +843,7 @@ export class Game {
       };
       const streamer = this.streamer;
       if (this.streetLife) this.streetLife.roofReady = (x, z) => streamer.hasChunkAt(x, z);
+      this.world?.setRoofReady((x, z) => streamer.hasChunkAt(x, z));
       this.setStatus('loading', 'Almost there…');
     } catch (error) {
       this.setStatus('error', error instanceof Error ? error.message : String(error));
@@ -1333,7 +1337,9 @@ export class Game {
         this.birds?.update(seconds, player.x, player.z);
       }
       world?.updateShadowTrees(player.x, player.z, QUALITY[this.level].shadowSize > 0 ? QUALITY[this.level].shadowRange : 0);
-      world?.updateNear(dt, player.x, player.z);
+      // Birds on the wires let you come within 6 m on foot; traffic-speed or a horn scares them sooner.
+      const scare = this.hornOn ? 18 : player.vehicle || player.riding ? 6 + Math.min(10, Math.abs(player.rideSpeed) * 0.6) : 6;
+      world?.updateNear(dt, player.x, player.z, scare);
     }
     else if (ready) this.placeSun(ready.info.spawn[0], 0, ready.info.spawn[1]);
 

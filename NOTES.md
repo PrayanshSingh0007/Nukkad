@@ -27,6 +27,24 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Steaming carts, birds on the wires, rooftop washing (2026-11-23) — owner: "more AAA"
+
+- **Steaming carts** (`world/stallSteam.ts`): about four street carts in ten have a steel pot on the counter (boiled peanuts, corn, chai) with soft wisps of steam rising, swelling and drifting. A few have blue-grey frying smoke instead.
+  - All on the graphics card: one draw call of points, plus one for the pots. Lit by daylight, and warm from the cart's bulb at night.
+  - First tries: steam rose straight off fruit with no pot; then the pot sat inside the counter; then it rendered black (fully metallic with nothing to reflect). Fixed: pot on the counter, steel grey.
+  - Only 5 carts in the owner's square have one, since there are few carts.
+- **Birds on the wires** (`world/perchedBirds.ts`, perches worked out in `WorldView.addCables`): about half the cable spans have 1–5 birds on the top wire (crows, pigeons, mynas), facing either way. 989 perches in the owner's square; only those within 70 m are drawn.
+  - They fly off when you come within about 6 m on foot. In a vehicle that grows with speed (up to 16 m), and a horn scares them at 18 m.
+  - They flap up and away for 4 s, come back after about 60 s once you are 25 m away, and sit out heavy rain and the night.
+  - The first sitting bird looked like a black box from below; it was reshaped (longer body, tail, beak).
+  - Checked: two crows on a wire, then taking off as you came close.
+- **Rooftop washing** (`world/rooftopLaundry.ts`): about a third of the terraces with a water tank have a washing line 1.7 m up, 2.4 m beside the tank. It holds 4–6 things (shirts, towels, now and then a long sari) in everyday colours, with folds and a darker damp hem.
+  - It swings in the breeze, whips about in storms, and is taken in when it rains.
+  - Only lines within 120 m whose building is on screen are drawn (`setRoofReady`, like the water tanks).
+  - 1,159 lines in the owner's square; up to 900 pieces drawn.
+  - Checked: a line by a tank. It was first strung too close to the tank, and moved out.
+- **Not checked:** a phone; the TV glow and the bigger festive bulbs from last round, on screen.
+
 ## Turn signals, TV glow, festive lights, footstep splashes, pinch zoom (2026-11-23) — owner: "more AAA"
 
 - **Turn signals** (`TrafficView`): a vehicle within 90 m whose road bends more than about 30° in the next 12 m blinks amber at the front and back on that side, about 1.5 times a second (one more points draw call).
