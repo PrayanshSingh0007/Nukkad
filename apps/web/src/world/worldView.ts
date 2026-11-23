@@ -86,6 +86,8 @@ export class WorldView {
   private perched: PerchedBirds | null = null;
   private laundry: RooftopLaundry | null = null;
   private posters: WallPosters | null = null;
+  /** Where ground pigeons gather: [x, y, z] (carts and bus stops), set before the cables are added. */
+  private groundFlockSpots: number[] = [];
   private leaves: FallingLeaves | null = null;
   private haloMaterial: THREE.PointsMaterial | null = null;
   private rainLevel = 0;
@@ -339,6 +341,8 @@ export class WorldView {
       finish(mesh);
       return count;
     };
+    for (let i = 0; i < props.stalls.length; i += 4) this.groundFlockSpots.push(props.stalls[i], props.stalls[i + 1], props.stalls[i + 2]);
+    for (let i = 0; i < props.stops.length; i += 4) this.groundFlockSpots.push(props.stops[i], props.stops[i + 1], props.stops[i + 2]);
     this.counts.lamps = addSimple(models.lamp, props.lamps, LAMP_STRIDE);
     this.addLampLights(models.lampHead, props.lamps);
     this.addGateLamps(props.gateLamps);
@@ -550,8 +554,33 @@ export class WorldView {
         perches.push(ax + (bx - ax) * t + sx * side, ay + (by - ay) * t + height - droop * 4 * t * (1 - t), az + (bz - az) * t + sz * side, Math.atan2(-sx * facing, -sz * facing));
       }
     }
+    // Pigeons pecking on the ground round the carts and bus stops (3–7 at about half of them).
+    const ground: number[] = [];
+    const flocks = [...this.groundFlockSpots];
+    for (let f = 0; f < flocks.length; f += 3) {
+      const [fx, fz] = [flocks[f], flocks[f + 2]];
+      const r = (salt: number): number => {
+        const v = Math.sin(fx * 7.7 + fz * 3.1 + salt * 13.3) * 43758.5453;
+        return v - Math.floor(v);
+      };
+      if (r(1) > 0.5) continue;
+      const birds = 3 + Math.floor(r(2) * 5);
+      const angle = r(3) * Math.PI * 2;
+      const cx = fx + Math.sin(angle) * 3.2;
+      const cz = fz + Math.cos(angle) * 3.2;
+      for (let b = 0; b < birds; b++) {
+        const a = r(10 + b) * Math.PI * 2;
+        const d = r(20 + b) * 1.6;
+        const x = cx + Math.sin(a) * d;
+        const z = cz + Math.cos(a) * d;
+        perches.push(x, heightAt(this.terrain, x, z) + 0.2, z, r(30 + b) * Math.PI * 2);
+        ground.push(perches.length / 4 - 1);
+      }
+    }
     if (perches.length > 0) {
-      this.perched = new PerchedBirds(new Float32Array(perches));
+      const onGround = new Uint8Array(perches.length / 4);
+      for (const i of ground) onGround[i] = 1;
+      this.perched = new PerchedBirds(new Float32Array(perches), onGround);
       this.group.add(this.perched.group);
     }
     const geometry = new THREE.BufferGeometry();

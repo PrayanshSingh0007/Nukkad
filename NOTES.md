@@ -27,6 +27,17 @@ The owner can no longer use the model that did most of this work, so this sectio
 4. **Speed feel extras** the owner would like: skid marks, tyre smoke, real motion blur.
 5. **Roads:** lane markings on flyover decks; smoother junctions.
 
+## Photo mode depth of field, pigeons on the ground (2026-11-23)
+
+- **Depth of field in photo mode** (three.js `BokehPass`, High only): focus follows the distance from the camera to your chest. Things nearer or further go softly out of focus (aperture 0.00035, max blur 0.009).
+  - It is inserted before the cinema pass only while photo mode is on with "Depth blur" pressed (on by default; the button shows only when the High chain exists). It is removed when you leave, so it costs nothing in normal play.
+  - Checked: background buildings and the near ground soft, you sharp; off, everything sharp.
+- **Pigeons on the ground** (`PerchedBirds`, `ground` flags): at about half of the carts and bus stops, 3–7 birds (mostly pigeons, the odd crow or myna) peck about 3 m away. Their heads bob down now and then and they turn a little. 128 in the owner's square.
+  - They take off like the wire birds when you come close: wingbeat sound, back after a minute.
+  - They are lifted 0.2 m (at 0.12 m they sank into raised dirt patches).
+  - Checked: pecking pigeons by a cart, gone after you walk up (6 flew).
+- Ground pigeons are made in `addCables`, so a map with no cables would have none (none known).
+
 ## Traffic you can hear: honks and pass-bys (2026-11-23)
 
 - **Honks at you** (`TrafficView` `lane.blocked`, `takeSounds`): a vehicle held up by you standing in front of it honks after 1.4 s, then every 2.6 s. Buses and trucks sound deep, autos and two-wheelers high and thin, cars in between; one long blast or two short ones. Panned by where it is and quieter further off (`Sound.hornAt`).

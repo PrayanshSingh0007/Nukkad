@@ -4,6 +4,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { CHUNK_SIZE, EMOTES, GAME_HALF_SIZE, FLAG_GROUNDED, FLAG_RIDING, PLACE_COLORS, TICK_HZ } from '@nukkad/shared';
 import type { Emote } from '@nukkad/shared';
@@ -216,6 +217,9 @@ installCloudShadows();
 /** The renderer's normal exposure (scene.ts); eye adaptation moves around it. */
 const BASE_EXPOSURE = 1.15;
 
+/** Reused for photo mode's focus point. */
+const FOCUS_AT = new THREE.Vector3();
+
 /** Reused for panning traffic sounds. */
 const SOUND_RIGHT = new THREE.Vector3();
 
@@ -252,6 +256,9 @@ export class Game {
   /** Photo mode: the page hides the HUD; the mouse wheel moves the camera in and out. */
   private photo = false;
   private photoDistance = 5.2;
+  /** Photo mode's depth of field (High only): sharp on you, the rest softly out of focus. */
+  private bokeh: BokehPass | null = null;
+  private photoFocus = true;
   /** The horn is held (birds on the wires take off). */
   private hornOn = false;
   /** Counts footsteps (one per ~0.65 m walked), for splashes on wet ground. */
@@ -433,6 +440,33 @@ export class Game {
     this.photo = on;
     this.photoDistance = this.rig.distance;
     if (!on) this.setPhotoFilter('');
+    this.applyPhotoFocus();
+  }
+
+  /** Photo mode's depth of field on or off. */
+  setPhotoFocus(on: boolean): void {
+    this.photoFocus = on;
+    this.applyPhotoFocus();
+  }
+
+  /** Whether depth of field can be used (it needs the High-quality picture chain). */
+  get canBlurDepth(): boolean {
+    return this.composer !== null;
+  }
+
+  private applyPhotoFocus(): void {
+    const composer = this.composer;
+    const want = this.photo && this.photoFocus && composer !== null;
+    if (want && composer && !this.bokeh) {
+      // Before the cinema pass (so grain and vignette sit on top of the blur).
+      this.bokeh = new BokehPass(this.view3d.scene, this.view3d.camera, { focus: 5, aperture: 0.00035, maxblur: 0.009 });
+      const at = this.cinema ? composer.passes.indexOf(this.cinema) : composer.passes.length - 1;
+      composer.insertPass(this.bokeh, Math.max(1, at));
+    } else if (!want && this.bokeh) {
+      composer?.removePass(this.bokeh);
+      this.bokeh.dispose();
+      this.bokeh = null;
+    }
   }
 
   /** A look for photo mode, as a CSS filter on the picture ('' = natural). */
@@ -1029,6 +1063,10 @@ export class Game {
   /** The glow pass (High). Bright things over the threshold get a soft halo. */
   private applyBloom(on: boolean): void {
     if (!on) {
+      if (this.bokeh) {
+        this.bokeh.dispose();
+        this.bokeh = null;
+      }
       this.composer?.dispose();
       this.composer = null;
       this.cinema = null;
@@ -1299,6 +1337,11 @@ export class Game {
       (1 - THREE.MathUtils.smoothstep(sunY, 0.55, 0.7)) *
       (1 - this.atmosphere.night) *
       (1 - this.atmosphere.cloud * 0.7);
+    // Photo mode's focus follows you (the distance from the camera to your chest).
+    if (this.bokeh && player) {
+      const focus = this.view3d.camera.position.distanceTo(FOCUS_AT.set(player.x, player.y + 1.2, player.z));
+      (this.bokeh.uniforms as Record<string, { value: number }>).focus.value = focus;
+    }
     // Eyes adjusting after a doorway (exposure eases back to normal over about 2 s).
     this.adapt += (1 - this.adapt) * Math.min(1, dt * 1.5);
     this.view3d.renderer.toneMappingExposure = BASE_EXPOSURE * this.adapt;

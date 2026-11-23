@@ -54,6 +54,7 @@ export function App({ game, initialLook, roomId }: Props) {
   const [mapOpen, setMapOpen] = useState(false);
   const [photo, setPhoto] = useState(false);
   const [photoLook, setPhotoLook] = useState(0);
+  const [photoFocus, setPhotoFocus] = useState(true);
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
       if ((event.target as HTMLElement | null)?.tagName === 'INPUT') return;
@@ -76,6 +77,7 @@ export function App({ game, initialLook, roomId }: Props) {
     game.setPhotoMode(photo);
     if (photo) game.setPhotoFilter(PHOTO_LOOKS[photoLook][1]);
   }, [game, photo, photoLook]);
+  useEffect(() => game.setPhotoFocus(photoFocus), [game, photoFocus]);
   useEffect(() => {
     game.onPlayerCount = setPlayers;
     game.onRiding = setRiding;
@@ -116,6 +118,11 @@ export function App({ game, initialLook, roomId }: Props) {
                 {name}
               </button>
             ))}
+            {game.canBlurDepth && (
+              <button type="button" className={photoFocus ? 'picked' : ''} aria-pressed={photoFocus} onClick={() => setPhotoFocus(!photoFocus)}>
+                Depth blur
+              </button>
+            )}
             <button type="button" className="save" onClick={() => game.takePhoto(PHOTO_LOOKS[photoLook][1])}>
               Save photo
             </button>

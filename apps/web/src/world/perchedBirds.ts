@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 /**
  * Birds sitting on the overhead cables — crows, pigeons and mynas, as on any Bengaluru street —
- * that take off when you come close (or rush past, or honk): a flurry of beating wings up and
+ * and pigeons pecking about on the ground round carts and bus stops, that take off when you come
+ * close (or rush past, or honk): a flurry of beating wings up and
  * away, and about a minute later, once you have moved on, they are back on the wire.
  * Only perches within 70 m are drawn (two draw calls: sitting, flying).
  */
@@ -82,6 +83,8 @@ export class PerchedBirds {
   /** Per perch: x, y, z, heading. */
   private readonly perches: Float32Array;
   private readonly kinds: Uint8Array;
+  /** 1 = on the ground (pecking), 0 = on a wire. */
+  private readonly onGround: Uint8Array;
   /** Per perch: 0 sitting, > 0 seconds into its flight, < 0 seconds until it may come back. */
   private readonly state: Float32Array;
   /** Where each flight goes: x, z direction. */
@@ -95,14 +98,17 @@ export class PerchedBirds {
   private readonly colour = new THREE.Color();
   private visible = 1;
 
-  constructor(perches: Float32Array) {
+  /** perches: [x, y, z, heading] per bird; ground: which of them are on the ground (else on a wire). */
+  constructor(perches: Float32Array, ground: Uint8Array = new Uint8Array(perches.length / 4)) {
     this.perches = perches;
     const count = perches.length / 4;
     this.kinds = new Uint8Array(count);
+    this.onGround = ground;
     for (let i = 0; i < count; i++) {
       const h = Math.sin(perches[i * 4] * 3.7 + perches[i * 4 + 2] * 1.3) * 43758.5453;
       const r = h - Math.floor(h);
-      this.kinds[i] = (r < 0.45 ? 0 : r < 0.8 ? 1 : 2) as Kind;
+      // On the ground they are mostly pigeons (a crow or myna among them).
+      this.kinds[i] = (ground[i] ? (r < 0.75 ? 1 : r < 0.88 ? 0 : 2) : r < 0.45 ? 0 : r < 0.8 ? 1 : 2) as Kind;
     }
     this.state = new Float32Array(count);
     this.flee = new Float32Array(count * 2);
@@ -185,7 +191,12 @@ export class PerchedBirds {
       this.colour.setHex(KIND_COLOUR[kind]);
       const scale = KIND_SIZE[kind];
       if (s === 0 && sitting < this.sitting.instanceMatrix.count) {
-        this.turn.setFromAxisAngle(UP, this.perches[i * 4 + 3]);
+        if (this.onGround[i]) {
+          // Pecking about: the head bobs down to the ground now and then, and they turn a little.
+          const peck = Math.sin(this.time.value * 5.5 + i * 1.3) > 0.55 ? 0.6 : 0;
+          const look = Math.sin(this.time.value * 0.7 + i * 2.1) * 0.6;
+          this.turn.setFromEuler(EULER.set(-peck, this.perches[i * 4 + 3] + look, 0, 'YXZ'));
+        } else this.turn.setFromAxisAngle(UP, this.perches[i * 4 + 3]);
         this.sitting.setMatrixAt(sitting, this.matrix.compose(this.at.set(px, py, pz), this.turn, this.size.setScalar(scale)));
         this.sitting.setColorAt(sitting, this.colour);
         sitting++;
