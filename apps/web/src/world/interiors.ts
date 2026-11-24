@@ -39,6 +39,11 @@ export interface Interior {
   contains(x: number, y: number, z: number): boolean;
   /** In the doorway (or just in front of it): the building's outer wall must let you through here. */
   doorway(x: number, y: number, z: number): boolean;
+  /** Apartment blocks: the lift (null elsewhere), and its solid boxes now (world). */
+  lift: Lift | null;
+  liftSolids(): Solid[];
+  /** A world point in the room's own frame (x across, y up from the ground floor, z in). */
+  local(x: number, y: number, z: number): THREE.Vector3;
   dispose(): void;
 }
 
@@ -53,7 +58,7 @@ class Room {
   readonly parts: THREE.BufferGeometry[] = [];
   readonly solids: { x: number; y: number; z: number; hx: number; hy: number; hz: number }[] = [];
   /** Places to sit: room-frame position and which way a sitter faces along z (+1 / -1). */
-  readonly seats: { x: number; z: number; dz: 1 | -1 }[] = [];
+  readonly seats: { x: number; z: number; dz: 1 | -1; y?: number }[] = [];
 
   readonly w: number;
   readonly d: number;
@@ -65,6 +70,10 @@ class Room {
   readonly doorTop: number;
   /** While the shell is built (walls, floor): nothing is kept out of the way in. */
   structural = false;
+  /** The floor being built (apartment blocks have many): its height, for the baked light. */
+  baseY = 0;
+  /** Added to every box's height (furnishing an upper floor with the usual pieces). */
+  oy = 0;
 
   constructor(w: number, d: number, h: number, rng: () => number, doorX = 0, doorHalf = 0.6, doorTop = 2.2) {
     this.w = w;
@@ -77,8 +86,8 @@ class Room {
   }
 
   /** The way in stays clear: furniture that would stand in it is left out. */
-  private inTheWay(x0: number, y1: number, z0: number, x1: number, z1: number): boolean {
-    if (this.structural || y1 <= 0.05) return false;
+  private inTheWay(x0: number, y0: number, y1: number, z0: number, x1: number, z1: number): boolean {
+    if (this.structural || y1 <= 0.05 || y0 > 2.4) return false;
     const a = this.doorX - this.doorHalf - 0.35;
     const b = this.doorX + this.doorHalf + 0.35;
     return Math.min(x0, x1) < b && Math.max(x0, x1) > a && Math.min(z0, z1) < 1.7;
@@ -86,7 +95,9 @@ class Room {
 
   /** A box from (x0, y0, z0) to (x1, y1, z1). `solid` = you bump into it. */
   box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string | Rgb, solid = false, glow = false): void {
-    if (this.inTheWay(x0, Math.max(y0, y1), z0, x1, z1)) return;
+    y0 += this.oy;
+    y1 += this.oy;
+    if (this.inTheWay(x0, Math.min(y0, y1), Math.max(y0, y1), z0, x1, z1)) return;
     const sx = Math.abs(x1 - x0);
     const sy = Math.abs(y1 - y0);
     const sz = Math.abs(z1 - z0);
@@ -110,7 +121,7 @@ class Room {
         const nx = Math.abs(normal.getX(i));
         light = ny > 0.5 ? 1 : ny < -0.5 ? 0.62 : nx > 0.5 ? 0.8 : 0.88;
         const y = position.getY(i);
-        light *= 0.84 + 0.16 * Math.min(1, y / 1.2);
+        light *= 0.84 + 0.16 * Math.min(1, Math.max(0, y - this.baseY) / 1.2);
         const edge = Math.min(position.getX(i) + this.w / 2, this.w / 2 - position.getX(i), position.getZ(i), this.d - position.getZ(i));
         light *= 0.86 + 0.14 * Math.min(1, Math.max(0, edge) / 2);
       }
@@ -163,8 +174,18 @@ function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void 
   r.panel(w / 2 - 0.02, 0, 0, w / 2, 0.1, d, '#8b8378');
   // Ceiling lamps every ~4 m (glowing panels).
   for (let x = -w / 2 + 2; x < w / 2 - 1; x += 4) for (let z = 2; z < d - 1; z += 4) r.panel(x - 0.5, h - 0.03, z - 0.25, x + 0.5, h, z + 0.25, '#ffffff', true);
-  // The doorway: a frame round it, the door itself swung open against the wall (a wooden door)
-  // or a green EXIT sign above it (a glass shop door, slid away), and a doormat.
+  doorway(r);
+  r.structural = false;
+}
+
+/**
+ * The doorway: a frame round it, the door itself swung open against the wall (a wooden door)
+ * or a green EXIT sign above it (a glass shop door, slid away), and a doormat.
+ */
+function doorway(r: Room): void {
+  const dx0 = r.doorX - r.doorHalf;
+  const dx1 = r.doorX + r.doorHalf;
+  const h = r.h;
   r.panel(dx0 - 0.1, 0, 0, dx0, r.doorTop + 0.1, 0.03, '#d8d0bf');
   r.panel(dx1, 0, 0, dx1 + 0.1, r.doorTop + 0.1, 0.03, '#d8d0bf');
   r.panel(dx0, r.doorTop, 0, dx1, r.doorTop + 0.1, 0.03, '#d8d0bf');
@@ -174,7 +195,6 @@ function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void 
   if (r.doorHalf < 0.9) r.panel(dx0 - 0.06, 0.01, 0.04, dx0 - 0.01, r.doorTop - 0.03, 0.04 + 2 * r.doorHalf - 0.08, '#5c3d2a');
   else if (r.doorTop + 0.36 < h) r.panel(r.doorX - 0.3, r.doorTop + 0.16, 0, r.doorX + 0.3, r.doorTop + 0.34, 0.05, '#1fa35a', true);
   r.panel(dx0 + 0.05, 0, 0.1, dx1 - 0.05, 0.01, 1.0, '#7a4b3a');
-  r.structural = false;
 }
 
 /** Windows: bright panels on the side walls (daylight look). */
@@ -193,7 +213,7 @@ function plant(r: Room, x: number, z: number, big = false): void {
 }
 
 function chair(r: Room, x: number, z: number, facing: 1 | -1, color: string): void {
-  r.seats.push({ x, z, dz: facing === 1 ? -1 : 1 });
+  r.seats.push({ x, z, dz: facing === 1 ? -1 : 1, y: r.oy });
   r.box(x - 0.22, 0, z - 0.22, x + 0.22, 0.45, z + 0.22, color, true);
   r.box(x - 0.22, 0.45, z + facing * 0.18, x + 0.22, 0.95, z + facing * 0.22, color);
 }
@@ -520,6 +540,525 @@ export function carSpots(interior: Interior): { x: number; z: number; heading: n
 
 const material = new THREE.MeshBasicMaterial({ vertexColors: true });
 
+// ---------- Apartment blocks: a lobby, a corridor on every floor, stairs and a lift ----------
+
+/** Where the lift runs, in the room frame (x across, z in, y up from the ground floor). */
+export interface LiftShaft {
+  /** The car's floor area. */
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  /** The doors are in the wall from x = x1 to x1 + 0.15, centred on z = doorZ. */
+  doorZ: number;
+  storey: number;
+  floors: number;
+}
+
+const STAIR_STONE = '#cfc8bb';
+const RAIL = '#3d3a36';
+const FLAT_FLOORS: [string, string][] = [
+  ['#c9a77c', '#bf9d72'],
+  ['#ddd6c8', '#d2cbbc'],
+  ['#b88b5e', '#ad8055'],
+  ['#e6e0d2', '#dbd4c5'],
+];
+const CORRIDOR_TILES: [string, string] = ['#d9d4c8', '#cfc9bc'];
+const SHOES = ['#2b2b2b', '#8a3b2e', '#c9a13b', '#3b5f8a', '#d8d2c6', '#6b4a33', '#b5476a'];
+const RANGOLI = ['#e4572e', '#f2b134', '#ffffff', '#d6338a', '#3f8fd2', '#58b368'];
+
+/** Checked floor tiles over a rectangle, the top at the floor (y = 0, plus the room's offset). */
+function tiles(r: Room, x0: number, x1: number, z0: number, z1: number, colours: [string, string], size: number): void {
+  const a = Math.min(x0, x1);
+  const b = Math.max(x0, x1);
+  const nx = Math.max(1, Math.round((b - a) / size));
+  const nz = Math.max(1, Math.round((z1 - z0) / size));
+  if (nx * nz > 500) {
+    r.panel(a, -0.05, z0, b, 0, z1, colours[0]);
+    return;
+  }
+  const tw = (b - a) / nx;
+  const td = (z1 - z0) / nz;
+  for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) r.panel(a + i * tw, -0.05, z0 + k * td, a + (i + 1) * tw - 0.01, 0, z0 + (k + 1) * td - 0.01, colours[(i + k) % 2]);
+}
+
+/**
+ * A window in a wall: a dark frame, bright glass and a cross bar. `axis` = the wall's normal;
+ * `at` = the wall's inner face; `into` = which way the room is (+1 / −1); a0..a1 along the wall.
+ */
+function wallWindow(r: Room, axis: 'x' | 'z', at: number, into: 1 | -1, a0: number, a1: number, y0: number, y1: number): void {
+  const put = (t0: number, t1: number, b0: number, b1: number, c0: number, c1: number, colour: string, glow = false): void => {
+    if (axis === 'x') r.panel(at + into * t0, c0, b0, at + into * t1, c1, b1, colour, glow);
+    else r.panel(b0, c0, at + into * t0, b1, c1, at + into * t1, colour, glow);
+  };
+  put(0, 0.015, a0 + 0.06, a1 - 0.06, y0 + 0.06, y1 - 0.06, '#cfe2ee', true);
+  const frame = '#55595d';
+  put(0, 0.035, a0, a1, y0, y0 + 0.07, frame);
+  put(0, 0.035, a0, a1, y1 - 0.07, y1, frame);
+  put(0, 0.035, a0, a0 + 0.07, y0, y1, frame);
+  put(0, 0.035, a1 - 0.07, a1, y0, y1, frame);
+  const mid = (a0 + a1) / 2;
+  put(0, 0.03, mid - 0.025, mid + 0.025, y0, y1, frame);
+  const bar = y0 + (y1 - y0) * 0.62;
+  put(0, 0.03, a0, a1, bar - 0.025, bar + 0.025, frame);
+}
+
+/** A wall along z (x0..x1 thick) from za to zb, from y up `height`, with doorways (z ranges, 2.1 m high) cut in it. */
+function wallAlongZ(r: Room, x0: number, x1: number, za: number, zb: number, y: number, height: number, colour: string, gaps: [number, number][]): void {
+  let z = za;
+  for (const [g0, g1] of [...gaps].sort((a, b) => a[0] - b[0])) {
+    if (g1 <= za || g0 >= zb) continue;
+    if (g0 > z) r.box(x0, y, z, x1, y + height, g0, colour, true);
+    r.box(x0, y + 2.1, Math.max(g0, za), x1, y + height, Math.min(g1, zb), colour, true);
+    z = g1;
+  }
+  if (z < zb) r.box(x0, y, z, x1, y + height, zb, colour, true);
+}
+
+/** One open flat, furnished: living room by the window, dining table and kitchen by the door. */
+function furnishFlat(r: Room, side: -1 | 1, xo: number, xc: number, z0: number, z1: number, y: number, doorZ: number, ceiling: number): void {
+  const into = side < 0 ? 1 : -1; // from the outer wall towards the corridor
+  const X = (a: number): number => xo + into * a;
+  const width = Math.abs(xc - xo);
+  const length = z1 - z0;
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  tiles(r, xo, xc, z0, z1, r.pick(FLAT_FLOORS), 0.75);
+  for (let z = z0 + 0.7; z + 1.3 < z1 - 0.4; z += 2.4) wallWindow(r, 'x', xo, into, z, z + 1.3, 0.9, 2.2);
+  // Sofa against the front partition, facing in; coffee table, rug and TV opposite.
+  const a0 = 0.45;
+  const a1 = Math.min(width - 1.0, 2.8);
+  if (a1 - a0 > 1.3) {
+    const sofa = r.pick(['#6d7c8c', '#8a5a44', '#5f7a5a', '#7a6a8a']);
+    r.box(X(a0), 0, z0 + 0.1, X(a1), 0.42, z0 + 0.9, sofa, true);
+    r.box(X(a0), 0.42, z0 + 0.1, X(a1), 0.92, z0 + 0.36, sofa);
+    for (let a = a0 + 0.45; a < a1 - 0.3; a += 0.8) r.seats.push({ x: X(a), z: z0 + 0.7, dz: 1, y });
+    const mid = (a0 + a1) / 2;
+    r.panel(X(a0 - 0.15), 0.001, z0 + 1.0, X(a1 + 0.15), 0.012, z0 + 2.5, r.pick(['#a8463a', '#3e5f8a', '#7a5c2e', '#4f7a5a']));
+    table(r, X(mid), z0 + 1.65, 0.9, 0.5, '#8a6544', 0.42);
+    if (length > 4.3) {
+      r.box(X(a0), 0, z1 - 0.5, X(a1), 0.5, z1 - 0.1, '#5b4636', true);
+      r.panel(X(mid - 0.65), 0.75, z1 - 0.36, X(mid + 0.65), 1.5, z1 - 0.32, '#15181d');
+    }
+    // Family photos on the wall over the sofa.
+    r.panel(X(a0 + 0.3), 1.35, z0 + 0.075, X(a0 + 0.75), 1.75, z0 + 0.09, '#6b4a33');
+    r.panel(X(a0 + 0.95), 1.45, z0 + 0.075, X(a0 + 1.3), 1.8, z0 + 0.09, '#8a6a4c');
+  }
+  // Dining table nearer the corridor.
+  if (width > 4.3 && length > 4.2) {
+    const a = width - 1.5;
+    const z = z0 + length * 0.55;
+    table(r, X(a), z, 1.2, 0.75, '#7c5a3c');
+    chair(r, X(a), z - 0.65, -1, '#6a4c33');
+    chair(r, X(a), z + 0.65, 1, '#6a4c33');
+  }
+  // Kitchen counter along the corridor wall, and a fridge in the corner.
+  if (doorZ - 0.75 - (z0 + 0.15) > 1.0) {
+    r.box(X(width - 0.62), 0, z0 + 0.15, X(width - 0.05), 0.9, doorZ - 0.75, '#d6d0c4', true);
+    r.panel(X(width - 0.64), 0.9, z0 + 0.15, X(width - 0.05), 0.94, doorZ - 0.75, '#3a3a3a');
+    r.panel(X(width - 0.55), 0.94, z0 + 0.4, X(width - 0.12), 0.96, z0 + 0.9, '#202020');
+  }
+  if (z1 - 0.85 > doorZ + 0.75) r.box(X(width - 0.7), 0, z1 - 0.8, X(width - 0.05), 1.8, z1 - 0.12, '#e4e6e8', true);
+  plant(r, X(0.4), z1 - 0.5);
+  // A small prayer shelf with a lamp, and the ceiling light.
+  r.panel(X(width * 0.5 - 0.3), 1.3, z1 - 0.1, X(width * 0.5 + 0.3), 1.34, z1 - 0.075, '#7b5a40');
+  r.panel(X(width * 0.5 - 0.04), 1.34, z1 - 0.1, X(width * 0.5 + 0.04), 1.42, z1 - 0.09, '#ffcf6b', true);
+  r.panel(X(width * 0.5 - 0.5), ceiling - y - 0.02, z0 + length / 2 - 0.3, X(width * 0.5 + 0.5), ceiling - y, z0 + length / 2 + 0.3, '#ffffff', true);
+  r.oy = 0;
+}
+
+/** A shut flat door seen from the corridor: door, number plate, doormat, shoes, sometimes a rangoli. */
+function shutFlat(r: Room, face: number, toward: 1 | -1, doorZ: number, y: number): void {
+  r.structural = false;
+  r.oy = y;
+  const at = (t0: number, t1: number): [number, number] => [face + toward * t0, face + toward * t1];
+  const [d0, d1] = at(0, 0.03);
+  r.panel(d0, 0, doorZ - 0.48, d1, 2.05, doorZ + 0.48, r.pick(['#5c3d2a', '#6b4a33', '#7b5a40', '#4a3426']));
+  const [p0, p1] = at(0.03, 0.045);
+  r.panel(p0, 1.55, doorZ - 0.09, p1, 1.67, doorZ + 0.09, '#c9b06a');
+  r.panel(p0, 0.95, doorZ + 0.3, p1, 1.08, doorZ + 0.36, '#c9b06a');
+  const [m0, m1] = at(0.05, 0.6);
+  if (r.rng() < 0.35) {
+    // A rangoli: coloured squares, one inside the other.
+    const [k0, k1] = at(0.65, 1.35);
+    const c = (k0 + k1) / 2;
+    for (let i = 0; i < 4; i++) {
+      const s = 0.34 - i * 0.08;
+      r.panel(c - s, 0.001 + i * 0.002, doorZ - s, c + s, 0.003 + i * 0.002, doorZ + s, r.pick(RANGOLI));
+    }
+  }
+  r.panel(m0, 0.001, doorZ - 0.45, m1, 0.012, doorZ + 0.45, r.pick(['#7a4b3a', '#4b5e7a', '#7a6a3a']));
+  // Shoes and slippers left outside, by the door.
+  const pairs = 1 + Math.floor(r.rng() * 3);
+  for (let i = 0; i < pairs; i++) {
+    const [s0, s1] = at(0.12 + i * 0.22, 0.22 + i * 0.22);
+    const z = doorZ + 0.6 + r.rng() * 0.2;
+    const colour = r.pick(SHOES);
+    r.panel(s0, 0, z, s1, 0.07, z + 0.11, colour);
+    r.panel(s0, 0, z + 0.14, s1, 0.07, z + 0.25, colour);
+  }
+  r.oy = 0;
+}
+
+/**
+ * An apartment block, every floor of it: a lobby on the ground floor (letterboxes, a security
+ * desk), a corridor up the middle of each floor with the flats' doors (one flat on each floor is
+ * open and furnished), switchback stairs with a landing between floors, and a lift shaft whose
+ * car runs up and down (see `Lift`). Returns the shaft and where each floor's sign goes.
+ */
+function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[] } {
+  const { w, d } = r;
+  const H = storeys * storey;
+  const wall = r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']);
+  const inner = '#ece6da';
+  const concrete = '#9c9a95';
+  const cw = 1.8;
+  const c0 = Math.min(Math.max(r.doorX - cw / 2, -w / 2 + 2.0), w / 2 - 2.55 - cw);
+  const c1 = c0 + cw;
+  const coreZ = d - 5.6; // a metre of floor in front of the stairs
+  const stairZ = d - 4.6;
+  const landZ = d - 1.3;
+  const s0 = c1 + 0.06;
+  const s1 = c1 + 2.4;
+  const sm = (s0 + s1) / 2;
+  const L0 = c0 - 1.85;
+  const L1 = c0 - 0.15;
+  const Z0 = d - 2.25;
+  const Z1 = d - 0.35;
+  const doorZ = (Z0 + Z1) / 2;
+  const signs: { x: number; y: number; z: number; floor: number }[] = [];
+
+  r.structural = true;
+  // Ground slab, outer walls all the way up (the doorway on the ground floor), roof ceiling.
+  r.box(-w / 2 - T, -0.6, -T, w / 2 + T, -0.05, d + T, '#a39d92', true);
+  r.box(-w / 2 - T, 0, -T, -w / 2, H, d + T, wall, true);
+  r.box(w / 2, 0, -T, w / 2 + T, H, d + T, wall, true);
+  r.box(-w / 2, 0, d, w / 2, H, d + T, wall, true);
+  const dx0 = r.doorX - r.doorHalf;
+  const dx1 = r.doorX + r.doorHalf;
+  r.box(-w / 2, 0, -T, dx0, H, 0, wall, true);
+  r.box(dx1, 0, -T, w / 2, H, 0, wall, true);
+  r.box(dx0, r.doorTop, -T, dx1, H, 0, wall, true);
+  r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
+  doorway(r);
+  // The lift shaft (bare concrete inside) and the stairwell's outer wall, full height.
+  r.box(c0 - 2.0, 0, Z0 - 0.15, L0, H, d, concrete, true);
+  r.box(L0, 0, Z0 - 0.15, L1, H, Z0, concrete, true);
+  r.box(L0, 0, Z1, L1, H, d, concrete, true);
+  r.box(s1, 0, coreZ, s1 + 0.15, H, d, inner, true);
+
+  for (let k = 0; k < storeys; k++) {
+    const y = k * storey;
+    const ceiling = k < storeys - 1 ? (k + 1) * storey - 0.25 : H;
+    const tall = ceiling - y + 0.25;
+    r.baseY = y;
+    r.oy = 0;
+    r.structural = true;
+    if (k > 0) {
+      // The floor slab, with holes for the stairs and the lift.
+      const slab = (x0: number, x1: number, z0: number, z1: number): void => r.box(x0, y - 0.25, z0, x1, y - 0.05, z1, '#efede8', true);
+      slab(-w / 2, w / 2, 0, stairZ);
+      slab(-w / 2, L0, stairZ, d);
+      slab(L1, c1 + 0.06, stairZ, d);
+      slab(s1, w / 2, stairZ, d);
+      slab(L0, L1, stairZ, Z0);
+      slab(L0, L1, Z1, d);
+    }
+    // Floor tiles where you walk: the whole ground floor; the corridor and stair landing above.
+    r.oy = y;
+    if (k === 0) tiles(r, -w / 2, w / 2, 0, d, CORRIDOR_TILES, 1.0);
+    else {
+      tiles(r, c0, c1, 0, d, CORRIDOR_TILES, 0.9);
+      tiles(r, c1, s1, coreZ, stairZ, CORRIDOR_TILES, 0.9);
+    }
+    r.oy = 0;
+
+    // Flats on both sides of the corridor (behind a lobby on the ground floor).
+    const zs = k === 0 ? 3.4 : 0;
+    const room = coreZ - zs >= 3;
+    const leftFlats = room && c0 - 0.15 + w / 2 >= 2.6;
+    const rightFlats = room && w / 2 - (c1 + 0.15) >= 2.6;
+    const sides: (-1 | 1)[] = [];
+    if (leftFlats) sides.push(-1);
+    if (rightFlats) sides.push(1);
+    const openSide = sides.length > 0 ? sides[Math.floor(r.rng() * sides.length)] : 0;
+    const leftGaps: [number, number][] = [[doorZ - 0.55, doorZ + 0.55]];
+    const rightGaps: [number, number][] = [];
+    const shut: { face: number; toward: 1 | -1; z: number }[] = [];
+    const open: { side: -1 | 1; xo: number; xc: number; z0: number; z1: number; z: number }[] = [];
+    for (const side of [-1, 1] as const) {
+      const has = side < 0 ? leftFlats : rightFlats;
+      const xo = side < 0 ? -w / 2 : w / 2;
+      const xc = side < 0 ? c0 - 0.15 : c1 + 0.15;
+      if (!has) continue;
+      const n = Math.max(1, Math.floor((coreZ - zs) / 5));
+      const length = (coreZ - zs) / n;
+      const pick = Math.floor(r.rng() * n);
+      // Back wall (towards the core), the front wall facing the lobby, and partitions.
+      r.box(xo, y, coreZ - 0.15, xc, y + tall, coreZ, inner, true);
+      if (zs > 0) r.box(xo, y, zs - 0.15, xc, y + tall, zs, inner, true);
+      for (let i = 1; i < n; i++) r.box(xo, y, zs + i * length - 0.075, xc, y + tall, zs + i * length + 0.075, inner, true);
+      for (let i = 0; i < n; i++) {
+        const z = zs + (i + 0.5) * length;
+        if (side === openSide && i === pick) {
+          (side < 0 ? leftGaps : rightGaps).push([z - 0.5, z + 0.5]);
+          open.push({ side, xo, xc, z0: zs + i * length + (i > 0 ? 0.075 : 0), z1: zs + (i + 1) * length - (i < n - 1 ? 0.075 : 0.15), z });
+        } else shut.push({ face: side < 0 ? c0 : c1, toward: side < 0 ? 1 : -1, z });
+      }
+    }
+    // The corridor's walls: the left one runs to the back (the lift doors are in it); the right
+    // one stops at the stairs. Where a side has no flats the wall closes it off (the ground
+    // floor's lobby stays open).
+    const leftFrom = leftFlats ? zs : k === 0 ? coreZ : 0;
+    const rightFrom = rightFlats ? zs : k === 0 ? coreZ : 0;
+    wallAlongZ(r, c0 - 0.15, c0, leftFrom, d, y, tall, inner, leftGaps);
+    if (rightFrom < coreZ) wallAlongZ(r, c1, c1 + 0.15, rightFrom, coreZ, y, tall, inner, rightGaps);
+    if (k === 0 && !leftFlats) r.box(-w / 2, y, coreZ - 0.15, c0 - 0.15, y + tall, coreZ, inner, true);
+    if (k === 0 && !rightFlats) r.box(c1, y, coreZ - 0.15, w / 2, y + tall, coreZ, inner, true);
+    // The stairwell's side towards the corridor is walled, so nobody steps off a flight.
+    r.box(c1, y, stairZ, s0, y + tall, d, inner, true);
+    // Lift: the indicator over the doors, the call button, a frame.
+    r.panel(c0, y + 2.18, doorZ - 0.16, c0 + 0.02, y + 2.32, doorZ + 0.16, '#ffb347', true);
+    r.panel(c0, y + 1.0, doorZ + 0.72, c0 + 0.02, y + 1.22, doorZ + 0.84, '#8d9296');
+    r.panel(c0 + 0.02, y + 1.08, doorZ + 0.76, c0 + 0.03, y + 1.14, doorZ + 0.8, '#ffcf6b', true);
+    r.panel(c0, y, doorZ - 0.62, c0 + 0.03, y + 2.16, doorZ - 0.55, '#8d9296');
+    r.panel(c0, y, doorZ + 0.55, c0 + 0.03, y + 2.16, doorZ + 0.62, '#8d9296');
+    r.panel(c0, y + 2.1, doorZ - 0.62, c0 + 0.03, y + 2.16, doorZ + 0.62, '#8d9296');
+    signs.push({ x: c0 + 0.012, y: y + 1.5, z: doorZ - 1.35, floor: k });
+    // Stairs up to the next floor: a flight going back, a landing, a flight coming forward.
+    if (k < storeys - 1) {
+      const steps = 9;
+      const rise = storey / (2 * steps);
+      const run = (landZ - stairZ) / steps;
+      for (let i = 0; i < steps; i++) {
+        const ta = y + (i + 1) * rise;
+        r.box(s0, Math.max(y, ta - 0.28), stairZ + i * run, sm - 0.06, ta, stairZ + (i + 1) * run, STAIR_STONE, true);
+        const tb = y + storey / 2 + (i + 1) * rise;
+        r.box(sm + 0.06, tb - 0.28, landZ - (i + 1) * run, s1, tb, landZ - i * run, STAIR_STONE, true);
+        // Handrail along the outer wall.
+        r.panel(s1 - 0.06, tb + 0.85, landZ - (i + 1) * run, s1 - 0.02, tb + 0.9, landZ - i * run, RAIL);
+      }
+      r.box(s0, y + storey / 2 - 0.25, landZ, s1, y + storey / 2, d, STAIR_STONE, true);
+      r.box(sm - 0.06, y, stairZ, sm + 0.06, y + storey, landZ, inner, true); // between the flights
+      r.panel(sm - 0.07, y + storey - 0.05, stairZ, sm + 0.07, y + storey, landZ, RAIL);
+      if (k === 0) r.box(sm + 0.06, 0, stairZ, s1, storey / 2 - 0.3, landZ, inner, true); // nobody walks under the first flight
+      r.panel(sm - 0.4, y + storey / 2 + 2.3, landZ + 0.3, sm + 0.4, y + storey / 2 + 2.32, d - 0.3, '#ffffff', true); // landing light
+    } else {
+      // Top floor: a railing where the last flight came up.
+      r.box(s0, y, stairZ, sm, y + 1.0, stairZ + 0.06, RAIL, true);
+    }
+    // Corridor lights, and a window at its front end (upper floors).
+    for (let z = 1.5; z < d - 0.5; z += 3) r.panel(c0 + 0.6, ceiling - 0.02, z - 0.2, c1 - 0.6, ceiling, z + 0.2, '#ffffff', true);
+    if (k > 0) wallWindow(r, 'z', 0, 1, c0 + 0.25, c1 - 0.25, y + 0.9, y + 2.2);
+    // The flats: shut doors with shoes outside; one open and furnished.
+    for (const s of shut) shutFlat(r, s.face, s.toward, s.z, y);
+    for (const f of open) furnishFlat(r, f.side, f.xo, f.xc, f.z0, f.z1, y, f.z, ceiling);
+    r.structural = true;
+    if (k === 0) {
+      // The lobby: letterboxes, a security desk with a chair, a notice board, a plant.
+      r.structural = false;
+      for (let i = 0; i < 4; i++)
+        for (let j = 0; j < 3; j++) {
+          r.panel(-w / 2, 1.0 + j * 0.24, 0.9 + i * 0.36, -w / 2 + 0.14, 1.2 + j * 0.24, 1.22 + i * 0.36, '#8f969c');
+          r.panel(-w / 2 + 0.14, 1.12 + j * 0.24, 0.98 + i * 0.36, -w / 2 + 0.15, 1.14 + j * 0.24, 1.14 + i * 0.36, '#2a2c2e');
+        }
+      counter(r, w / 2 - 1.1, 2.4, 1.4, '#7a5c40');
+      chair(r, w / 2 - 1.1, 3.05, 1, '#2f4f6f');
+      r.panel(w / 2 - 0.03, 1.2, 0.6, w / 2, 1.9, 1.5, '#b08a5a');
+      for (let i = 0; i < 3; i++) r.panel(w / 2 - 0.04, 1.35 + (i % 2) * 0.2, 0.7 + i * 0.25, w / 2 - 0.03, 1.6 + (i % 2) * 0.2, 0.9 + i * 0.25, '#f4f1e8');
+      plant(r, -w / 2 + 0.5, 3.0, true);
+      for (let x = -w / 2 + 1.5; x < w / 2 - 1; x += 3) r.panel(x - 0.4, ceiling - 0.02, 1.4, x + 0.4, ceiling, 1.9, '#ffffff', true);
+    }
+  }
+  r.structural = false;
+  r.baseY = 0;
+  return { shaft: { x0: L0, x1: L1, z0: Z0, z1: Z1, doorZ, storey, floors: storeys }, signs };
+}
+
+const LIFT_DOOR = new THREE.MeshBasicMaterial({ color: 0xb4bbc1 });
+
+/**
+ * The lift: a car that runs up and down its shaft, and a pair of sliding doors on every floor.
+ * Walk up to the doors and it comes to your floor and opens; step in and pick a floor (the
+ * floor panel on screen, or 0–9); the doors close, it goes, and opens there. Positions are in
+ * the room frame; the car and doors are drawn in the inside's group.
+ */
+export class Lift {
+  readonly group = new THREE.Group();
+  readonly shaft: LiftShaft;
+  /** The car's floor height (room frame), the floor it is at, and where it is going. */
+  y = 0;
+  at = 0;
+  target: number | null = null;
+  state: 'idle' | 'opening' | 'open' | 'closing' | 'moving' = 'idle';
+  /** The solid boxes changed (doors opened or shut, the car came or went): refresh the physics. */
+  changed = true;
+  private open = 0;
+  private wait = 0;
+  private speed = 0;
+  private key = '';
+  private readonly car: THREE.Mesh;
+  private readonly doors: THREE.Mesh[] = [];
+  private readonly panel = new THREE.BoxGeometry(0.05, 2.1, 0.56);
+
+  constructor(shaft: LiftShaft) {
+    this.shaft = shaft;
+    const r = new Room(1, 1, 1, () => 0.5);
+    r.structural = true;
+    const { x0, x1, z0, z1 } = shaft;
+    r.box(x0, -0.1, z0, x1, 0, z1, '#4f5256');
+    r.box(x0, 0, z0, x0 + 0.04, 2.3, z1, '#c3c8cc');
+    r.panel(x0 + 0.04, 0.9, z0 + 0.25, x0 + 0.05, 2.1, z1 - 0.25, '#dde4e8', true); // mirror
+    r.box(x0, 0, z0, x1, 2.3, z0 + 0.04, '#c3c8cc');
+    r.box(x0, 0, z1 - 0.04, x1, 2.3, z1, '#c3c8cc');
+    r.box(x0, 2.3, z0, x1, 2.36, z1, '#d7dbde');
+    r.panel(x0 + 0.3, 2.28, z0 + 0.4, x1 - 0.3, 2.3, z1 - 0.4, '#ffffff', true);
+    r.panel(x0 + 0.05, 0.88, z0 + 0.3, x0 + 0.09, 0.92, z1 - 0.3, '#8d9296'); // handrail
+    r.panel(x1 - 0.3, 0.95, z0 + 0.04, x1 - 0.1, 1.45, z0 + 0.06, '#2a2c2e'); // button panel
+    for (let i = 0; i < 5; i++) r.panel(x1 - 0.23, 1.0 + i * 0.08, z0 + 0.06, x1 - 0.17, 1.05 + i * 0.08, z0 + 0.065, '#ffcf6b', true);
+    const geometry = mergeGeometries(r.parts);
+    for (const part of r.parts) part.dispose();
+    this.car = new THREE.Mesh(geometry, material);
+    this.group.add(this.car);
+    for (let k = 0; k < shaft.floors; k++)
+      for (const side of [-1, 1]) {
+        const door = new THREE.Mesh(this.panel, LIFT_DOOR);
+        door.position.set(x1 + 0.075, k * shaft.storey + 1.05, shaft.doorZ + side * 0.275);
+        this.doors.push(door);
+        this.group.add(door);
+      }
+  }
+
+  /** Standing in the car (room frame). */
+  inCar(p: THREE.Vector3): boolean {
+    const s = this.shaft;
+    return p.x > s.x0 && p.x < s.x1 + 0.05 && p.z > s.z0 && p.z < s.z1 && Math.abs(p.y - this.y) < 1.2;
+  }
+
+  floorOf(y: number): number {
+    return Math.max(0, Math.min(this.shaft.floors - 1, Math.round(y / this.shaft.storey)));
+  }
+
+  /** Go to this floor (from inside the car). */
+  choose(floor: number): void {
+    if (floor < 0 || floor >= this.shaft.floors) return;
+    if (floor === this.at && this.state !== 'moving' && this.state !== 'closing') return;
+    this.target = floor;
+    if (this.state === 'open' || this.state === 'opening') this.state = 'closing';
+  }
+
+  /** p = you (room frame), or null when you are not in the building. */
+  update(dt: number, p: THREE.Vector3 | null): void {
+    const s = this.shaft;
+    const inside = p !== null && this.inCar(p);
+    const floor = p ? this.floorOf(p.y) : -1;
+    // Waiting at the doors on your floor: the lift comes to you.
+    const waiting = p !== null && !inside && Math.abs(p.y - floor * s.storey) < 1.2 && p.x > s.x1 && p.x < s.x1 + 2.7 && Math.abs(p.z - s.doorZ) < 1.6;
+    if (waiting && this.target === null) {
+      if (floor !== this.at) this.target = floor;
+      else if (this.state === 'idle' || this.state === 'closing') this.state = 'opening';
+    }
+    switch (this.state) {
+      case 'idle':
+        if (this.target !== null && this.target !== this.at) this.state = 'moving';
+        else if (this.target === this.at) {
+          this.target = null;
+          this.state = 'opening';
+        }
+        break;
+      case 'opening':
+        this.open = Math.min(1, this.open + dt / 0.9);
+        if (this.open >= 1) {
+          this.state = 'open';
+          this.wait = 0;
+        }
+        break;
+      case 'open':
+        if (this.target !== null && this.target !== this.at) this.state = 'closing';
+        else if (inside || waiting) this.wait = 0;
+        else if ((this.wait += dt) > 4) this.state = 'closing';
+        break;
+      case 'closing':
+        if (this.target === null && (waiting || inside)) {
+          this.state = 'opening';
+          break;
+        }
+        this.open = Math.max(0, this.open - dt / 0.9);
+        if (this.open <= 0) this.state = this.target !== null && this.target !== this.at ? 'moving' : 'idle';
+        break;
+      case 'moving': {
+        const goal = (this.target ?? this.at) * s.storey;
+        const left = goal - this.y;
+        this.speed = Math.min(2.4, this.speed + 1.6 * dt, Math.sqrt(2 * 1.6 * Math.abs(left)) + 0.05);
+        this.y += Math.sign(left) * Math.min(Math.abs(left), this.speed * dt);
+        if (Math.abs(goal - this.y) < 0.002) {
+          this.y = goal;
+          this.at = this.target ?? this.at;
+          this.target = null;
+          this.speed = 0;
+          this.state = 'opening';
+        }
+        break;
+      }
+    }
+    // The car and the doors.
+    this.car.position.y = this.y;
+    for (let k = 0; k < s.floors; k++) {
+      const amount = k === this.at && this.state !== 'moving' ? this.open : 0;
+      this.doors[k * 2].position.z = s.doorZ - 0.275 - 0.5 * amount;
+      this.doors[k * 2 + 1].position.z = s.doorZ + 0.275 + 0.5 * amount;
+    }
+    const key = `${this.state === 'moving' ? 'm' : this.at}:${this.open > 0.5 ? 1 : 0}`;
+    if (key !== this.key) {
+      this.key = key;
+      this.changed = true;
+    }
+  }
+
+  /** Solid boxes (room frame): the car's floor while it stands at a floor, and every shut door. */
+  solids(): { x: number; y: number; z: number; hx: number; hy: number; hz: number }[] {
+    const s = this.shaft;
+    const out: { x: number; y: number; z: number; hx: number; hy: number; hz: number }[] = [];
+    if (this.state !== 'moving') out.push({ x: (s.x0 + s.x1) / 2, y: this.y - 0.1, z: (s.z0 + s.z1) / 2, hx: (s.x1 - s.x0) / 2, hy: 0.1, hz: (s.z1 - s.z0) / 2 });
+    for (let k = 0; k < s.floors; k++) {
+      if (k === this.at && this.state !== 'moving' && this.open > 0.5) continue;
+      out.push({ x: s.x1 + 0.075, y: k * s.storey + 1.05, z: s.doorZ, hx: 0.075, hy: 1.05, hz: 0.55 });
+    }
+    return out;
+  }
+
+  dispose(): void {
+    this.car.geometry.dispose();
+    this.panel.dispose();
+  }
+}
+
+/** A floor's sign by the lift: the number big, "FLOOR" and ಮಹಡಿ (Kannada) beside it. */
+function floorSign(floor: number): THREE.MeshBasicMaterial {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 156;
+  const c = canvas.getContext('2d') as CanvasRenderingContext2D;
+  c.fillStyle = '#24507a';
+  c.fillRect(0, 0, 256, 156);
+  c.strokeStyle = '#f2f2ee';
+  c.lineWidth = 6;
+  c.strokeRect(8, 8, 240, 140);
+  c.fillStyle = '#f2f2ee';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.font = 'bold 96px sans-serif';
+  c.fillText(floor === 0 ? 'G' : String(floor), 80, 82);
+  c.font = 'bold 28px sans-serif';
+  c.fillText('FLOOR', 184, 62);
+  c.font = '26px sans-serif';
+  c.fillText('ಮಹಡಿ', 184, 102);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: texture });
+}
+
 /**
  * Builds the inside of a building where it stands: a room that fits inside its walls (no
  * bigger than its kind's largest), its doorway exactly where the building's door is, under its
@@ -531,12 +1070,16 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const layout = LAYOUTS[door.kind];
   const half = door.wide ? 1.2 : 0.55;
   const doorTop = door.wide ? 2.6 : 2.15;
+  // Homes of three floors or more are apartment blocks (when there is room for a corridor,
+  // stairs and a lift): every floor is built, up to 12, no wider or deeper than 30 m.
+  const block = door.kind === 'home' && door.floors >= 3 && door.right - door.left >= 6.4 && door.depth - 2 * T - INSET >= 8.5;
+  const most = block ? [30, 30] : layout.max;
   // Across: as wide as the building allows, keeping the doorway inside.
   let left = door.left;
   let right = door.right;
-  if (right - left > layout.max[0]) {
-    let a = -layout.max[0] / 2;
-    let b = layout.max[0] / 2;
+  if (right - left > most[0]) {
+    let a = -most[0] / 2;
+    let b = most[0] / 2;
     if (a < left) {
       b += left - a;
       a = left;
@@ -549,7 +1092,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     right = b;
   }
   const w = right - left;
-  const d = Math.min(door.depth, layout.max[1]) - T - INSET - T;
+  const d = Math.min(door.depth, most[1]) - T - INSET - T;
   if (w < 2.2 || d < 2.2) return null;
   const centre = (left + right) / 2;
   // The walls along the door wall and into the building (world).
@@ -563,16 +1106,34 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     for (let v = 0.5; v <= d + 0.01; v += Math.max(1, d / 6)) floorY = Math.max(floorY, ground(door.x + ux * u - nx * v, door.z + uz * u - nz * v));
   }
   floorY = Math.min(floorY, door.y + 0.35) + 0.03;
-  const height = Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const rng = makeRng(hash32(door.id, 4242));
+  const apartmentBlock = block && w >= 6.4 && d >= 8.5;
+  const storeys = apartmentBlock ? Math.min(door.floors, 12) : 1;
+  const storey = apartmentBlock ? Math.max(2.8, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
+  const height = apartmentBlock ? storeys * storey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const room = new Room(w, d, height, rng, -centre, half, doorTop);
-  layout.build(room);
+  let lift: Lift | null = null;
+  const extras: THREE.Object3D[] = [];
+  const signMaterials: THREE.MeshBasicMaterial[] = [];
+  const signGeometry = new THREE.PlaneGeometry(0.9, 0.55).rotateY(Math.PI / 2);
+  if (apartmentBlock) {
+    const plan = apartments(room, storeys, storey);
+    lift = new Lift(plan.shaft);
+    extras.push(lift.group);
+    for (const sign of plan.signs) {
+      const signMaterial = floorSign(sign.floor);
+      signMaterials.push(signMaterial);
+      const plate = new THREE.Mesh(signGeometry, signMaterial);
+      plate.position.set(sign.x, sign.y, sign.z);
+      extras.push(plate);
+    }
+  } else layout.build(room);
   const geometry = mergeGeometries(room.parts);
   for (const part of room.parts) part.dispose();
   const mesh = new THREE.Mesh(geometry, material);
 
   const group = new THREE.Group();
-  group.add(mesh);
+  group.add(mesh, ...extras);
   // Room frame: x across (= along the door wall), z into the building; its door wall stands
   // just inside the building's own wall.
   const inward = T + INSET;
@@ -590,7 +1151,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const local = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(inverse);
   const seats = room.seats.map((s) => {
     const p = toWorld(s.x, 0, s.z);
-    return { x: p.x, y: floorY, z: p.z, facing: s.dz === -1 ? group.rotation.y : group.rotation.y + Math.PI };
+    return { x: p.x, y: floorY + (s.y ?? 0), z: p.z, facing: s.dz === -1 ? group.rotation.y : group.rotation.y + Math.PI };
   });
   return {
     door,
@@ -598,6 +1159,14 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     floorY,
     solids,
     seats,
+    lift,
+    local,
+    liftSolids() {
+      return (lift?.solids() ?? []).map((s) => {
+        const p = toWorld(s.x, s.y, s.z);
+        return { x: p.x, y: p.y, z: p.z, hx: s.hx, hy: s.hy, hz: s.hz, rotation: group.rotation.y };
+      });
+    },
     hole: { x: door.x, y: door.y, z: door.z, face: door.face, half: half + 0.03, top: doorTop + 0.04, depth: inward + 0.06 },
     contains(x, y, z) {
       const p = local(x, y, z);
@@ -609,6 +1178,12 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     },
     dispose() {
       geometry.dispose();
+      lift?.dispose();
+      signGeometry.dispose();
+      for (const m of signMaterials) {
+        m.map?.dispose();
+        m.dispose();
+      }
       group.removeFromParent();
     },
   };

@@ -35,6 +35,16 @@ The owner can no longer use the model that did most of this work, so this sectio
 - Checked in game (my own dev server on port 5174, daylight): sleeping → head up at 3.6 m; trotting away when you walk up to 1.8 m (legs in a diagonal trot); walking; sniffing (head down); turning to you and wagging at 3.6 m; lying down in rain (`?rain=1`).
 - Not checked / limits: the dogs at benches and the wet-fur darkening were added last and not yet seen on screen. Getting up and lying down is an instant swap between the two meshes (no animation). Shadows don't move the legs (the shadow pass uses the still shape). Dogs walk through shelters, carts and people (no collisions). 8 of the first 25 dogs sit beyond the walkable edge (seen, not reached). No barking yet. Dogs are the same for everyone only because they are seeded; their moves are not shared over the network.
 
+## Apartment blocks: every floor, stairs and a lift (2026-11-24)
+
+- **Owner's ask: "in the apartments we walk in and then find lifts and stairs to go up to different floors".** Homes of 3+ floors (with room for it: at least 6.4 m wide and 8.5 m deep inside) are built as a whole block (`apartments()` in `world/interiors.ts`), up to 12 floors and 30 × 30 m. 646 such blocks in the test area.
+- **Each floor**: a corridor up the middle with shut flat doors (brass number plates, doormats, shoes left outside, sometimes a rangoli); one flat per floor is open and furnished (sofa, coffee table, rug, TV, dining table, kitchen counter, fridge, prayer shelf, windows). Ground floor: a lobby with letterboxes, a security desk and chair, a notice board, a plant. A blue floor sign by the lift ("3 FLOOR ಮಹಡಿ", drawn on a canvas).
+- **Stairs**: switchback flights at the back (9 steps up to a landing, 9 more to the next floor), solid steps you climb with the normal step-up, walls so nobody steps off a flight, a railing on the top floor.
+- **Lift** (`Lift` class): walk up to its doors and it comes to your floor and opens; step in and a floor panel shows on screen (G, 1, 2…; number keys also work, but only inside the car, so 1–4 aren't emotes there). Doors close, the car runs (eased, up to 2.4 m/s) carrying you (`LocalPlayer.hold`: no physics while carried), and opens at your floor. Shut doors and the car floor are their own colliders (`PhysicsWorld.setLift`), refreshed only when they change.
+- Checked in game, on a 4-floor block: walked in, the lift opened as I came up, stepped in, the panel showed, picked 3 (through the same function the button calls; the mouse click itself could not be approved in my test browser), rode up and was set down at floor 3, walked out by the "3" sign; walked down the stairs from 3 to 2 and up from G to 1. Building the block took 8 ms.
+- Fixed while testing: the floor in front of the stairs was only 0.4 m deep (narrower than you), now 1 m.
+- Not checked: a screenshot of the stairwell itself; a 10+ floor block; the panel on a phone. Offices, hotels and malls with many floors are still single rooms (no stairs/lift yet). Houses of 2 floors have no stairs yet.
+
 ## Walk-in buildings, no button (2026-11-23)
 
 - **Owner's ask: "go in any house without pressing buttons and just walk in", like GTA.** The old way (press "Go inside", teleport to a room 60 m under the street, press "Go outside") is gone.

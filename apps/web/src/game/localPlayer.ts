@@ -133,9 +133,20 @@ export class LocalPlayer {
   emote = 0;
   /** Sitting on a seat: where, and which way you face. */
   seat: { x: number; y: number; z: number; facing: number } | null = null;
+  /** Carried (riding a lift): drawn here, standing still, no physics until let go. */
+  hold: { x: number; y: number; z: number } | null = null;
 
   update(dt: number, moveX: number, moveY: number, yaw: number, groundAt: (x: number, z: number) => number): void {
     const moving = Math.hypot(moveX, moveY) > 0.08;
+    if (this.hold) {
+      this.x = this.hold.x;
+      this.y = this.hold.y;
+      this.z = this.hold.z;
+      this.smoothY = this.y;
+      this.speed = 0;
+      this.avatar.update(dt, this.x, this.y, this.z, { speed: 0, heading: null, grounded: true, emote: 0 });
+      return;
+    }
     if (this.seat) {
       if (!moving) {
         // Sitting: no physics, the body stays put.

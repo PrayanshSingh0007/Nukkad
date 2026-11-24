@@ -320,6 +320,9 @@ export class Game {
   private interior: Interior | null = null;
   /** Called with a short message for the player ("Inside: Mango Hypermarket"). */
   onToast: ((text: string) => void) | null = null;
+  /** In a lift's car: the floors you can pick (G, 1, 2…), where it is and where it is going; null = not in a lift. */
+  onLift: ((lift: { floors: number; at: number; target: number | null } | null) => void) | null = null;
+  private liftShown = '';
   /** The named road you have just arrived on (null = off the named roads). */
   onStreet: ((name: string | null) => void) | null = null;
   private streets: StreetFinder | null = null;
@@ -393,8 +396,9 @@ export class Game {
       this.sound.unlock();
       if (event.code === 'KeyH' && !event.repeat) this.setHorn(true);
       if (event.code === 'KeyE' || event.code === 'KeyF') this.toggleDrive();
+      // In a lift the number keys pick floors (the screen's panel handles them), not emotes.
       const emote = ({ Digit1: 'wave', Digit2: 'dance', Digit3: 'sit', Digit4: 'talk' } as Record<string, Emote>)[event.code];
-      if (emote) this.doEmote(emote);
+      if (emote && !this.liftShown) this.doEmote(emote);
     });
     window.addEventListener('keyup', (event) => {
       if (event.code === 'KeyH') this.setHorn(false);
@@ -544,7 +548,7 @@ export class Game {
    * in the doorway or inside, the building's outer walls let you pass and the inside's own walls
    * (with the doorway gap) hold you. Called every frame before you move.
    */
-  private updateBuilding(): void {
+  private updateBuilding(dt: number): void {
     const player = this.player;
     const physics = this.physics;
     const world = this.world;
@@ -570,6 +574,46 @@ export class Game {
       // Stepping out into daylight: glare for a moment (at night the street is the darker place).
       this.adapt = this.atmosphere.night > 0.5 ? 0.75 : 1.8;
     }
+    this.updateLift(dt, inside);
+  }
+
+  /**
+   * Apartment lifts: walk up to the doors and it comes; step in and pick a floor. While the car
+   * moves with you in it, you are carried (no physics); you are set down when it stops.
+   */
+  private updateLift(dt: number, inside: boolean): void {
+    const player = this.player;
+    const physics = this.physics;
+    const building = this.building;
+    const lift = building?.lift ?? null;
+    let shown: { floors: number; at: number; target: number | null } | null = null;
+    if (player && physics && building && lift) {
+      const here = inside ? building.local(player.x, player.hold ? player.hold.y : player.y, player.z) : null;
+      lift.update(dt, here);
+      if (lift.changed) {
+        lift.changed = false;
+        physics.setLift(building.liftSolids());
+      }
+      const inCar = here !== null && lift.inCar(here);
+      if (inCar && lift.state === 'moving') {
+        player.hold = { x: player.x, y: building.floorY + lift.y, z: player.z };
+      } else if (player.hold) {
+        player.body.teleport(player.hold.x, building.floorY + lift.y + 0.02, player.hold.z);
+        player.resetMotion();
+        player.hold = null;
+      }
+      if (inCar) shown = { floors: lift.shaft.floors, at: lift.at, target: lift.target };
+    } else if (player?.hold) player.hold = null;
+    const key = shown ? `${shown.floors}:${shown.at}:${shown.target}` : '';
+    if (key !== this.liftShown) {
+      this.liftShown = key;
+      this.onLift?.(shown);
+    }
+  }
+
+  /** The lift's floor panel (or keys 0–9): go to this floor. */
+  liftTo(floor: number): void {
+    if (this.liftShown) this.building?.lift?.choose(floor); // only from inside the car
   }
 
   /** Opens this building's doorway and puts its inside in place (null = close the current one). */
@@ -580,6 +624,7 @@ export class Game {
     this.building?.group.removeFromParent();
     this.building = null;
     physics.setInterior([]);
+    physics.setLift([]);
     clearDoorHole();
     if (!door) return;
     let inside = this.builtInsides.get(door.id);
@@ -602,6 +647,7 @@ export class Game {
     this.building = inside;
     this.view3d.scene.add(inside.group);
     physics.setInterior(inside.solids);
+    if (inside.lift) inside.lift.changed = true;
     const hole = inside.hole;
     setDoorHole(hole.x, hole.y, hole.z, hole.face, hole.half, hole.top, hole.depth);
   }
@@ -1174,7 +1220,7 @@ export class Game {
       player.handbrake = this.input.handbrake;
       // Space on foot: a jump (about 0.6 m with the game's gravity). In vehicles it stays the handbrake.
       if (this.input.consumeJump() && !player.vehicle && !player.riding && player.seat === null && !player.emote) player.body.jump(5.2);
-      this.updateBuilding();
+      this.updateBuilding(dt);
       player.update(dt, this.input.moveX, this.input.moveY, this.rig.yaw, groundAt);
       if (this.driveMesh) {
         this.driveMesh.position.set(player.x, player.y, player.z);

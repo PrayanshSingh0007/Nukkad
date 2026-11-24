@@ -115,6 +115,20 @@ export class PhysicsWorld {
     });
   }
 
+  private lift: Collider[] = [];
+
+  /** The lift's car floor and its shut doors (replaced whenever they change). */
+  setLift(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
+    for (const collider of this.lift) this.world.removeCollider(collider, false);
+    const { ColliderDesc } = this.rapier;
+    this.lift = boxes.map((b) => {
+      const half = b.rotation / 2;
+      return this.world.createCollider(
+        ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
+      );
+    });
+  }
+
   /** Moves the traffic solids to where the vehicles are this frame. */
   setMovers(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
     const { ColliderDesc, RigidBodyDesc } = this.rapier;

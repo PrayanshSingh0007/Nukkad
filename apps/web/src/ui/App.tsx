@@ -49,6 +49,8 @@ export function App({ game, initialLook, roomId }: Props) {
   const [players, setPlayers] = useState(1);
   const [riding, setRiding] = useState(false);
   const [driveLabel, setDriveLabel] = useState<string | null>(null);
+  /** Standing in a lift: its floors, where it is and where it is going. */
+  const [lift, setLift] = useState<{ floors: number; at: number; target: number | null } | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -59,6 +61,8 @@ export function App({ game, initialLook, roomId }: Props) {
     const key = (event: KeyboardEvent): void => {
       if ((event.target as HTMLElement | null)?.tagName === 'INPUT') return;
       if (event.code === 'KeyM') setMapOpen((open) => !open);
+      // In a lift: 0 = ground floor, 1–9 = that floor.
+      if (event.code.startsWith('Digit')) game.liftTo(Number(event.code.slice(5))); // ignored outside a lift
       if (event.code === 'KeyP') setPhoto((on) => !on);
       if (event.code === 'Escape') setPhoto(false);
     };
@@ -83,6 +87,7 @@ export function App({ game, initialLook, roomId }: Props) {
     game.onRiding = setRiding;
     game.onDriveHint = setDriveLabel;
     game.onToast = setToast;
+    game.onLift = setLift;
     game.onSpeed = (v, max, label) => setSpeed(max > 0 ? { v, max, label } : null);
     // The room is moving: show who is taking everyone where, then load the new place.
     game.onTravel = (place, by) => {
@@ -158,6 +163,26 @@ export function App({ game, initialLook, roomId }: Props) {
       {status.phase === 'playing' && !panelOpen && !mapOpen && !photo && <StreetBanner game={game} />}
       {status.phase === 'playing' && mapOpen && <BigMap game={game} onClose={() => setMapOpen(false)} />}
       {status.phase === 'playing' && speed && !photo && <Speedometer speed={speed.v} max={speed.max} label={speed.label} />}
+      {status.phase === 'playing' && !panelOpen && !photo && lift && (
+        <div className="liftPanel" role="group" aria-label="Lift">
+          <div className="liftTitle">
+            Lift · {lift.at === 0 ? 'G' : lift.at}
+            {lift.target !== null && ` → ${lift.target === 0 ? 'G' : lift.target}`}
+          </div>
+          <div className="liftButtons">
+            {Array.from({ length: lift.floors }, (_, i) => lift.floors - 1 - i).map((floor) => (
+              <button
+                key={floor}
+                type="button"
+                className={floor === lift.target ? 'liftButton going' : floor === lift.at ? 'liftButton here' : 'liftButton'}
+                onClick={() => game.liftTo(floor)}
+              >
+                {floor === 0 ? 'G' : floor}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {status.phase === 'playing' && !panelOpen && !photo && driveLabel && (
         <button type="button" className={driveLabel === 'Get out' ? 'driveButton out' : 'driveButton'} onClick={() => game.toggleDrive()}>
           {driveLabel}
