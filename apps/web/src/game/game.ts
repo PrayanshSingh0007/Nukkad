@@ -38,6 +38,7 @@ import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
 import { clearDoorHole, setDoorHole, setRoofHole } from '../world/materials.ts';
+import { InsidePeople } from '../world/insidePeople.ts';
 import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES, gearAt, gearTop, specForModel } from './vehicleSpecs.ts';
@@ -313,6 +314,8 @@ export class Game {
   /** Front doors by 10 m grid cell, the door you are standing at, and the building you are inside. */
   private readonly sound = new Sound();
   private doorGrid = new Map<string, Door[]>();
+  /** People inside the open building (shopkeepers, people seated…). */
+  private readonly insidePeople = new InsidePeople();
   /** The building whose front door you are near: its inside is built where it stands and its doorway is open. */
   private building: Interior | null = null;
   /** Insides built lately (by building id; null = can't go in), so walking past a row of shops doesn't rebuild them. */
@@ -577,7 +580,8 @@ export class Game {
       this.adapt = this.atmosphere.night > 0.5 ? 0.75 : 1.8;
     }
     this.updateLift(dt, inside);
-    // Escalators: their steps move, and they carry you while you stand on one.
+    // People inside, and the escalators: their steps move, and they carry you while you stand on one.
+    this.insidePeople.update(dt, player.x, player.y, player.z);
     building?.update(dt);
     const carried = inside && building ? building.escalatorAt(player.x, player.y, player.z) : null;
     player.conveyor.x = carried?.x ?? 0;
@@ -643,6 +647,7 @@ export class Game {
     physics.setInterior([]);
     physics.setLift([]);
     clearDoorHole();
+    this.insidePeople.setSpots([]);
     if (!door) return;
     let inside = this.builtInsides.get(door.id);
     if (inside !== undefined) {
@@ -663,6 +668,8 @@ export class Game {
     if (!inside) return;
     this.building = inside;
     this.view3d.scene.add(inside.group);
+    if (!this.insidePeople.group.parent) this.view3d.scene.add(this.insidePeople.group);
+    this.insidePeople.setSpots(inside.people);
     physics.setInterior(inside.solids);
     if (inside.lift) inside.lift.changed = true;
     const hole = inside.hole;
@@ -941,6 +948,7 @@ export class Game {
       this.view3d.scene.add(this.birds.mesh);
       this.waiting = new WaitingPeople(ready.props.stops, this.world.carts);
       this.waiting.setNearLimit(Math.ceil(settings.nearPeople / 2));
+      this.insidePeople.setLimit(settings.nearPeople > 0 ? settings.nearPeople + 2 : 0);
       this.view3d.scene.add(this.waiting.group);
       this.streetLife.setRadius(settings.streetLifeRadius, settings.shadowSize > 0 ? settings.shadowRange + 10 : 0);
       this.view3d.scene.add(this.streetLife.group);
@@ -988,6 +996,7 @@ export class Game {
     this.walkers?.setRadius(quality.streetLifeRadius * 0.8);
     this.walkers?.setNearLimit(quality.nearPeople);
     this.waiting?.setNearLimit(Math.ceil(quality.nearPeople / 2));
+    this.insidePeople.setLimit(quality.nearPeople > 0 ? quality.nearPeople + 2 : 0);
     this.streetLife?.setRadius(quality.streetLifeRadius, quality.shadowSize > 0 ? quality.shadowRange + 10 : 0);
     this.applyShadows(quality.shadowSize, quality.shadowRange);
     this.applyBloom(quality.bloom);
