@@ -67,6 +67,17 @@ export class CharacterBody {
     this.body.setNextKinematicTranslation({ x: this.x, y: this.y + this.centre, z: this.z });
   }
 
+  /**
+   * Carried by something moving under you (an escalator): shifted along with it, no collision
+   * test (its path is clear), still standing on it.
+   */
+  carry(dx: number, dy: number, dz: number): void {
+    this.x += dx;
+    this.y += dy;
+    this.z += dz;
+    this.body.setNextKinematicTranslation({ x: this.x, y: this.y + this.centre, z: this.z });
+  }
+
   /** Take-off time during which the ground under the feet does not count yet, seconds. */
   private rising = 0;
 

@@ -35,6 +35,16 @@ The owner can no longer use the model that did most of this work, so this sectio
 - Checked in game (my own dev server on port 5174, daylight): sleeping → head up at 3.6 m; trotting away when you walk up to 1.8 m (legs in a diagonal trot); walking; sniffing (head down); turning to you and wagging at 3.6 m; lying down in rain (`?rain=1`).
 - Not checked / limits: the dogs at benches and the wet-fur darkening were added last and not yet seen on screen. Getting up and lying down is an instant swap between the two meshes (no animation). Shadows don't move the legs (the shadow pass uses the still shape). Dogs walk through shelters, carts and people (no collisions). 8 of the first 25 dogs sit beyond the walkable edge (seen, not reached). No barking yet. Dogs are the same for everyone only because they are seeded; their moves are not shared over the network.
 
+## Malls with an atrium and moving escalators (2026-11-24)
+
+- **Malls of 2+ floors** (when at least 20 m wide and deep enough for an escalator run) are built whole by `mallBlock()`, up to 5 floors of 3.6–5.5 m:
+  - A 6.4 m wide atrium through every floor with a skylight over it; galleries round it with glass railings and steel rails.
+  - **Escalators**: an up and a down side by side between each pair of floors, crossing the atrium (start on the gallery before it, come up through an opening in the floor past it). Glass sides, black handrails, a steel truss underneath, landing plates. Their steps move (`TREAD` instanced mesh slid every frame by `Interior.update`). Underfoot is a smooth 30° slope (a tipped box: `Solid.pitch`, supported by `PhysicsWorld.setInterior`), and standing on one carries you at 0.55 m/s (`Interior.escalatorAt` → `LocalPlayer.conveyor` → `CharacterBody.carry`, moved like a platform; the character controller would not move the body for such small steps). You can also walk up or down them.
+  - **Shops** both sides on every floor (behind an entrance plaza): glass fronts with a wide opening, a lit sign band with a made-up logo (no brands), a till, and one of: clothes racks, sari racks (bright colours), shoe walls with a bench, a phone shop with a screen wall and display tables, a bookshop, a café with tables. Benches and plants by the atrium, a kiosk on the ground floor, and a **food court** on the top floor (food counters with signs and menu boards, rows of tables and chairs).
+- Checked in game, on an office building relabelled as a mall in memory (**the test area has no malls of 2+ floors**): walked in, saw the escalators, shopfronts and kiosk; stood still on the up escalator and was carried from the ground to floor 1 (0.46 → 3.58 m), walked onto the gallery.
+- Fixed while testing: the floor above cut off the top of the escalator (you hit your head on its edge); now there's an opening over the escalators past the atrium.
+- Known: a big mall takes about 100 ms to build the first time you walk up (1,120 solid boxes): a noticeable hitch; the down escalator and the food court were not walked.
+
 ## Schools and clinics get their floors (2026-11-24)
 
 - Schools and clinics of 2+ floors are built whole too (block kinds `'school'`, `'clinic'`), with the lift, stairs and roof hut. Each floor has a room open on each side of the corridor.

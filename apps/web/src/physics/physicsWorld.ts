@@ -8,6 +8,15 @@ import type { Rapier } from './rapier.ts';
  * Only solid things live here: the ground, and the buildings + road strips of the
  * chunks around the player. Everything else is just drawn.
  */
+/** A box's rotation: turned about the vertical by `yaw`, then tipped about its own x axis by `pitch` (+ raises its far, +z, end). */
+function turn(yaw: number, pitch: number): { x: number; y: number; z: number; w: number } {
+  const sy = Math.sin(yaw / 2);
+  const cy = Math.cos(yaw / 2);
+  const sp = Math.sin(-pitch / 2);
+  const cp = Math.cos(-pitch / 2);
+  return { x: cy * sp, y: sy * cp, z: -sy * sp, w: cy * cp };
+}
+
 export class PhysicsWorld {
   readonly rapier: Rapier;
   readonly world: World;
@@ -104,15 +113,10 @@ export class PhysicsWorld {
   private interior: Collider[] = [];
 
   /** The walls, floor and furniture of the building you are inside (empty list = outside). */
-  setInterior(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number }[]): void {
+  setInterior(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number; pitch?: number }[]): void {
     for (const collider of this.interior) this.world.removeCollider(collider, false);
     const { ColliderDesc } = this.rapier;
-    this.interior = boxes.map((b) => {
-      const half = b.rotation / 2;
-      return this.world.createCollider(
-        ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation({ x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) }),
-      );
-    });
+    this.interior = boxes.map((b) => this.world.createCollider(ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation(turn(b.rotation, b.pitch ?? 0))));
   }
 
   private lift: Collider[] = [];

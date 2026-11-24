@@ -577,6 +577,12 @@ export class Game {
       this.adapt = this.atmosphere.night > 0.5 ? 0.75 : 1.8;
     }
     this.updateLift(dt, inside);
+    // Escalators: their steps move, and they carry you while you stand on one.
+    building?.update(dt);
+    const carried = inside && building ? building.escalatorAt(player.x, player.y, player.z) : null;
+    player.conveyor.x = carried?.x ?? 0;
+    player.conveyor.y = carried?.y ?? 0;
+    player.conveyor.z = carried?.z ?? 0;
   }
 
   /**

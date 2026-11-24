@@ -133,6 +133,8 @@ export class LocalPlayer {
   emote = 0;
   /** Sitting on a seat: where, and which way you face. */
   seat: { x: number; y: number; z: number; facing: number } | null = null;
+  /** Standing on a moving walkway or escalator: carried along at this velocity (m/s, world). */
+  readonly conveyor = { x: 0, y: 0, z: 0 };
   /** Carried (riding a lift): drawn here, standing still, no physics until let go. */
   hold: { x: number; y: number; z: number } | null = null;
 
@@ -332,6 +334,9 @@ export class LocalPlayer {
     const ease = Math.min(1, grip * STEP_S);
     this.velocityX += (wantX - this.velocityX) * ease;
     this.velocityZ += (wantZ - this.velocityZ) * ease;
+    // On an escalator: carried with it (on top of your own walking).
+    const c = this.conveyor;
+    if (c.x !== 0 || c.y !== 0 || c.z !== 0) body.carry(c.x * STEP_S, c.y * STEP_S, c.z * STEP_S);
 
     // The soft edge of the world: you simply cannot walk past it.
     const targetX = Math.min(this.limit, Math.max(-this.limit, body.x + this.velocityX * STEP_S));

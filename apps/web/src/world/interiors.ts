@@ -23,6 +23,8 @@ export interface Solid {
   hy: number;
   hz: number;
   rotation: number;
+  /** Tipped up about its own x axis (radians; + raises its far end): an escalator's slope. */
+  pitch?: number;
 }
 
 export interface Interior {
@@ -43,6 +45,10 @@ export interface Interior {
   roofHole: { x: number; y: number; z: number; yaw: number; hx: number; hy: number; hz: number } | null;
   /** Over the building's footprint (on its roof, say): keep it open while you are up there. */
   covers(x: number, z: number): boolean;
+  /** Malls: the escalator you are standing on carries you (world velocity, m/s), or null. */
+  escalatorAt(x: number, y: number, z: number): { x: number; y: number; z: number } | null;
+  /** Moving parts (escalator steps): call every frame while it is open. */
+  update(dt: number): void;
   /** Apartment blocks: the lift (null elsewhere), and its solid boxes now (world). */
   lift: Lift | null;
   liftSolids(): Solid[];
@@ -60,7 +66,7 @@ const hex = (value: string): Rgb => {
 /** Collects boxes in the room's own frame: x across (door at x = 0), z inward from the door wall, y up from the floor. */
 class Room {
   readonly parts: THREE.BufferGeometry[] = [];
-  readonly solids: { x: number; y: number; z: number; hx: number; hy: number; hz: number }[] = [];
+  readonly solids: { x: number; y: number; z: number; hx: number; hy: number; hz: number; pitch?: number }[] = [];
   /** Places to sit: room-frame position and which way a sitter faces along z (+1 / -1). */
   readonly seats: { x: number; z: number; dz: 1 | -1; y?: number }[] = [];
 
@@ -1412,7 +1418,243 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
   return { shaft: { x0: L0, x1: L1, z0: Z0, z1: Z1, doorZ, storey, floors: storeys }, signs, hut };
 }
 
+// ---------- Malls of many floors: an atrium with escalators, shops all round, a food court ----------
+
+/** One escalator (room frame): its width (x0..x1), where its bottom is (z0, y0), its steps, and which way it runs (+1 up towards +z, −1 down). */
+export interface Escalator {
+  x0: number;
+  x1: number;
+  z0: number;
+  y0: number;
+  steps: number;
+  rise: number;
+  run: number;
+  dir: 1 | -1;
+}
+
+const SHOP_SIGNS = ['#c0392b', '#2c3e50', '#16a085', '#8e44ad', '#d35400', '#2980b9', '#e84393', '#00897b', '#f39c12'];
+const SARIS = ['#c2185b', '#f57c00', '#7b1fa2', '#00897b', '#fbc02d', '#d32f2f', '#1976d2', '#388e3c'];
+
+/** One shop, its front open to the walkway at x = front (the shop runs from the outer wall at xo). */
+function mallShop(r: Room, xo: number, front: number, z0: number, z1: number, y: number, ceiling: number): void {
+  const into = xo < front ? 1 : -1;
+  const X = (a: number): number => xo + into * a;
+  const depth = Math.abs(front - xo);
+  const kind = r.pick(['clothes', 'saris', 'shoes', 'phones', 'books', 'cafe'] as const);
+  r.structural = true;
+  r.oy = y;
+  // The front: a glass shopfront either side of a wide opening, a lit sign band with a made-up logo.
+  const open0 = z0 + (z1 - z0) * 0.25;
+  const open1 = z1 - (z1 - z0) * 0.25;
+  r.box(X(depth - 0.06), 0, z0, X(depth), 2.9, open0, '#9bc2d1', true);
+  r.box(X(depth - 0.06), 0, open1, X(depth), 2.9, z1, '#9bc2d1', true);
+  r.box(X(depth - 0.1), 2.9, z0, X(depth), ceiling - y, z1, '#e9e4da', true);
+  const sign = r.pick(SHOP_SIGNS);
+  r.panel(X(depth), 3.0, z0 + 0.3, X(depth + 0.04), 3.6, z1 - 0.3, sign, true);
+  const mid = (z0 + z1) / 2;
+  r.panel(X(depth + 0.04), 3.1, mid - 0.25, X(depth + 0.05), 3.5, mid + 0.25, '#fbfbf9', true);
+  r.panel(X(depth + 0.05), 3.2, mid - 0.12, X(depth + 0.06), 3.4, mid + 0.12, sign, true);
+  r.structural = false;
+  r.panel(X(0), -0.05, z0, X(depth - 0.06), 0, z1, kind === 'cafe' ? '#8a6544' : '#efe9de');
+  for (let a = 1; a < depth - 0.5; a += 2.2) r.panel(X(a - 0.5), ceiling - y - 0.02, mid - 0.4, X(a + 0.5), ceiling - y, mid + 0.4, '#ffffff', true);
+  // A till by the front.
+  counter(r, X(depth - 1.0), z0 + 0.6, 1.0, '#e8e4dc');
+  if (kind === 'clothes' || kind === 'saris') {
+    for (let a = 1.2; a < depth - 1.4; a += 1.6) {
+      r.panel(X(a - 0.02), 1.5, z0 + 0.8, X(a + 0.02), 1.54, z1 - 0.8, '#8d9296');
+      for (let z = z0 + 1.0; z < z1 - 1.0; z += 0.25) r.panel(X(a - 0.2), kind === 'saris' ? 0.25 : 0.65, z, X(a + 0.2), 1.5, z + 0.05, r.pick(kind === 'saris' ? SARIS : PRODUCT));
+    }
+    r.panel(X(0.02), 0.4, mid - 0.5, X(0.04), 2.0, mid + 0.5, '#dde8ee', true); // mirror
+  } else if (kind === 'shoes') {
+    for (let level = 0.3; level < 2.2; level += 0.35) {
+      r.panel(X(0), level, z0 + 0.3, X(0.35), level + 0.03, z1 - 0.3, '#e9e4da');
+      for (let z = z0 + 0.4; z < z1 - 0.5; z += 0.32) r.panel(X(0.05), level + 0.03, z, X(0.3), level + 0.13, z + 0.22, r.pick(SHOES));
+    }
+    r.box(X(1.4), 0, mid - 0.8, X(1.8), 0.45, mid + 0.8, '#c9a77c', true);
+    r.seats.push({ x: X(1.6), z: mid, dz: 1, y });
+  } else if (kind === 'phones') {
+    r.panel(X(0.02), 0.9, z0 + 0.5, X(0.05), 2.4, z1 - 0.5, '#1d3a5a', true); // a big screen wall
+    for (let a = 1.4; a < depth - 1.6; a += 1.8) {
+      table(r, X(a), mid, 0.8, Math.max(1.2, z1 - z0 - 2.4), '#f4f6f7', 0.9);
+      for (let z = mid - (z1 - z0 - 2.6) / 2; z < mid + (z1 - z0 - 2.6) / 2; z += 0.35) r.panel(X(a - 0.1), 0.9, z, X(a + 0.1), 0.92, z + 0.18, '#1a1d21');
+    }
+  } else if (kind === 'books') {
+    for (let a = 1.0; a < depth - 1.2; a += 1.5) shelves(r, X(a - 0.0), X(a + 0.01), mid, 1.6);
+    for (let z = z0 + 0.3; z < z1 - 0.4; z += 0.9) shelves(r, X(0.05), X(0.5), z + 0.35, 2.0);
+  } else {
+    counter(r, X(0.6), mid, Math.max(1.5, z1 - z0 - 2.0), '#5a3c28');
+    r.panel(X(0.02), 1.6, mid - 0.8, X(0.04), 2.4, mid + 0.8, '#1d1f22'); // menu board
+    for (let a = 2.0; a < depth - 1.0; a += 1.6) {
+      table(r, X(a), mid, 0.7, 0.7, '#e9e4da');
+      chair(r, X(a), mid - 0.6, -1, '#5a3c28');
+      chair(r, X(a), mid + 0.6, 1, '#5a3c28');
+    }
+  }
+  r.oy = 0;
+  r.structural = true;
+}
+
+/**
+ * A mall of many floors. In the middle an atrium open through every floor, with an up and a
+ * down escalator crossing it between each pair of floors (each starts on the gallery before
+ * the atrium and lands on the gallery past it). Galleries with railings round it; shops along
+ * both sides on every floor; benches and kiosks; a skylight over the atrium; a food court on
+ * the top floor. Returns the escalators (their steps move and carry you).
+ */
+function mallBlock(r: Room, storeys: number, storey: number): Escalator[] {
+  const { w, d } = r;
+  const H = storeys * storey;
+  const wall = '#f3efe7';
+  const n = Math.ceil(storey / 0.2);
+  const rise = storey / n;
+  const run = rise * 1.732; // 30°
+  const L = n * run;
+  const az0 = Math.max(6, (d - (L - 2)) / 2);
+  const az1 = az0 + L - 2;
+  const vx = 3.2; // the atrium is 6.4 m across
+  const escalators: Escalator[] = [];
+  r.structural = true;
+  // Ground slab, outer walls (the entrance in front), the roof ceiling with a skylight.
+  r.box(-w / 2 - T, -0.6, -T, w / 2 + T, -0.05, d + T, '#a39d92', true);
+  r.box(-w / 2 - T, 0, -T, -w / 2, H, d + T, wall, true);
+  r.box(w / 2, 0, -T, w / 2 + T, H, d + T, wall, true);
+  r.box(-w / 2, 0, d, w / 2, H, d + T, wall, true);
+  const dx0 = r.doorX - r.doorHalf;
+  const dx1 = r.doorX + r.doorHalf;
+  r.box(-w / 2, 0, -T, dx0, H, 0, wall, true);
+  r.box(dx1, 0, -T, w / 2, H, 0, wall, true);
+  r.box(dx0, r.doorTop, -T, dx1, H, 0, wall, true);
+  r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
+  r.panel(-vx + 0.3, H - 0.03, az0 + 0.3, vx - 0.3, H, az1 - 0.3, '#eaf6ff', true);
+  doorway(r);
+  const sd = Math.min(7, w / 2 - vx - 3.5); // shop depth
+  for (let k = 0; k < storeys; k++) {
+    const y = k * storey;
+    const ceiling = k < storeys - 1 ? (k + 1) * storey - 0.25 : H;
+    r.baseY = y;
+    r.structural = true;
+    if (k > 0) {
+      // The gallery floor round the atrium.
+      const slab = (x0: number, x1: number, z0: number, z1: number): void => r.box(x0, y - 0.25, z0, x1, y - 0.05, z1, '#efede8', true);
+      slab(-w / 2, w / 2, 0, az0);
+      // Past the atrium the escalators come up through the floor: an opening over them.
+      slab(-w / 2, -1.45, az1, az1 + 1);
+      slab(1.45, w / 2, az1, az1 + 1);
+      slab(-w / 2, w / 2, az1 + 1, d);
+      slab(-w / 2, -vx, az0, az1);
+      slab(vx, w / 2, az0, az1);
+      // Railings round the atrium (glass, a steel rail on top), open where the escalators meet the floor.
+      const rail = (x0: number, x1: number, z0: number, z1: number): void => {
+        r.box(x0, y, z0, x1, y + 1.05, z1, '#b9d6e2', true);
+        r.panel(x0 - 0.02, y + 1.05, z0 - 0.02, x1 + 0.02, y + 1.1, z1 + 0.02, '#8d9296');
+      };
+      const gap = 1.45;
+      if (k < storeys - 1) {
+        rail(-vx, -gap, az0 - 0.06, az0);
+        rail(gap, vx, az0 - 0.06, az0);
+      } else rail(-vx, vx, az0 - 0.06, az0);
+      rail(-vx, -gap, az1, az1 + 0.06);
+      rail(gap, vx, az1, az1 + 0.06);
+      rail(-vx - 0.06, -vx, az0, az1);
+      rail(vx, vx + 0.06, az0, az1);
+    }
+    // Polished floor tiles.
+    r.oy = y;
+    r.structural = false;
+    if (k === 0) tiles(r, -w / 2, w / 2, 0, d, ['#e8e2d6', '#d9d2c4'], 1.2);
+    else {
+      tiles(r, -w / 2, w / 2, 0, az0, ['#e8e2d6', '#d9d2c4'], 1.2);
+      tiles(r, -w / 2, w / 2, az1, d, ['#e8e2d6', '#d9d2c4'], 1.2);
+      tiles(r, -w / 2, -vx, az0, az1, ['#e8e2d6', '#d9d2c4'], 1.2);
+      tiles(r, vx, w / 2, az0, az1, ['#e8e2d6', '#d9d2c4'], 1.2);
+    }
+    // Ceiling lights over the walkways.
+    for (let x = -w / 2 + 2; x < w / 2 - 1; x += 4)
+      for (let z = 2; z < d - 1; z += 4) if (Math.abs(x) > vx + 0.5 || z < az0 - 0.5 || z > az1 + 0.5) r.panel(x - 0.5, ceiling - y - 0.02, z - 0.5, x + 0.5, ceiling - y, z + 0.5, '#ffffff', true);
+    r.oy = 0;
+    // Shops along both sides (behind an entrance plaza on the ground floor).
+    if (sd >= 3.5) {
+      const from = k === 0 ? 4 : 0.2;
+      const count = Math.max(1, Math.floor((d - 0.4 - from) / 6));
+      const length = (d - 0.4 - from) / count;
+      for (const side of [-1, 1] as const) {
+        const xo = side * (w / 2);
+        const front = side * (w / 2 - sd);
+        r.structural = true;
+        for (let i = 0; i <= count; i++) r.box(xo, y, from + i * length - 0.08, front, y + (ceiling - y), from + i * length + 0.08, wall, true);
+        for (let i = 0; i < count; i++) mallShop(r, xo, front, from + i * length + 0.08, from + (i + 1) * length - 0.08, y, ceiling);
+      }
+    }
+    // The escalators up to the next floor: an up and a down side by side, with a divider and sides.
+    if (k < storeys - 1) {
+      for (const [x0, x1, dir] of [
+        [-1.35, -0.15, 1],
+        [0.15, 1.35, -1],
+      ] as const) {
+        escalators.push({ x0, x1, z0: az0 - 1, y0: y, steps: n, rise, run, dir });
+        // Underfoot a smooth slope (invisible: the moving steps are drawn on it), so standing still
+        // it carries you up or down; glass sides with black handrails.
+        const slope = Math.atan2(storey, L);
+        const along = Math.hypot(storey, L);
+        r.solids.push({ x: (x0 + x1) / 2, y: y + storey / 2 - 0.15 / Math.cos(slope), z: az0 - 1 + L / 2, hx: (x1 - x0) / 2, hy: 0.15, hz: along / 2, pitch: slope });
+        for (let i = 0; i < n; i++) {
+          const top = y + (i + 1) * rise;
+          const z = az0 - 1 + i * run;
+          for (const [s0, s1] of [
+            [x0 - 0.1, x0],
+            [x1, x1 + 0.1],
+          ]) {
+            r.box(s0, top - 0.5, z, s1, top + 0.95, z + run, '#b9d6e2', true);
+            r.panel(s0 - 0.02, top + 0.95, z, s1 + 0.02, top + 1.0, z + run, '#1d1f22');
+          }
+        }
+        // The underside: a brushed steel truss.
+        r.structural = true;
+        for (let i = 0; i < n; i++) r.panel(x0, y + i * rise - 0.6, az0 - 1 + i * run, x1, y + (i + 1) * rise - 0.4, az0 - 1 + (i + 1) * run, '#9aa1a7');
+        r.panel(x0, y - 0.01, az0 - 1.6, x1, y + 0.01, az0 - 1, '#7d8288'); // the landing plates
+        r.panel(x0, y + storey - 0.01, az1 + 1, x1, y + storey + 0.01, az1 + 1.6, '#7d8288');
+      }
+    }
+    // Benches by the atrium, a kiosk on the ground floor, plants.
+    r.structural = false;
+    r.oy = y;
+    for (const s of [-1, 1]) {
+      r.box(s * (vx + 0.6) - 0.25, 0, (az0 + az1) / 2 - 1, s * (vx + 0.6) + 0.25, 0.45, (az0 + az1) / 2 + 1, '#8a6a4c', true);
+      r.seats.push({ x: s * (vx + 0.6), z: (az0 + az1) / 2 - 0.5, dz: 1, y }, { x: s * (vx + 0.6), z: (az0 + az1) / 2 + 0.5, dz: 1, y });
+      plant(r, s * (vx + 0.7), az0 - 0.6, true);
+    }
+    if (k === 0) {
+      counter(r, -vx - 2, az1 + 3, 1.6, '#3d5a73');
+      r.panel(-vx - 2.8, 2.2, az1 + 2.6, -vx - 1.2, 2.25, az1 + 3.4, '#f39c12', true);
+    }
+    // The food court on the top floor: food counters along the back wall, tables in front.
+    if (k === storeys - 1 && d - (az1 + 1.6) > 7) {
+      for (let x = -w / 2 + sd + 1; x + 3.4 < w / 2 - sd - 0.5; x += 4) {
+        r.box(x, 0, d - 1.6, x + 3.4, 1.0, d - 0.9, '#e8e4dc', true);
+        r.panel(x, 2.6, d - 0.25, x + 3.4, 3.3, d - 0.22, r.pick(SHOP_SIGNS), true);
+        r.panel(x + 0.4, 1.4, d - 0.22, x + 3.0, 2.3, d - 0.2, '#1d1f22');
+      }
+      for (let x = -w / 2 + sd + 1.5; x < w / 2 - sd - 1; x += 2.2)
+        for (let z = az1 + 3; z < d - 3; z += 2.2) {
+          table(r, x, z, 0.9, 0.9, '#f4f6f7');
+          chair(r, x, z - 0.7, -1, r.pick(['#d35400', '#16a085', '#2980b9']));
+          chair(r, x, z + 0.7, 1, r.pick(['#d35400', '#16a085', '#2980b9']));
+        }
+    }
+    r.oy = 0;
+  }
+  r.structural = false;
+  r.baseY = 0;
+  return escalators;
+}
+
 const LIFT_DOOR = new THREE.MeshBasicMaterial({ color: 0xb4bbc1 });
+/** Escalator steps: dark grooved metal. */
+const TREAD = new THREE.MeshBasicMaterial({ color: 0x4a4d52 });
+const TREAD_MATRIX = new THREE.Matrix4();
+const TREAD_AT = new THREE.Vector3();
+const TREAD_TURN = new THREE.Quaternion();
+const TREAD_SIZE = new THREE.Vector3();
 
 /**
  * The lift: a car that runs up and down its shaft, and a pair of sliding doors on every floor.
@@ -1662,11 +1904,15 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   }
   floorY = Math.min(floorY, door.y + 0.35) + 0.03;
   const rng = makeRng(hash32(door.id, 4242));
+  let escalatorTime = 0;
   const apartmentBlock = block && w >= 6.4 && d >= 8.5;
+  // Malls of two floors or more: an atrium with escalators (when there is room for one).
+  const mallStorey = door.kind === 'mall' && door.floors >= 2 ? Math.max(3.6, Math.min(5.5, (door.top - floorY - 0.4) / door.floors)) : 0;
+  const mallFloors = mallStorey > 0 && w >= 20 && d >= mallStorey * 1.732 + 9;
   const house = !apartmentBlock && twoFloors && w >= 5 && d >= 6.8;
-  const storeys = apartmentBlock ? Math.min(door.floors, 12) : house ? 2 : 1;
+  const storeys = apartmentBlock ? Math.min(door.floors, 12) : house ? 2 : mallFloors ? Math.min(door.floors, 5) : 1;
   const storey = apartmentBlock || house ? Math.max(2.5, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
-  const height = apartmentBlock || house ? storeys * storey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
+  const height = apartmentBlock || house ? storeys * storey : mallFloors ? storeys * mallStorey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const room = new Room(w, d, height, rng, -centre, half, doorTop);
   let lift: Lift | null = null;
   const extras: THREE.Object3D[] = [];
@@ -1676,6 +1922,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const roofY = door.top - floorY;
   const roofed = roofY - height >= 0.2 && roofY - height < 1.5 && (house || (apartmentBlock && storeys === door.floors));
   let hut: StairHut | null = null;
+  let escalators: Escalator[] = [];
   if (apartmentBlock) {
     const plan = apartments(room, storeys, storey, blockKind ?? 'flats', roofed ? roofY : null);
     hut = plan.hut;
@@ -1689,7 +1936,16 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
       extras.push(plate);
     }
   } else if (house) hut = twoFloorHouse(room, storey, roofed ? roofY : null);
+  else if (mallFloors) escalators = mallBlock(room, storeys, mallStorey);
   else layout.build(room);
+  // The escalators' moving steps: one instanced mesh, slid along every frame.
+  let treads: THREE.InstancedMesh | null = null;
+  if (escalators.length > 0) {
+    const count = escalators.reduce((sum, e) => sum + e.steps, 0);
+    treads = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), TREAD, count);
+    treads.frustumCulled = false;
+    extras.push(treads);
+  }
   const geometry = mergeGeometries(room.parts);
   for (const part of room.parts) part.dispose();
   const mesh = new THREE.Mesh(geometry, material);
@@ -1707,7 +1963,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const toWorld = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(group.matrixWorld);
   const solids: Solid[] = room.solids.map((s) => {
     const p = toWorld(s.x, s.y, s.z);
-    return { x: p.x, y: p.y, z: p.z, hx: s.hx, hy: s.hy, hz: s.hz, rotation: group.rotation.y };
+    return { x: p.x, y: p.y, z: p.z, hx: s.hx, hy: s.hy, hz: s.hz, rotation: group.rotation.y, pitch: s.pitch };
   });
   const inverse = group.matrixWorld.clone().invert();
   const local = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(inverse);
@@ -1736,6 +1992,35 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
           return { x: c.x, y: c.y, z: c.z, yaw: group.rotation.y, hx: (hut.x1 - hut.x0) / 2 - 0.16, hy: 0.6, hz: (hut.z1 - hut.z0) / 2 - 0.16 };
         })()
       : null,
+    escalatorAt(x, y, z) {
+      if (escalators.length === 0) return null;
+      const p = local(x, y, z);
+      for (const e of escalators) {
+        if (p.x < e.x0 || p.x > e.x1 || p.z < e.z0 - 0.2 || p.z > e.z0 + e.steps * e.run + 0.2) continue;
+        const surface = e.y0 + Math.max(0, Math.min(e.steps, (p.z - e.z0) / e.run + 1)) * e.rise;
+        if (Math.abs(p.y - surface) > 0.7) continue;
+        const speed = 0.55 * e.dir;
+        // Up or down only along the slope itself; level for the last bit at either end.
+        const onSlope = p.z > e.z0 && p.z < e.z0 + e.steps * e.run;
+        return { x: Math.sin(group.rotation.y) * speed, y: onSlope ? (speed * e.rise) / e.run : 0, z: Math.cos(group.rotation.y) * speed };
+      }
+      return null;
+    },
+    update(dt) {
+      if (!treads) return;
+      escalatorTime += dt;
+      let i = 0;
+      for (const e of escalators) {
+        const span = e.steps * e.run;
+        for (let k = 0; k < e.steps; k++) {
+          const along = (((k * e.run + e.dir * escalatorTime * 0.55) % span) + span) % span;
+          const top = e.y0 + (along / e.run + 1) * e.rise;
+          TREAD_MATRIX.compose(TREAD_AT.set((e.x0 + e.x1) / 2, top - e.rise / 2, e.z0 + along + e.run / 2), TREAD_TURN, TREAD_SIZE.set(e.x1 - e.x0 - 0.04, e.rise, e.run - 0.02));
+          treads.setMatrixAt(i++, TREAD_MATRIX);
+        }
+      }
+      treads.instanceMatrix.needsUpdate = true;
+    },
     covers(x, z) {
       const p = local(x, floorY, z);
       return Math.abs(p.x) < w / 2 + 1 && p.z > -1 && p.z < d + 1;
@@ -1751,6 +2036,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     },
     dispose() {
       geometry.dispose();
+      treads?.geometry.dispose();
       lift?.dispose();
       signGeometry.dispose();
       for (const m of signMaterials) {
