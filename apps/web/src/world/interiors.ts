@@ -718,7 +718,7 @@ function shutFlat(r: Room, face: number, toward: 1 | -1, doorZ: number, y: numbe
 }
 
 /** What a many-floored building is: an apartment block, an office block, or a hotel. */
-type BlockKind = 'flats' | 'office' | 'hotel';
+type BlockKind = 'flats' | 'office' | 'hotel' | 'school' | 'clinic';
 
 /** A ceiling fan (every Indian home has them): a hub and three blades, just under the ceiling. */
 function ceilingFan(r: Room, x: number, z: number, ceiling: number): void {
@@ -1015,6 +1015,145 @@ function twoFloorHouse(r: Room, storey: number, roofY: number | null = null): St
  * open and furnished), switchback stairs with a landing between floors, and a lift shaft whose
  * car runs up and down (see `Lift`). Returns the shaft and where each floor's sign goes.
  */
+/** A classroom, door open: a blackboard and the teacher's desk at the front, rows of two-seater benches facing it, charts at the back, fans. */
+function furnishClassroom(r: Room, side: -1 | 1, xo: number, xc: number, z0: number, z1: number, y: number, doorZ: number, ceiling: number): void {
+  const into = side < 0 ? 1 : -1;
+  const X = (a: number): number => xo + into * a;
+  const width = Math.abs(xc - xo);
+  const length = z1 - z0;
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  r.panel(xo, -0.05, z0, xc, 0, z1, '#cdbf9f');
+  for (let z = z0 + 0.8; z + 1.4 < z1 - 0.3; z += 2.2) wallWindow(r, 'x', xo, into, z, z + 1.4, 0.9, 2.3);
+  // The blackboard on the front wall, a wooden frame, a chalk ledge; the teacher's desk and chair.
+  const bw = Math.min(3.2, width - 1.2);
+  const bc = width / 2;
+  r.panel(X(bc - bw / 2 - 0.06), 0.84, z0 + 0.02, X(bc + bw / 2 + 0.06), 2.16, z0 + 0.04, '#6b4a33');
+  r.panel(X(bc - bw / 2), 0.9, z0 + 0.04, X(bc + bw / 2), 2.1, z0 + 0.05, '#23412f');
+  r.panel(X(bc - bw / 2), 0.88, z0 + 0.04, X(bc + bw / 2), 0.9, z0 + 0.12, '#d8d2c6');
+  for (let i = 0; i < 3; i++) r.panel(X(bc - bw / 2 + 0.3 + i * 0.5), 1.6 - i * 0.1, z0 + 0.05, X(bc - bw / 2 + 0.7 + i * 0.5), 1.62 - i * 0.1, z0 + 0.052, '#e9e6df', true); // chalk writing
+  table(r, X(bc), z0 + 1.1, 1.2, 0.6, '#7c5a3c');
+  chair(r, X(bc), z0 + 0.55, -1, '#6a4c33');
+  // Benches in rows: a desk and a seat for two, facing the board.
+  for (let z = z0 + 2.3; z + 0.9 < z1 - 0.5; z += 1.15) {
+    for (let a = 0.5; a + 1.2 < width - 0.9; a += 1.6) {
+      r.box(X(a), 0.68, z, X(a + 1.2), 0.72, z + 0.45, '#8a6544', true);
+      r.box(X(a), 0, z + 0.02, X(a + 0.05), 0.68, z + 0.43, '#5a4636', true);
+      r.box(X(a + 1.15), 0, z + 0.02, X(a + 1.2), 0.68, z + 0.43, '#5a4636', true);
+      r.box(X(a), 0.42, z + 0.55, X(a + 1.2), 0.46, z + 0.85, '#8a6544', true);
+      r.panel(X(a), 0.46, z + 0.82, X(a + 1.2), 0.8, z + 0.86, '#8a6544');
+      r.seats.push({ x: X(a + 0.3), z: z + 0.7, dz: -1, y }, { x: X(a + 0.9), z: z + 0.7, dz: -1, y });
+      if (r.rng() < 0.5) r.panel(X(a + 0.2), 0.72, z + 0.1, X(a + 0.5), 0.75, z + 0.32, r.pick(['#d9433b', '#3f8fd2', '#f2b134', '#58b368'])); // a notebook
+    }
+  }
+  // Charts on the back wall, a cupboard, two fans.
+  for (let i = 0; i < 3 && 0.6 + i * 1.1 + 0.8 < width; i++) r.panel(X(0.6 + i * 1.1), 1.2, z1 - 0.02, X(1.4 + i * 1.1), 1.9, z1, r.pick(['#f2d36b', '#9fd0ea', '#f2a7c3', '#b8e0a0']), true);
+  if (doorZ - 0.6 - (z0 + 0.3) > 0.9) r.box(X(width - 0.5), 0, z0 + 0.3, X(width - 0.05), 1.8, doorZ - 0.6, '#7b6a52', true);
+  ceilingFan(r, X(width / 2), z0 + length * 0.33, ceiling - y);
+  ceilingFan(r, X(width / 2), z0 + length * 0.7, ceiling - y);
+  r.oy = 0;
+}
+
+/** A doctor's room, door open: desk with a computer and chairs, an examination bed with a curtain, a sink, a cabinet, an eye chart. */
+function furnishClinicRoom(r: Room, side: -1 | 1, xo: number, xc: number, z0: number, z1: number, y: number, doorZ: number, ceiling: number): void {
+  const into = side < 0 ? 1 : -1;
+  const X = (a: number): number => xo + into * a;
+  const width = Math.abs(xc - xo);
+  const length = z1 - z0;
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  r.panel(xo, -0.05, z0, xc, 0, z1, '#e3ebe8');
+  for (let z = z0 + 0.6; z + 1.3 < z1 - 0.3; z += 2.4) wallWindow(r, 'x', xo, into, z, z + 1.3, 0.9, 2.2);
+  // The doctor's desk by the window: computer, papers; the doctor's chair and two for patients.
+  table(r, X(1.2), z0 + 1.2, 1.3, 0.7, '#d6d0c4');
+  r.panel(X(1.0), 0.75, z0 + 1.0, X(1.45), 1.08, z0 + 1.03, '#1a1d21');
+  r.panel(X(1.04), 0.79, z0 + 0.995, X(1.41), 1.04, z0 + 1.0, '#cfe6f2', true);
+  r.panel(X(1.5), 0.75, z0 + 1.2, X(1.75), 0.76, z0 + 1.45, '#f4f1e8');
+  chair(r, X(1.2), z0 + 0.55, -1, '#2b2f35');
+  chair(r, X(0.9), z0 + 1.85, 1, '#3b6e8a');
+  chair(r, X(1.5), z0 + 1.85, 1, '#3b6e8a');
+  // The examination bed against the far wall, a step, the curtain on its rail.
+  if (length > 3.6 && width > 2.4) {
+    r.box(X(0.2), 0, z1 - 0.9, X(2.0), 0.7, z1 - 0.2, '#8a9aa0', true);
+    r.panel(X(0.2), 0.7, z1 - 0.9, X(2.0), 0.78, z1 - 0.2, '#3f8f8a');
+    r.panel(X(0.2), 0.78, z1 - 0.85, X(0.45), 0.86, z1 - 0.25, '#f4f1e8'); // pillow
+    r.box(X(0.9), 0, z1 - 1.25, X(1.3), 0.2, z1 - 0.95, '#8d9296', true);
+    r.panel(X(0.1), 2.2, z1 - 1.45, X(2.2), 2.23, z1 - 1.42, '#8d9296'); // rail
+    r.panel(X(0.1), 0.25, z1 - 1.45, X(0.9), 2.2, z1 - 1.43, '#a9d3e6'); // curtain, half drawn
+  }
+  // Sink and mirror by the door, a white cabinet, an eye chart, a weighing scale.
+  if (doorZ - 0.7 - (z0 + 0.2) > 0.6) {
+    r.box(X(width - 0.5), 0, z0 + 0.3, X(width - 0.05), 0.85, z0 + 0.8, '#f4f6f7', true);
+    r.panel(X(width - 0.04), 1.2, z0 + 0.35, X(width - 0.02), 1.8, z0 + 0.75, '#dde8ee', true);
+  }
+  if (z1 - 0.2 - (doorZ + 0.7) > 0.7) r.box(X(width - 0.45), 0, doorZ + 0.75, X(width - 0.05), 1.9, z1 - 0.2, '#f4f6f7', true);
+  r.panel(X(2.4), 1.1, z0 + 0.02, X(2.9), 1.8, z0 + 0.03, '#fbfbf9', true);
+  for (let i = 0; i < 6; i++) r.panel(X(2.65 - 0.2 + i * 0.03), 1.7 - i * 0.1, z0 + 0.031, X(2.65 + 0.2 - i * 0.03), 1.74 - i * 0.1, z0 + 0.032, '#1d1f22');
+  r.panel(X(0.3), 0, z0 + 2.2, X(0.6), 0.06, z0 + 2.5, '#8d9296');
+  r.panel(X(width * 0.5 - 0.5), ceiling - y - 0.02, z0 + length / 2 - 0.3, X(width * 0.5 + 0.5), ceiling - y, z0 + length / 2 + 0.3, '#ffffff', true);
+  r.oy = 0;
+}
+
+/** A shut door on a school or clinic corridor: painted door with a little window and a plate. */
+function shutPlainDoor(r: Room, face: number, toward: 1 | -1, doorZ: number, y: number, colour: string): void {
+  r.structural = false;
+  r.oy = y;
+  const at = (t0: number, t1: number): [number, number] => [face + toward * t0, face + toward * t1];
+  const [d0, d1] = at(0, 0.03);
+  r.panel(d0, 0, doorZ - 0.48, d1, 2.1, doorZ + 0.48, colour);
+  const [g0, g1] = at(0.03, 0.035);
+  r.panel(g0, 1.3, doorZ - 0.15, g1, 1.75, doorZ + 0.15, '#9fbccc', true);
+  r.panel(g0, 1.85, doorZ - 0.2, g1, 1.97, doorZ + 0.2, '#f4f1e8');
+  r.panel(g0, 0.95, doorZ + 0.32, g1, 1.02, doorZ + 0.42, '#8d9296');
+  r.oy = 0;
+}
+
+/** A school's front hall: the office counter, a trophy cabinet, a notice board, a bench, plants. */
+function schoolLobby(r: Room, w: number, ceiling: number): void {
+  r.structural = false;
+  const side = r.doorX > 0 ? -1 : 1;
+  const M = (x: number): number => side * x;
+  counter(r, M(w / 2 - 1.6), 2.2, 2.2, '#7a5c40');
+  chair(r, M(w / 2 - 1.6), 2.85, 1, '#2f4f6f');
+  // The trophy cabinet: a wooden case with glass, gold cups inside.
+  r.box(M(-w / 2 + 0.05), 0, 0.6, M(-w / 2 + 0.5), 1.9, 2.6, '#6b4a33', true);
+  r.panel(M(-w / 2 + 0.5), 0.3, 0.7, M(-w / 2 + 0.52), 1.8, 2.5, '#9fbccc', true);
+  for (let i = 0; i < 4; i++) r.panel(M(-w / 2 + 0.2), 1.0 + (i % 2) * 0.45, 0.9 + i * 0.4, M(-w / 2 + 0.35), 1.25 + (i % 2) * 0.45, 1.05 + i * 0.4, '#e0b84a', true);
+  // Notice board with papers, a long bench, plants.
+  r.panel(M(w / 2 - 0.03), 1.2, 0.5, M(w / 2), 2.0, 1.6, '#b08a5a');
+  for (let i = 0; i < 4; i++) r.panel(M(w / 2 - 0.04), 1.3 + (i % 2) * 0.3, 0.6 + i * 0.25, M(w / 2 - 0.03), 1.55 + (i % 2) * 0.3, 0.8 + i * 0.25, r.pick(['#f4f1e8', '#f2d36b', '#9fd0ea']));
+  r.box(M(-w / 2 + 0.7), 0, 3.0, M(-w / 2 + 2.5), 0.45, 3.3, '#8a6544', true);
+  r.seats.push({ x: M(-w / 2 + 1.2), z: 3.15, dz: -1 }, { x: M(-w / 2 + 2.0), z: 3.15, dz: -1 });
+  plant(r, M(w / 2 - 0.5), 3.1, true);
+  for (let x = -w / 2 + 1.2; x < w / 2 - 0.6; x += 2.4) r.panel(x - 0.5, ceiling - 0.02, 1.2, x + 0.5, ceiling, 1.7, '#ffffff', true);
+}
+
+/** A clinic's waiting hall: reception, rows of waiting chairs, a pharmacy counter with medicine shelves, a water cooler, a TV. */
+function clinicLobby(r: Room, w: number, ceiling: number): void {
+  r.structural = false;
+  const side = r.doorX > 0 ? -1 : 1;
+  const M = (x: number): number => side * x;
+  counter(r, M(w / 2 - 1.6), 2.1, 2.2, '#e8e4dc');
+  chair(r, M(w / 2 - 1.6), 2.75, 1, '#2b2f35');
+  r.panel(M(w / 2 - 0.03), 2.0, 1.4, M(w / 2), 2.3, 2.8, '#2e8f6a', true); // the clinic's green sign band
+  // Rows of joined waiting chairs.
+  for (const z of [1.2, 2.3]) {
+    r.box(M(-w / 2 + 0.4), 0.42, z - 0.22, M(-w / 2 + 2.6), 0.46, z + 0.22, '#3b6e8a', true);
+    r.box(M(-w / 2 + 0.4), 0, z - 0.05, M(-w / 2 + 2.6), 0.42, z + 0.05, '#8d9296', true);
+    r.panel(M(-w / 2 + 0.4), 0.46, z + 0.18, M(-w / 2 + 2.6), 0.85, z + 0.22, '#3b6e8a');
+    for (let a = 0.7; a < 2.5; a += 0.6) r.seats.push({ x: M(-w / 2 + a), z, dz: -1 });
+  }
+  // Pharmacy along the side wall: shelves of medicine boxes behind a counter.
+  shelves(r, M(-w / 2 + 0.3), M(-w / 2 + 2.4), 3.0, 1.9);
+  r.box(M(-w / 2 + 2.6), 0.6, 2.9, M(-w / 2 + 3.0), 1.6, 3.2, '#e9eef2', true); // water cooler
+  r.panel(M(-w / 2 + 2.65), 1.6, 2.95, M(-w / 2 + 2.95), 1.95, 3.15, '#9fd0ea', true);
+  r.panel(M(w / 2 - 0.03), 1.6, 0.4, M(w / 2), 2.1, 1.2, '#15181d'); // TV
+  plant(r, M(w / 2 - 0.5), 3.2);
+  for (let x = -w / 2 + 1.2; x < w / 2 - 0.6; x += 2.4) r.panel(x - 0.5, ceiling - 0.02, 1.2, x + 0.5, ceiling, 1.7, '#ffffff', true);
+}
+
 /** A stair hut on the roof (room frame): its rectangle and the top of its roof; the stairs come up inside it. */
 export interface StairHut {
   x0: number;
@@ -1070,10 +1209,10 @@ function stairHut(r: Room, hut: StairHut, from: number, wall: string, door: { si
 function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 'flats', roofY: number | null = null): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[]; hut: StairHut | null } {
   const { w, d } = r;
   const H = storeys * storey;
-  const wall = kind === 'office' ? '#eef0f2' : kind === 'hotel' ? '#efe3cf' : r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']);
-  const inner = kind === 'office' ? '#e9ecef' : kind === 'hotel' ? '#eadcc4' : '#ece6da';
+  const wall = { office: '#eef0f2', hotel: '#efe3cf', school: '#f1ead2', clinic: '#eef4f2', flats: r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']) }[kind];
+  const inner = { office: '#e9ecef', hotel: '#eadcc4', school: '#efe4c4', clinic: '#e6efec', flats: '#ece6da' }[kind];
   // Floors: corridor tiles in flats, blue-grey carpet tiles in offices, a deep red carpet in hotels.
-  const floorTiles: [string, string] = kind === 'office' ? ['#5d6a78', '#56626f'] : kind === 'hotel' ? ['#6e2a2a', '#64262a'] : CORRIDOR_TILES;
+  const floorTiles: [string, string] = { office: ['#5d6a78', '#56626f'], hotel: ['#6e2a2a', '#64262a'], school: ['#c9c1ab', '#bdb59f'], clinic: ['#dfe6e4', '#d4dcda'], flats: CORRIDOR_TILES }[kind] as [string, string];
   const concrete = '#9c9a95';
   const cw = 1.8;
   const c0 = Math.min(Math.max(r.doorX - cw / 2, -w / 2 + 2.0), w / 2 - 2.55 - cw);
@@ -1161,7 +1300,7 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
       const xo = side < 0 ? -w / 2 : w / 2;
       const xc = side < 0 ? c0 - 0.15 : c1 + 0.15;
       if (!has) continue;
-      const n = Math.max(1, Math.floor((coreZ - zs) / (kind === 'hotel' ? 4.2 : 5)));
+      const n = Math.max(1, Math.floor((coreZ - zs) / { hotel: 4.2, school: 7, clinic: 4.5, flats: 5, office: 5 }[kind]));
       const length = (coreZ - zs) / n;
       const pick = Math.floor(r.rng() * n);
       // Back wall (towards the core), the front wall facing the lobby, and partitions.
@@ -1170,7 +1309,8 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
       for (let i = 1; i < n; i++) r.box(xo, y, zs + i * length - 0.075, xc, y + tall, zs + i * length + 0.075, inner, true);
       for (let i = 0; i < n; i++) {
         const z = zs + (i + 0.5) * length;
-        if (side === openSide && i === pick) {
+        // Schools and clinics have a room open on each side; flats and hotels one per floor.
+        if ((side === openSide || kind === 'school' || kind === 'clinic') && i === pick) {
           (side < 0 ? leftGaps : rightGaps).push([z - 0.5, z + 0.5]);
           open.push({ side, xo, xc, z0: zs + i * length + (i > 0 ? 0.075 : 0), z1: zs + (i + 1) * length - (i < n - 1 ? 0.075 : 0.15), z });
         } else shut.push({ face: side < 0 ? c0 : c1, toward: side < 0 ? 1 : -1, z });
@@ -1223,8 +1363,14 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
     if (k > 0) wallWindow(r, 'z', 0, 1, c0 + 0.25, c1 - 0.25, y + 0.9, y + 2.2);
     // Flats: shut doors with shoes outside, one open and furnished. Hotel: numbered doors, one
     // room open. Offices: open plan either side of the aisle.
-    for (const u of shut) (kind === 'hotel' ? shutRoom : shutFlat)(r, u.face, u.toward, u.z, y);
-    for (const f of open) (kind === 'hotel' ? furnishHotelRoom : furnishFlat)(r, f.side, f.xo, f.xc, f.z0, f.z1, y, f.z, ceiling);
+    for (const u of shut) {
+      if (kind === 'hotel') shutRoom(r, u.face, u.toward, u.z, y);
+      else if (kind === 'school') shutPlainDoor(r, u.face, u.toward, u.z, y, '#3f6e4a');
+      else if (kind === 'clinic') shutPlainDoor(r, u.face, u.toward, u.z, y, '#f4f6f7');
+      else shutFlat(r, u.face, u.toward, u.z, y);
+    }
+    const furnish = { hotel: furnishHotelRoom, school: furnishClassroom, clinic: furnishClinicRoom, flats: furnishFlat, office: furnishFlat }[kind];
+    for (const f of open) furnish(r, f.side, f.xo, f.xc, f.z0, f.z1, y, f.z, ceiling);
     if (kind === 'office') {
       const from = k === 0 ? 3.6 : 0.1;
       if (c0 - 0.15 + w / 2 >= 2.6) furnishOffice(r, -w / 2, c0 - 0.15, from, coreZ - 0.15, y, ceiling);
@@ -1233,6 +1379,8 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
     r.structural = true;
     if (k === 0 && kind === 'office') officeLobby(r, w, ceiling);
     else if (k === 0 && kind === 'hotel') hotelLobby(r, w, ceiling);
+    else if (k === 0 && kind === 'school') schoolLobby(r, w, ceiling);
+    else if (k === 0 && kind === 'clinic') clinicLobby(r, w, ceiling);
     else if (k === 0) {
       // The lobby: letterboxes, a security desk with a chair, a notice board, a plant.
       r.structural = false;
@@ -1472,7 +1620,12 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   // Buildings of many floors are built whole (when there is room for a corridor, stairs and a
   // lift): apartment blocks (homes of 3+ floors), office blocks and hotels (2+), up to 12
   // floors and no wider or deeper than 30 m. Two-floor houses get stairs up to bedrooms.
-  const blockKind: BlockKind | null = door.kind === 'home' && door.floors >= 3 ? 'flats' : door.kind === 'office' && door.floors >= 2 ? 'office' : door.kind === 'hotel' && door.floors >= 2 ? 'hotel' : null;
+  const blockKind: BlockKind | null =
+    door.kind === 'home' && door.floors >= 3
+      ? 'flats'
+      : door.floors >= 2 && (door.kind === 'office' || door.kind === 'hotel' || door.kind === 'school' || door.kind === 'clinic')
+        ? door.kind
+        : null;
   const block = blockKind !== null && door.right - door.left >= 6.4 && door.depth - 2 * T - INSET >= 8.5;
   const twoFloors = door.kind === 'home' && door.floors === 2 && door.right - door.left >= 5 && door.depth - 2 * T - INSET >= 6.8;
   const most = block ? [30, 30] : layout.max;
