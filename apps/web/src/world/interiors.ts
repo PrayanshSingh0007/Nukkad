@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { hash32, makeRng } from '@nukkad/shared';
 import type { Door, InteriorKind } from '@nukkad/worldgen';
 
@@ -58,14 +57,43 @@ export interface Interior {
 }
 
 type Rgb = [number, number, number];
+const HEX = new Map<string, Rgb>();
 const hex = (value: string): Rgb => {
-  const c = new THREE.Color(value);
-  return [c.r, c.g, c.b];
+  let rgb = HEX.get(value);
+  if (!rgb) {
+    const c = new THREE.Color(value);
+    rgb = [c.r, c.g, c.b];
+    HEX.set(value, rgb);
+  }
+  return rgb;
 };
+
+/** A box's six faces: outward normal and two edge directions (u × v = normal), as axis numbers 0 x, 1 y, 2 z with a sign. */
+const FACES: [n: number, ns: number, u: number, v: number][] = [
+  [0, 1, 1, 2],
+  [0, -1, 2, 1],
+  [1, 1, 2, 0],
+  [1, -1, 0, 2],
+  [2, 1, 0, 1],
+  [2, -1, 1, 0],
+];
+const CORNERS = [
+  [-1, -1],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+];
 
 /** Collects boxes in the room's own frame: x across (door at x = 0), z inward from the door wall, y up from the floor. */
 class Room {
-  readonly parts: THREE.BufferGeometry[] = [];
+  // Every box is written straight into these (positions, normals, colours, triangles): no
+  // geometry object per box and no merging, so a big building builds in a few milliseconds.
+  private positions = new Float32Array(24 * 3 * 256);
+  private normals = new Float32Array(24 * 3 * 256);
+  private colours = new Float32Array(24 * 3 * 256);
+  private indices = new Uint32Array(36 * 256);
+  private vertices = 0;
+  private triangles = 0;
   readonly solids: { x: number; y: number; z: number; hx: number; hy: number; hz: number; pitch?: number }[] = [];
   /** Places to sit: room-frame position and which way a sitter faces along z (+1 / -1). */
   readonly seats: { x: number; z: number; dz: 1 | -1; y?: number }[] = [];
@@ -84,6 +112,9 @@ class Room {
   baseY = 0;
   /** Added to every box's height (furnishing an upper floor with the usual pieces). */
   oy = 0;
+  /** The place's name and kind on the map, if it is one (a temple or a church, a pharmacy or a salon…). */
+  name?: string;
+  place?: string;
   /** The shell leaves its ceiling out (a house whose stairs go on up through it to the roof). */
   skipCeiling = false;
   /** The top of the ground floor's rooms (inner walls stop here; lower than h in a two-floor house). */
@@ -121,35 +152,75 @@ class Room {
     const sy = Math.abs(y1 - y0);
     const sz = Math.abs(z1 - z0);
     if (sx < 0.001 || sy < 0.001 || sz < 0.001) return;
-    const g = new THREE.BoxGeometry(sx, sy, sz);
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;
     const cz = (z0 + z1) / 2;
-    g.translate(cx, cy, cz);
-    g.deleteAttribute('uv');
     const base = typeof color === 'string' ? hex(color) : color;
-    const normal = g.getAttribute('normal');
-    const position = g.getAttribute('position');
-    const colors = new Float32Array(position.count * 3);
-    for (let i = 0; i < position.count; i++) {
-      // Baked light: lamps in the ceiling, so tops are brightest, undersides darkest,
-      // and everything gets a little darker near the floor and the walls.
-      let light = 1;
-      if (!glow) {
-        const ny = normal.getY(i);
-        const nx = Math.abs(normal.getX(i));
-        light = ny > 0.5 ? 1 : ny < -0.5 ? 0.62 : nx > 0.5 ? 0.8 : 0.88;
-        const y = position.getY(i);
-        light *= 0.84 + 0.16 * Math.min(1, Math.max(0, y - this.baseY) / 1.2);
-        const edge = Math.min(position.getX(i) + this.w / 2, this.w / 2 - position.getX(i), position.getZ(i), this.d - position.getZ(i));
-        light *= 0.86 + 0.14 * Math.min(1, Math.max(0, edge) / 2);
+    if (this.vertices + 24 > this.positions.length / 3) this.grow();
+    const centre = [cx, cy, cz];
+    const half = [sx / 2, sy / 2, sz / 2];
+    const p = [0, 0, 0];
+    for (const [na, ns, ua, va] of FACES) {
+      const first = this.vertices;
+      for (const [cu, cv] of CORNERS) {
+        p[0] = centre[0];
+        p[1] = centre[1];
+        p[2] = centre[2];
+        p[na] += ns * half[na];
+        p[ua] += cu * half[ua];
+        p[va] += cv * half[va];
+        // Baked light: lamps in the ceiling, so tops are brightest, undersides darkest,
+        // and everything gets a little darker near the floor and the walls.
+        let light = 1;
+        if (!glow) {
+          light = na === 1 ? (ns > 0 ? 1 : 0.62) : na === 0 ? 0.8 : 0.88;
+          light *= 0.84 + 0.16 * Math.min(1, Math.max(0, p[1] - this.baseY) / 1.2);
+          const edge = Math.min(p[0] + this.w / 2, this.w / 2 - p[0], p[2], this.d - p[2]);
+          light *= 0.86 + 0.14 * Math.min(1, Math.max(0, edge) / 2);
+        }
+        const k = glow ? 1 : light * 0.8;
+        const at = this.vertices * 3;
+        this.positions[at] = p[0];
+        this.positions[at + 1] = p[1];
+        this.positions[at + 2] = p[2];
+        this.normals[at] = na === 0 ? ns : 0;
+        this.normals[at + 1] = na === 1 ? ns : 0;
+        this.normals[at + 2] = na === 2 ? ns : 0;
+        this.colours[at] = base[0] * k;
+        this.colours[at + 1] = base[1] * k;
+        this.colours[at + 2] = base[2] * k;
+        this.vertices++;
       }
-      const k = glow ? 1 : light * 0.8;
-      colors.set([base[0] * k, base[1] * k, base[2] * k], i * 3);
+      const t = this.triangles * 3;
+      this.indices.set([first, first + 1, first + 2, first, first + 2, first + 3], t);
+      this.triangles += 2;
     }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    this.parts.push(g);
     if (solid) this.solids.push({ x: cx, y: cy, z: cz, hx: sx / 2, hy: sy / 2, hz: sz / 2 });
+  }
+
+  private grow(): void {
+    const bigger = (a: Float32Array<ArrayBuffer>): Float32Array<ArrayBuffer> => {
+      const b = new Float32Array(a.length * 2);
+      b.set(a);
+      return b;
+    };
+    this.positions = bigger(this.positions);
+    this.normals = bigger(this.normals);
+    this.colours = bigger(this.colours);
+    const indices = new Uint32Array(this.indices.length * 2);
+    indices.set(this.indices);
+    this.indices = indices;
+  }
+
+  /** Everything built, as one geometry. */
+  geometry(): THREE.BufferGeometry {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.positions.slice(0, this.vertices * 3), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.normals.slice(0, this.vertices * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.colours.slice(0, this.vertices * 3), 3));
+    g.setIndex(new THREE.BufferAttribute(this.indices.slice(0, this.triangles * 3), 1));
+    g.computeBoundingSphere();
+    return g;
   }
 
   /** A thin picture on a wall/floor: same as a box, never solid. */
@@ -433,45 +504,8 @@ function office(r: Room): void {
   plant(r, w / 2 - 0.7, 1.2);
 }
 
-function food(r: Room): void {
-  shell(r, ['#b98a5e', '#ad7f55'], r.pick(['#f6e3c4', '#f1d6c8', '#e9ecd8']), 0.5);
-  windows(r, 3);
-  const { w, d } = r;
-  counter(r, 0, d - 1.4, Math.min(w - 2, 5), '#7a4b2f');
-  r.panel(-2, 1.7, d - 0.06, 2, 2.5, d - 0.02, '#2c2c2c'); // menu board
-  for (let k = 0; k < 4; k++) r.panel(-1.8 + k, 1.8, d - 0.07, -1.1 + k, 2.4, d - 0.06, '#f2e2b0', true);
-  for (let z = 2.2; z < d - 3; z += 2) {
-    for (let x = -w / 2 + 1.3; x < w / 2 - 1; x += 2.2) {
-      if (Math.abs(x) < 1.3) continue;
-      table(r, x, z, 0.8, 0.8, '#d8cbb5');
-      chair(r, x, z - 0.65, -1, '#a0522d');
-      chair(r, x, z + 0.65, 1, '#a0522d');
-    }
-  }
-}
 
-function shop(r: Room): void {
-  shell(r, ['#e2ddd2', '#d8d2c6'], r.pick(['#f5f1e8', '#eaf2f4', '#f6ece4']), 0.6);
-  const { w, d } = r;
-  counter(r, 0, d - 1.2, Math.min(w - 1.5, 3.5));
-  // Wall shelves full of goods on both sides, a rack in the middle.
-  for (const side of [-1, 1]) {
-    r.box(side * (w / 2 - 0.25) - 0.25, 0, 1.5, side * (w / 2 - 0.25) + 0.25, 2.2, d - 2.4, '#c9b79c', true);
-    for (let z = 1.6; z < d - 2.6; z += 0.35)
-      for (let y = 0.3; y < 2.1; y += 0.45) r.panel(side * (w / 2 - 0.52) - 0.02, y, z, side * (w / 2 - 0.5), y + 0.3, z + 0.28, r.pick(PRODUCT));
-  }
-  if (w > 5 && d > 6) shelves(r, -1.2, 1.2, d / 2, 1.4);
-}
 
-function worship(r: Room): void {
-  shell(r, ['#efe6d2', '#e6dcc6'], '#f6eedd', 0.8);
-  const { w, d } = r;
-  r.panel(-w / 2 + 1, 0.001, 1.5, w / 2 - 1, 0.012, d - 3, '#9b2d2d'); // long carpet
-  r.box(-2, 0, d - 2.2, 2, 0.6, d - 0.3, '#d9c7a0', true); // raised platform
-  r.panel(-1.2, 0.6, d - 1.2, 1.2, 2.6, d - 0.35, '#c99a3d', true); // plain golden arch (no figure)
-  for (const s of [-1.5, 1.5]) r.box(s - 0.1, 0.6, d - 1.6, s + 0.1, 1.4, d - 1.4, '#ffcf6b', false, true); // lamps
-  for (let z = 2; z < d - 3; z += 3) for (const s of [-1, 1]) r.box(s * (w / 2 - 1.2) - 0.25, 0, z, s * (w / 2 - 1.2) + 0.25, r.h, z + 0.5, '#e9dcc0', true); // pillars
-}
 
 function hotel(r: Room): void {
   shell(r, ['#c8b48f', '#bda883'], '#f2e8d6', 0.9);
@@ -518,6 +552,352 @@ function warehouse(r: Room): void {
   }
 }
 
+// ---------- Places of worship (by their name on the map; never any figures) ----------
+
+/** A carved stone pillar: a base, a banded shaft, a wide capital. */
+function pillar(r: Room, x: number, z: number, height: number, colour = '#c9b99a'): void {
+  r.box(x - 0.32, 0, z - 0.32, x + 0.32, 0.45, z + 0.32, colour, true);
+  r.box(x - 0.22, 0.45, z - 0.22, x + 0.22, height - 0.5, z + 0.22, colour, true);
+  for (let y = 0.9; y < height - 0.8; y += 0.7) r.box(x - 0.26, y, z - 0.26, x + 0.26, y + 0.12, z + 0.26, '#b9a888');
+  r.box(x - 0.4, height - 0.5, z - 0.4, x + 0.4, height - 0.3, z + 0.4, colour, true);
+  r.box(x - 0.5, height - 0.3, z - 0.5, x + 0.5, height, z + 0.5, '#b9a888', true);
+}
+
+/** A string of flowers (marigold and jasmine) hanging in a shallow curve from a to b along x. */
+function garland(r: Room, x0: number, x1: number, y: number, z: number): void {
+  const n = Math.max(6, Math.round(Math.abs(x1 - x0) / 0.08));
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const x = x0 + (x1 - x0) * t;
+    const sag = 0.25 * Math.sin(Math.PI * t);
+    r.panel(x - 0.035, y - sag - 0.035, z - 0.035, x + 0.035, y - sag + 0.035, z + 0.035, i % 3 === 2 ? '#fbfbf2' : '#f59e0b');
+  }
+}
+
+/** A temple hall: carved pillars, the lamp-lit inner shrine at the back, bells, oil lamps, garlands, a kolam at the door, shoes left at the entrance. */
+function temple(r: Room): void {
+  shell(r, ['#8f8a82', '#857f77'], '#f3ead6', 0.8);
+  const { w, d, h } = r;
+  r.structural = true;
+  // Ochre and white stripes along the bottom of the walls.
+  for (let z = 0.3; z < d - 0.3; z += 0.8)
+    for (const s of [-1, 1]) r.panel(s * (w / 2) - s * 0.02, 0.1, z, s * (w / 2), 1.3, z + 0.4, '#b5452c');
+  r.structural = false;
+  // Two rows of pillars down the hall.
+  for (let z = 2.8; z < d - 4.2; z += 2.6) for (const s of [-1, 1]) pillar(r, s * Math.min(w / 2 - 1.2, 2.6), z, h);
+  // The inner shrine at the back: thick walls, a low doorway, steps up, the lamp-lit plinth inside.
+  const sw = Math.min(3.4, w - 2);
+  const sz = d - 3.2;
+  r.structural = true;
+  r.box(-sw / 2, 0, sz, -0.55, h, sz + 0.35, '#e6d6b4', true);
+  r.box(0.55, 0, sz, sw / 2, h, sz + 0.35, '#e6d6b4', true);
+  r.box(-0.55, 2.0, sz, 0.55, h, sz + 0.35, '#e6d6b4', true);
+  r.box(-sw / 2 - 0.35, 0, sz, -sw / 2, h, d, '#e6d6b4', true);
+  r.box(sw / 2, 0, sz, sw / 2 + 0.35, h, d, '#e6d6b4', true);
+  r.panel(-0.65, 2.0, sz - 0.04, 0.65, 2.3, sz, '#c99a3d', true); // a brass band over the doorway
+  r.structural = false;
+  r.box(-0.6, 0, sz - 0.8, 0.6, 0.15, sz, '#a39d92', true); // the step
+  r.box(-0.7, 0, d - 1.4, 0.7, 0.7, d - 0.4, '#c9b99a', true); // the plinth
+  r.panel(-0.72, 0.7, d - 1.42, 0.72, 0.78, d - 0.38, '#b91c1c');
+  r.panel(-0.5, 0.78, d - 1.2, 0.5, 1.5, d - 0.5, '#c99a3d', true); // a plain golden arch (no figure)
+  for (const s of [-0.9, 0.9]) {
+    r.panel(s - 0.05, 0, d - 1.0, s + 0.05, 1.1, d - 0.9, '#c99a3d');
+    r.panel(s - 0.08, 1.1, d - 1.03, s + 0.08, 1.24, d - 0.87, '#ffb347', true); // oil lamps
+  }
+  garland(r, -0.6, 0.6, 2.0, sz - 0.08);
+  garland(r, -sw / 2, sw / 2, 2.4, sz - 0.1);
+  // Bells hanging before the shrine, a tall brass lamp stand, the donation box.
+  for (const x of [-0.8, 0.8]) {
+    r.panel(x - 0.01, 2.2, sz - 1.2, x + 0.01, h, sz - 1.18, '#8d7a4a');
+    r.panel(x - 0.12, 1.95, sz - 1.32, x + 0.12, 2.2, sz - 1.08, '#d4a937', true);
+  }
+  const lx = sw / 2 + 0.8 < w / 2 - 0.5 ? sw / 2 + 0.8 : 1.6;
+  r.box(lx - 0.25, 0, sz - 1.8, lx + 0.25, 0.15, sz - 1.3, '#c99a3d', true);
+  r.panel(lx - 0.04, 0.15, sz - 1.59, lx + 0.04, 1.7, sz - 1.51, '#c99a3d');
+  for (let t = 0; t < 4; t++) {
+    const rr = 0.3 - t * 0.06;
+    r.panel(lx - rr, 0.6 + t * 0.32, sz - 1.55 - rr, lx + rr, 0.63 + t * 0.32, sz - 1.55 + rr, '#c99a3d');
+    for (const [dx, dz] of [
+      [rr, 0],
+      [-rr, 0],
+      [0, rr],
+      [0, -rr],
+    ])
+      r.panel(lx + dx - 0.025, 0.63 + t * 0.32, sz - 1.55 + dz - 0.025, lx + dx + 0.025, 0.7 + t * 0.32, sz - 1.55 + dz + 0.025, '#ffb347', true);
+  }
+  r.box(-lx - 0.3, 0, sz - 1.7, -lx + 0.3, 0.9, sz - 1.2, '#8d9296', true); // hundi
+  r.panel(-lx - 0.1, 0.9, sz - 1.47, -lx + 0.1, 0.91, sz - 1.43, '#1d1f22');
+  // Reed mats to sit on, a kolam inside the door, hanging lamps, shoes left by the entrance.
+  for (const s of [-1, 1]) {
+    r.panel(s * 1.0 - 0.45, 0.001, 3.5, s * 1.0 + 0.45, 0.01, sz - 2.2, '#c8a96e');
+    r.seats.push({ x: s * 1.0, z: 4.5, dz: 1 }, { x: s * 1.0, z: 5.6, dz: 1 });
+  }
+  for (let i = 0; i < 4; i++) {
+    const s = 0.5 - i * 0.1;
+    r.panel(r.doorX - s, 0.002 + i * 0.001, 1.6 - s, r.doorX + s, 0.003 + i * 0.001, 1.6 + s, i % 2 ? '#f59e0b' : '#fbfbf2');
+  }
+  for (let z = 3; z < sz - 1; z += 3) r.panel(-0.12, h - 0.9, z - 0.12, 0.12, h - 0.7, z + 0.12, '#ffcf6b', true);
+  const rack = r.doorX + (r.doorX > 0 ? -1 : 1) * (r.doorHalf + 0.9);
+  r.box(rack - 0.5, 0, 0.1, rack + 0.5, 0.6, 0.45, '#7b5a40', true);
+  for (let i = 0; i < 6; i++) r.panel(rack - 0.45 + i * 0.15, 0.6, 0.15, rack - 0.35 + i * 0.15, 0.66, 0.38, r.pick(SHOES));
+}
+
+/** A church: pews either side of a red-carpeted aisle, the altar on a step, candles, a plain wooden cross, coloured glass windows. */
+function church(r: Room): void {
+  shell(r, ['#d9d2c4', '#cfc8ba'], '#f4f1ea', 0.9);
+  const { w, d, h } = r;
+  r.panel(-0.7, 0.002, 1, 0.7, 0.012, d - 2.4, '#8a1c1c');
+  for (let z = 2.6; z < d - 4; z += 1.1)
+    for (const s of [-1, 1]) {
+      const x0 = s * 1.0;
+      const x1 = s * Math.min(w / 2 - 0.6, 4.2);
+      r.box(x0, 0.42, z, x1, 0.47, z + 0.45, '#6b4a33', true);
+      r.box(x0, 0, z + 0.05, x1, 0.42, z + 0.1, '#5a3c28', true);
+      r.box(x0, 0.47, z + 0.4, x1, 0.95, z + 0.45, '#6b4a33');
+      for (let x = Math.min(x0, x1) + 0.4; x < Math.max(x0, x1) - 0.2; x += 0.7) r.seats.push({ x, z: z + 0.22, dz: -1 });
+    }
+  r.box(-w / 2 + 0.5, 0, d - 2.4, w / 2 - 0.5, 0.3, d, '#cfc8ba', true);
+  r.box(-1.1, 0.3, d - 1.6, 1.1, 1.25, d - 0.9, '#f4f1ea', true);
+  r.panel(-1.15, 1.25, d - 1.65, 1.15, 1.28, d - 0.85, '#fbfbf9');
+  for (const s of [-1.6, 1.6]) {
+    r.panel(s - 0.03, 0.3, d - 1.3, s + 0.03, 1.5, d - 1.24, '#c9b06a');
+    r.panel(s - 0.04, 1.5, d - 1.31, s + 0.04, 1.62, d - 1.23, '#ffe2a8', true);
+  }
+  r.panel(-0.07, 1.6, d - 0.04, 0.07, 3.4, d - 0.01, '#5a3c28');
+  r.panel(-0.5, 2.8, d - 0.04, 0.5, 2.95, d - 0.01, '#5a3c28');
+  for (let z = 2; z < d - 3; z += 2.6)
+    for (const s of [-1, 1])
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 4; j++) r.panel(s * (w / 2) - s * 0.02, 1.6 + j * 0.45, z + i * 0.4, s * (w / 2), 2.0 + j * 0.45, z + i * 0.4 + 0.36, r.pick(['#1e5aa8', '#b91c1c', '#d4a937', '#2e7d4a', '#6a2c91']), true);
+  r.box(1.6, 0.3, d - 2.9, 2.0, 1.2, d - 2.5, '#6b4a33', true); // lectern
+  for (let z = 3; z < d - 2; z += 3.5) r.panel(-0.2, h - 1.0, z - 0.2, 0.2, h - 0.8, z + 0.2, '#ffe2a8', true);
+}
+
+/** A mosque: prayer carpet in rows facing the mihrab niche in the far wall, the minbar's steps beside it, chandeliers, shoe racks, a bookshelf. */
+function mosque(r: Room): void {
+  shell(r, ['#e9e4da', '#dfd9cc'], '#f6f3ec', 1.0);
+  const { w, d, h } = r;
+  // The prayer carpet: rows across the hall, each a band of arches' worth of colour.
+  for (let z = 2.4, i = 0; z < d - 1.4; z += 1.2, i++) {
+    r.panel(-w / 2 + 0.3, 0.002, z, w / 2 - 0.3, 0.012, z + 1.15, i % 2 ? '#1f5b3a' : '#7a1f2b');
+    r.panel(-w / 2 + 0.3, 0.012, z + 1.1, w / 2 - 0.3, 0.014, z + 1.15, '#d4a937');
+  }
+  // The mihrab: an arched niche in the far wall (framed, lit), the minbar steps to its right.
+  r.structural = true;
+  r.box(-0.75, 0, d - 0.25, 0.75, 2.4, d, '#d9cfb8', true);
+  r.panel(-0.55, 0.1, d - 0.27, 0.55, 2.0, d - 0.25, '#2e6f6a', true);
+  for (let i = 0; i < 5; i++) r.panel(-0.55 + i * 0.11, 2.0 + i * 0.07, d - 0.27, 0.55 - i * 0.11, 2.07 + i * 0.07, d - 0.25, '#d4a937', true);
+  r.structural = false;
+  for (let i = 0; i < 6; i++) r.box(1.0, 0, d - 0.9 - i * 0.28 + 0.28, 1.8, (i + 1) * 0.22, d - 0.9 - i * 0.28 + 0.56, '#7b5a40', true);
+  r.panel(1.0, 1.3, d - 2.3, 1.04, 2.6, d - 0.3, '#6b4a33');
+  for (let z = 3; z < d - 2; z += 4) {
+    r.panel(-0.02, h - 1.2, z - 0.02, 0.02, h, z + 0.02, '#c9b06a');
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      r.panel(Math.cos(a) * 0.5 - 0.06, h - 1.3, z + Math.sin(a) * 0.5 - 0.06, Math.cos(a) * 0.5 + 0.06, h - 1.15, z + Math.sin(a) * 0.5 + 0.06, '#ffe2a8', true);
+    }
+  }
+  const rack = r.doorX + (r.doorX > 0 ? -1 : 1) * (r.doorHalf + 1.1);
+  r.box(rack - 0.7, 0, 0.1, rack + 0.7, 1.2, 0.45, '#7b5a40', true);
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 8; i++) r.panel(rack - 0.65 + i * 0.17, 0.1 + j * 0.4, 0.42, rack - 0.53 + i * 0.17, 0.18 + j * 0.4, 0.46, r.pick(SHOES));
+  shelves(r, -w / 2 + 0.3, -w / 2 + 1.6, d - 2.0, 1.6);
+}
+
+/** A gurudwara: white sheets over the floor, the canopied platform at the far end draped in bright cloth, a canopy overhead, a donation box. */
+function gurudwara(r: Room): void {
+  shell(r, ['#f4f1ea', '#ece8de'], '#fbf8f1', 1.0);
+  const { w, d, h } = r;
+  r.panel(-w / 2 + 0.3, 0.002, 1.5, w / 2 - 0.3, 0.012, d - 3, '#fbfbf9');
+  r.panel(-0.6, 0.013, 1.5, 0.6, 0.016, d - 3, '#7a1f2b');
+  r.box(-1.6, 0, d - 2.6, 1.6, 0.5, d - 0.5, '#e9e2d5', true);
+  r.box(-0.8, 0.5, d - 2.0, 0.8, 1.0, d - 1.0, '#d4a937', true);
+  r.panel(-0.85, 1.0, d - 2.05, 0.85, 1.05, d - 0.95, r.pick(['#1e40af', '#b91c1c', '#f59e0b']));
+  for (const [x, z] of [
+    [-0.75, d - 1.95],
+    [0.75, d - 1.95],
+    [-0.75, d - 1.05],
+    [0.75, d - 1.05],
+  ])
+    r.panel(x - 0.03, 1.0, z - 0.03, x + 0.03, 2.4, z + 0.03, '#d4a937');
+  r.box(-0.9, 2.4, d - 2.1, 0.9, 2.55, d - 0.9, '#d4a937');
+  r.box(-0.5, 2.55, d - 1.8, 0.5, 2.9, d - 1.2, '#d4a937');
+  r.panel(-2.2, h - 0.3, d - 3.2, 2.2, h - 0.28, d - 0.3, '#f59e0b');
+  r.box(-0.4, 0, d - 3.6, 0.4, 0.7, d - 3.0, '#8d9296', true); // golak
+  for (const s of [-1, 1]) for (let z = 3; z < d - 4; z += 1.2) r.seats.push({ x: s * 1.5, z, dz: 1 });
+}
+
+/** A place of worship, chosen by its name on the map (a temple when the name doesn't say). */
+function worshipPlace(r: Room): void {
+  const name = (r.name ?? '').toLowerCase();
+  if (/church|chapel|cathedral|basilica/.test(name)) church(r);
+  else if (/masjid|mosque|juma|jama|idgah|dargah/.test(name)) mosque(r);
+  else if (/gurudwara|gurdwara|gurudwara/.test(name)) gurudwara(r);
+  else temple(r);
+}
+
+// ---------- Shops and places to eat, by what they are ----------
+
+/** A pharmacy: white walls of medicine boxes, a glass counter, a lit green cross, a fridge. */
+function pharmacy(r: Room): void {
+  shell(r, ['#eef2f1', '#e4e9e8'], '#f8faf9', 0.6);
+  const { w, d } = r;
+  for (const s of [-1, 1]) {
+    r.box(s * (w / 2 - 0.3) - 0.3, 0, 2.6, s * (w / 2 - 0.3) + 0.3, 2.3, d - 0.3, '#f4f6f7', true);
+    for (let z = 2.7; z < d - 0.5; z += 0.22) for (let y = 0.3; y < 2.2; y += 0.32) r.panel(s * (w / 2 - 0.62) - 0.02, y, z, s * (w / 2 - 0.6), y + 0.22, z + 0.18, r.pick(['#f4f6f7', '#3f8fd2', '#58b368', '#d9433b', '#f2b134', '#e9eef2']));
+  }
+  r.box(-Math.min(w / 2 - 1.2, 2.2), 0, d - 2.2, Math.min(w / 2 - 1.2, 2.2), 0.95, d - 1.6, '#e9eef2', true);
+  r.panel(-Math.min(w / 2 - 1.2, 2.2), 0.95, d - 2.2, Math.min(w / 2 - 1.2, 2.2), 0.98, d - 1.6, '#b9d6e2', true);
+  r.panel(-0.35, 1.9, d - 0.04, 0.35, 2.0, d - 0.01, '#16a34a', true);
+  r.panel(-0.05, 1.6, d - 0.04, 0.05, 2.3, d - 0.01, '#16a34a', true);
+  r.box(w / 2 - 1.1, 0, d - 1.2, w / 2 - 0.5, 1.6, d - 0.6, '#e4e6e8', true);
+}
+
+/** A barber's / salon: chairs facing a long mirror, a counter of bottles, a wash basin, a waiting bench, a TV. */
+function salon(r: Room): void {
+  shell(r, ['#2f3236', '#3a3d42'], r.pick(['#f3e4d4', '#e6eef0', '#f1e9dc']), 0.5);
+  const { w, d } = r;
+  const s = r.doorX > 0 ? -1 : 1;
+  const wall = s * (w / 2);
+  for (let z = 2.8; z < d - 1.2; z += 1.6) {
+    r.panel(wall - s * 0.03, 1.0, z - 0.6, wall, 2.2, z + 0.6, '#dde8ee', true);
+    r.panel(wall - s * 0.45, 0.85, z - 0.6, wall, 0.9, z + 0.6, '#f4f1e8');
+    for (let i = 0; i < 4; i++) r.panel(wall - s * 0.3, 0.9, z - 0.4 + i * 0.2, wall - s * 0.24, 1.05 + (i % 2) * 0.08, z - 0.34 + i * 0.2, r.pick(PRODUCT));
+    const cx = wall - s * 1.2;
+    r.box(cx - 0.28, 0.25, z - 0.28, cx + 0.28, 0.55, z + 0.28, '#b91c1c', true);
+    r.box(cx - 0.05, 0, z - 0.05, cx + 0.05, 0.25, z + 0.05, '#8d9296', true);
+    r.box(s > 0 ? cx - 0.28 : cx + 0.22, 0.55, z - 0.28, s > 0 ? cx - 0.22 : cx + 0.28, 1.15, z + 0.28, '#b91c1c');
+    r.seats.push({ x: cx, z, dz: -1 });
+  }
+  r.box(-wall * 0.98 + s * 0.05, 0, d - 1.4, -wall * 0.98 + s * 0.55, 0.85, d - 0.7, '#f4f6f7', true);
+  r.box(-wall + s * 0.15, 0, 3.0, -wall + s * 0.6, 0.45, 5.0, '#6b4a33', true);
+  r.seats.push({ x: -wall + s * 0.38, z: 3.5, dz: 1 }, { x: -wall + s * 0.38, z: 4.5, dz: 1 });
+  r.panel(-wall + s * 0.02, 1.6, 3.3, -wall, 2.2, 4.6, '#15181d');
+}
+
+/** A clothes shop: racks of shirts and saris, walls of folded clothes, a curtained trial room, a mirror. */
+function clothesShop(r: Room): void {
+  shell(r, ['#d8c9ad', '#cfbfa2'], r.pick(['#f5f1e8', '#f6ece4']), 0.6);
+  const { w, d } = r;
+  for (const s of [-1, 1]) {
+    r.box(s * (w / 2 - 0.3) - 0.3, 0, 2.6, s * (w / 2 - 0.3) + 0.3, 2.3, d - 1.8, '#c9b79c', true);
+    for (let z = 2.7; z < d - 2; z += 0.3) for (let y = 0.3; y < 2.2; y += 0.35) r.panel(s * (w / 2 - 0.62) - 0.02, y, z, s * (w / 2 - 0.6), y + 0.25, z + 0.26, r.pick(SARIS));
+  }
+  for (let x = -w / 2 + 1.8; x < w / 2 - 1.6; x += 1.8) {
+    r.panel(x - 0.6, 1.4, d / 2 - 0.02, x + 0.6, 1.44, d / 2 + 0.02, '#8d9296');
+    for (let i = 0; i < 9; i++) r.panel(x - 0.55 + i * 0.13, 0.55, d / 2 - 0.2, x - 0.5 + i * 0.13, 1.4, d / 2 + 0.2, r.pick(PRODUCT));
+  }
+  counter(r, 0, d - 1.0, Math.min(w - 2.5, 2.4), '#7a5c40');
+  r.box(w / 2 - 1.4, 0, d - 1.6, w / 2 - 0.3, 2.2, d - 0.4, '#e9e4da', true);
+  r.panel(w / 2 - 1.4, 0.2, d - 1.62, w / 2 - 0.3, 2.0, d - 1.6, '#7a1f2b');
+  r.panel(-w / 2 + 0.02, 0.4, d - 1.6, -w / 2 + 0.04, 2.0, d - 0.6, '#dde8ee', true);
+}
+
+/** A mobile phone shop: glass display cases of phones, a wall of hanging accessories, a bright screen. */
+function phoneShop(r: Room): void {
+  shell(r, ['#e9ecef', '#dfe3e7'], '#f6f8fa', 0.6);
+  const { w, d } = r;
+  for (const z of [d - 1.6, d / 2 + 0.3]) {
+    const half = Math.min(w / 2 - 1.0, 2.2);
+    r.box(-half, 0, z - 0.3, half, 0.95, z + 0.3, '#f4f6f7', true);
+    r.panel(-half, 0.95, z - 0.3, half, 0.98, z + 0.3, '#b9d6e2', true);
+    for (let x = -half + 0.2; x < half - 0.1; x += 0.3) r.panel(x, 0.6, z - 0.12, x + 0.12, 0.62, z + 0.12, '#1a1d21');
+  }
+  const s = r.doorX > 0 ? -1 : 1;
+  for (let z = 2.8; z < d - 0.6; z += 0.28) for (let y = 0.8; y < 2.2; y += 0.3) r.panel(s * (w / 2) - s * 0.06, y, z, s * (w / 2), y + 0.22, z + 0.2, r.pick(PRODUCT));
+  r.panel(-s * (w / 2) + s * 0.02, 1.2, 3.0, -s * (w / 2), 2.3, 5.0, '#1d3a5a', true);
+}
+
+/** A corner grocery (kirana): sacks of rice and dal on the floor, jars of sweets on the counter, snack packets hanging in strips, shelves to the ceiling. */
+function kirana(r: Room): void {
+  shell(r, ['#cfc6b0', '#c5bca5'], r.pick(['#f0ead6', '#f3e4d4']), 0.6);
+  const { w, d } = r;
+  counter(r, 0, 2.9, Math.min(w - 1.5, 3.0), '#9a7b5a');
+  for (let i = 0; i < 5; i++) r.panel(-1.0 + i * 0.45, 1.05, 2.75, -0.75 + i * 0.45, 1.4, 3.0, r.pick(['#f2b134', '#d9433b', '#58b368', '#e85d9a']), true);
+  for (let i = 0; i < 4; i++) for (let k = 0; k < 9; k++) r.panel(-1.6 + i * 1.05 - 0.08, 2.4 - k * 0.15, 2.45, -1.6 + i * 1.05 + 0.08, 2.52 - k * 0.15, 2.47, r.pick(PRODUCT));
+  for (const s of [-1, 1]) {
+    r.box(s * (w / 2 - 0.3) - 0.3, 0, 3.4, s * (w / 2 - 0.3) + 0.3, 2.6, d - 0.3, '#c9b79c', true);
+    for (let z = 3.5; z < d - 0.5; z += 0.32) for (let y = 0.3; y < 2.5; y += 0.42) r.panel(s * (w / 2 - 0.62) - 0.02, y, z, s * (w / 2 - 0.6), y + 0.3, z + 0.28, r.pick(PRODUCT));
+  }
+  for (let i = 0; i < Math.min(6, Math.floor((w - 2.5) / 0.7)); i++) {
+    const x = -w / 2 + 1.2 + i * 0.7;
+    r.box(x - 0.28, 0, d - 1.0, x + 0.28, 0.7, d - 0.5, '#c8a96e', true);
+    r.panel(x - 0.25, 0.7, d - 0.97, x + 0.25, 0.72, d - 0.53, r.pick(['#fbfbf2', '#f2d36b', '#c98a3a']));
+  }
+}
+
+/** A darshini: a self-service counter with steel tumblers, standing tables, a billing desk, a menu board, a hand-wash basin. */
+function darshini(r: Room): void {
+  shell(r, ['#b98a5e', '#ad7f55'], r.pick(['#f6e3c4', '#e9ecd8']), 0.5);
+  windows(r, 3);
+  const { w, d } = r;
+  counter(r, 0, d - 1.3, Math.min(w - 2, 5), '#8d9296');
+  for (let x = -Math.min(w - 2, 5) / 2 + 0.2; x < Math.min(w - 2, 5) / 2 - 0.1; x += 0.25) r.panel(x, 1.05, d - 1.55, x + 0.12, 1.2, d - 1.43, '#d9dde0', true);
+  r.panel(-2, 1.7, d - 0.06, 2, 2.5, d - 0.02, '#2c2c2c');
+  for (let k = 0; k < 4; k++) r.panel(-1.8 + k, 1.8, d - 0.07, -1.1 + k, 2.4, d - 0.06, '#f2e2b0', true);
+  for (let z = 3.0; z < d - 2.6; z += 1.6)
+    for (let x = -w / 2 + 1.0; x < w / 2 - 0.8; x += 1.6) {
+      if (Math.abs(x - r.doorX) < 1.0) continue;
+      r.box(x - 0.3, 1.0, z - 0.3, x + 0.3, 1.05, z + 0.3, '#d8cbb5', true);
+      r.box(x - 0.05, 0, z - 0.05, x + 0.05, 1.0, z + 0.05, '#8d9296', true);
+      r.panel(x - 0.08, 1.05, z - 0.05, x + 0.02, 1.15, z + 0.05, '#d9dde0', true);
+    }
+  r.box(w / 2 - 1.3, 0, 1.0, w / 2 - 0.3, 1.0, 1.7, '#7a4b2f', true);
+  r.box(-w / 2 + 0.1, 0.7, d - 2.4, -w / 2 + 0.6, 0.9, d - 1.8, '#f4f6f7', true);
+}
+
+/** A cafe: a coffee bar with the machine and a glass case of cakes, small round tables, pendant lights, a bookshelf, plants. */
+function cafe(r: Room): void {
+  shell(r, ['#8a6544', '#7d5a3c'], r.pick(['#efe6d2', '#e6eef0']), 0.5);
+  windows(r, 3);
+  const { w, d } = r;
+  counter(r, 0, d - 1.3, Math.min(w - 2, 4), '#5a3c28');
+  r.box(-1.2, 1.05, d - 1.5, -0.6, 1.5, d - 1.1, '#2b2e31', true);
+  r.box(0.3, 1.05, d - 1.55, 1.4, 1.45, d - 1.05, '#b9d6e2', true);
+  for (let i = 0; i < 4; i++) r.panel(0.4 + i * 0.25, 1.1, d - 1.4, 0.55 + i * 0.25, 1.2, d - 1.2, r.pick(['#8a3a30', '#f2d36b', '#f2a7c3', '#5a3c28']));
+  for (let z = 2.8; z < d - 2.4; z += 1.7)
+    for (let x = -w / 2 + 1.2; x < w / 2 - 1; x += 1.8) {
+      if (Math.abs(x - r.doorX) < 1.0) continue;
+      table(r, x, z, 0.6, 0.6, '#e9e4da');
+      chair(r, x, z - 0.55, -1, '#5a3c28');
+      chair(r, x, z + 0.55, 1, '#5a3c28');
+      r.panel(x - 0.1, r.h - 0.7, z - 0.1, x + 0.1, r.h - 0.55, z + 0.1, '#ffe2a8', true);
+    }
+  shelves(r, -w / 2 + 0.3, -w / 2 + 1.5, d - 2.5, 1.8);
+  plant(r, w / 2 - 0.5, 2.4);
+}
+
+/** A bakery: glass cases of cakes and puffs, shelves of bread, a counter with the till, a standing table. */
+function bakery(r: Room): void {
+  shell(r, ['#e2ddd2', '#d8d2c6'], r.pick(['#f6ece4', '#f5f1e8']), 0.6);
+  const { w, d } = r;
+  const half = Math.min(w / 2 - 0.8, 2.4);
+  r.box(-half, 0, d - 2.2, half, 1.1, d - 1.5, '#f4f6f7', true);
+  r.panel(-half, 1.1, d - 2.2, half, 1.13, d - 1.5, '#b9d6e2', true);
+  for (let x = -half + 0.15; x < half - 0.15; x += 0.3)
+    for (const y of [0.45, 0.8]) r.panel(x, y, d - 2.0, x + 0.2, y + 0.12, d - 1.7, r.pick(['#f2d36b', '#8a3a30', '#f2a7c3', '#fbfbf2', '#c98a3a']), true);
+  r.box(-half, 0, d - 0.9, half, 2.2, d - 0.4, '#c9b79c', true);
+  for (let x = -half + 0.1; x < half - 0.2; x += 0.32) for (let y = 0.3; y < 2.1; y += 0.4) r.panel(x, y, d - 0.95, x + 0.26, y + 0.16, d - 0.9, r.pick(['#c98a3a', '#a86a2a', '#e0b070']));
+  r.box(half + 0.1, 0, d - 2.2, half + 0.7, 1.0, d - 1.5, '#7a5c40', true);
+  r.box(-w / 2 + 0.8, 1.0, 2.8, -w / 2 + 1.4, 1.05, 3.4, '#d8cbb5', true);
+  r.box(-w / 2 + 1.05, 0, 3.05, -w / 2 + 1.15, 1.0, 3.15, '#8d9296', true);
+}
+
+/** A shop, by what it is. */
+function shopByPlace(r: Room): void {
+  if (r.place === 'pharmacy') pharmacy(r);
+  else if (r.place === 'salon') salon(r);
+  else if (r.place === 'clothes') clothesShop(r);
+  else if (r.place === 'mobile') phoneShop(r);
+  else kirana(r);
+}
+
+/** A place to eat, by what it is. */
+function foodByPlace(r: Room): void {
+  if (r.place === 'cafe') cafe(r);
+  else if (r.place === 'bakery') bakery(r);
+  else darshini(r);
+}
+
 const LAYOUTS: Record<InteriorKind, { build: (r: Room) => void; height: number; min: [number, number]; max: [number, number] }> = {
   home: { build: home, height: 3, min: [7, 8], max: [12, 13] },
   supermarket: { build: supermarket, height: 4, min: [12, 14], max: [30, 30] },
@@ -525,9 +905,9 @@ const LAYOUTS: Record<InteriorKind, { build: (r: Room) => void; height: number; 
   showroom: { build: showroom, height: 5, min: [14, 16], max: [22, 24] },
   school: { build: school, height: 3.6, min: [9, 10], max: [12, 14] },
   office: { build: office, height: 3.2, min: [9, 10], max: [20, 20] },
-  food: { build: food, height: 3.4, min: [7, 8], max: [14, 14] },
-  shop: { build: shop, height: 3.4, min: [5, 6], max: [10, 12] },
-  worship: { build: worship, height: 5, min: [8, 10], max: [16, 20] },
+  food: { build: foodByPlace, height: 3.4, min: [7, 8], max: [14, 14] },
+  shop: { build: shopByPlace, height: 3.4, min: [5, 6], max: [10, 12] },
+  worship: { build: worshipPlace, height: 5, min: [8, 10], max: [16, 20] },
   hotel: { build: hotel, height: 4.2, min: [12, 12], max: [18, 16] },
   clinic: { build: clinic, height: 3.2, min: [7, 8], max: [12, 12] },
   gym: { build: gym, height: 3.8, min: [10, 10], max: [16, 18] },
@@ -1697,8 +2077,7 @@ export class Lift {
     r.panel(x0 + 0.05, 0.88, z0 + 0.3, x0 + 0.09, 0.92, z1 - 0.3, '#8d9296'); // handrail
     r.panel(x1 - 0.3, 0.95, z0 + 0.04, x1 - 0.1, 1.45, z0 + 0.06, '#2a2c2e'); // button panel
     for (let i = 0; i < 5; i++) r.panel(x1 - 0.23, 1.0 + i * 0.08, z0 + 0.06, x1 - 0.17, 1.05 + i * 0.08, z0 + 0.065, '#ffcf6b', true);
-    const geometry = mergeGeometries(r.parts);
-    for (const part of r.parts) part.dispose();
+    const geometry = r.geometry();
     this.car = new THREE.Mesh(geometry, material);
     this.group.add(this.car);
     for (let k = 0; k < shaft.floors; k++)
@@ -1914,6 +2293,8 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const storey = apartmentBlock || house ? Math.max(2.5, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
   const height = apartmentBlock || house ? storeys * storey : mallFloors ? storeys * mallStorey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const room = new Room(w, d, height, rng, -centre, half, doorTop);
+  room.name = door.name;
+  room.place = door.place;
   let lift: Lift | null = null;
   const extras: THREE.Object3D[] = [];
   const signMaterials: THREE.MeshBasicMaterial[] = [];
@@ -1946,8 +2327,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
     treads.frustumCulled = false;
     extras.push(treads);
   }
-  const geometry = mergeGeometries(room.parts);
-  for (const part of room.parts) part.dispose();
+  const geometry = room.geometry();
   const mesh = new THREE.Mesh(geometry, material);
 
   const group = new THREE.Group();

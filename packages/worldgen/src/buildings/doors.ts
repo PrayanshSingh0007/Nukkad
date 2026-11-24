@@ -29,6 +29,8 @@ export interface Door {
   floors: number;
   /** Real name from the map, if the building is a named place. */
   name?: string;
+  /** What the place is (pharmacy, salon, bakery…), if the building is one: its inside follows it. */
+  place?: PlaceKind;
   /** Wide glass door (shops) instead of a wooden one. */
   wide: boolean;
   /**
@@ -183,6 +185,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
     // Is it a named/known place? Its sign hangs on this building.
     let kind = BY_BUILDING[building.kind] ?? 'home';
     let name: string | undefined;
+    let placeKind: PlaceKind | undefined;
     let nearest = 3;
     for (const { place, x, z } of places) {
       if (Math.abs(x - cx) > 80 || Math.abs(z - cz) > 80) continue;
@@ -191,6 +194,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
         nearest = d;
         kind = BY_PLACE[place.kind] ?? kind;
         name = place.real ? place.name : undefined;
+        placeKind = place.kind;
       }
     }
 
@@ -224,6 +228,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
       d: depth,
       floors: building.floors,
       ...(name ? { name } : {}),
+      ...(placeKind ? { place: placeKind } : {}),
       wide,
       ...room,
       top: ground + building.h,
