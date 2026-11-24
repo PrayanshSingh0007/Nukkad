@@ -74,6 +74,10 @@ class Room {
   baseY = 0;
   /** Added to every box's height (furnishing an upper floor with the usual pieces). */
   oy = 0;
+  /** The top of the ground floor's rooms (inner walls stop here; lower than h in a two-floor house). */
+  floorTop = 0;
+  /** Areas furniture must keep out of below height y1 (the foot and run of a house's stairs). */
+  readonly keep: { x0: number; x1: number; z0: number; z1: number; y1: number }[] = [];
 
   constructor(w: number, d: number, h: number, rng: () => number, doorX = 0, doorHalf = 0.6, doorTop = 2.2) {
     this.w = w;
@@ -83,14 +87,17 @@ class Room {
     this.doorX = doorX;
     this.doorHalf = doorHalf;
     this.doorTop = doorTop;
+    this.floorTop = h;
   }
 
   /** The way in stays clear: furniture that would stand in it is left out. */
   private inTheWay(x0: number, y0: number, y1: number, z0: number, x1: number, z1: number): boolean {
-    if (this.structural || y1 <= 0.05 || y0 > 2.4) return false;
-    const a = this.doorX - this.doorHalf - 0.35;
-    const b = this.doorX + this.doorHalf + 0.35;
-    return Math.min(x0, x1) < b && Math.max(x0, x1) > a && Math.min(z0, z1) < 1.7;
+    if (this.structural || y1 <= 0.05) return false;
+    for (const k of this.keep) if (Math.min(x0, x1) < k.x1 && Math.max(x0, x1) > k.x0 && Math.min(z0, z1) < k.z1 && Math.max(z0, z1) > k.z0 && Math.min(y0, y1) < k.y1) return true;
+    if (y0 > 2.4) return false;
+    const a = this.doorX - this.doorHalf - 0.45;
+    const b = this.doorX + this.doorHalf + 0.45;
+    return Math.min(x0, x1) < b && Math.max(x0, x1) > a && Math.min(z0, z1) < 2.6; // an entry hall behind the door stays clear
   }
 
   /** A box from (x0, y0, z0) to (x1, y1, z1). `solid` = you bump into it. */
@@ -257,10 +264,13 @@ function home(r: Room): void {
   shell(r, ['#d8c9ad', '#cfbfa2'], r.pick(['#f1e9dc', '#e6eef0', '#f3e4d4', '#e9f0e3']), 0.6);
   windows(r, 3.5);
   const { w, d } = r;
-  r.box(-0.9, 0, 0.3, -0.5, 0.9, 0.9, '#7b5a40', true); // shoe rack by the door
+  // The living room and kitchen go on the side away from the door, so the way in stays free.
+  const L = r.doorX > 0 ? -1 : 1;
+  const rack = r.doorX - L * (r.doorHalf + 0.5);
+  r.box(rack - 0.2, 0, 0.1, rack + 0.2, 0.9, 0.5, '#7b5a40', true); // shoe rack by the door
   // Living room (front half): sofa, coffee table, TV wall, rug.
   const lz = Math.min(d * 0.45, 5);
-  const cx = -(w / 4 + 0.2); // the living room sits to the left, the way in stays free
+  const cx = L * (w / 4 + 0.2);
   r.panel(cx + -1.4, 0.001, lz - 1.4, cx + 1.4, 0.012, lz + 0.6, r.pick(['#a8463a', '#3e5f8a', '#7a5c2e']));
   r.box(cx + -1.3, 0, lz + 0.6, cx + 1.3, 0.45, lz + 1.4, '#6d7c8c', true); // sofa seat
   for (const sx of [-0.8, 0, 0.8]) r.seats.push({ x: cx + sx, z: lz + 0.85, dz: -1 });
@@ -270,28 +280,28 @@ function home(r: Room): void {
   table(r, cx, lz - 0.3, 1.0, 0.55, '#8a6544', 0.42);
   r.box(cx + -1.1, 0, lz - 2.3, cx + 1.1, 0.5, lz - 1.9, '#5b4636', true); // TV unit
   r.panel(cx + -0.8, 0.8, lz - 2.2, cx + 0.8, 1.6, lz - 2.15, '#15181d'); // TV
-  plant(r, w / 2 - 0.6, 1.0);
-  // Kitchen along one side wall: counter, stove, fridge.
-  const kx = w / 2 - 0.35;
+  plant(r, L * (w / 2 - 0.6), 1.0);
+  // Kitchen along the side wall behind the living room: counter, stove, fridge.
+  const K = (a: number): number => L * (w / 2 - 0.35 + a);
   if (d > 6) {
-    r.box(kx - 0.3, 0, lz + 2.5, kx + 0.35, 0.9, lz + 5, '#d6d0c4', true);
-    r.panel(kx - 0.32, 0.9, lz + 2.5, kx + 0.35, 0.94, lz + 5, '#3a3a3a');
-    r.panel(kx - 0.25, 0.94, lz + 3, kx + 0.2, 0.96, lz + 3.6, '#202020'); // stove
-    r.box(kx - 0.35, 0, lz + 5.1, kx + 0.35, 1.8, lz + 5.8, '#e4e6e8', true); // fridge
+    r.box(K(-0.3), 0, lz + 2.5, K(0.35), 0.9, lz + 5, '#d6d0c4', true);
+    r.panel(K(-0.32), 0.9, lz + 2.5, K(0.35), 0.94, lz + 5, '#3a3a3a');
+    r.panel(K(-0.25), 0.94, lz + 3, K(0.2), 0.96, lz + 3.6, '#202020'); // stove
+    r.box(K(-0.35), 0, lz + 5.1, K(0.35), 1.8, lz + 5.8, '#e4e6e8', true); // fridge
   }
   // Dining table.
   if (w > 6 && d > 7) {
-    table(r, -w / 4, lz + 3.3, 1.4, 0.8, '#7c5a3c');
+    table(r, -L * w / 4, lz + 3.3, 1.4, 0.8, '#7c5a3c');
     for (const s of [-1, 1] as const) {
-      chair(r, -w / 4 - 0.35, lz + 3.3 + s * 0.7, s, '#6a4c33');
-      chair(r, -w / 4 + 0.35, lz + 3.3 + s * 0.7, s, '#6a4c33');
+      chair(r, -L * w / 4 - 0.35, lz + 3.3 + s * 0.7, s, '#6a4c33');
+      chair(r, -L * w / 4 + 0.35, lz + 3.3 + s * 0.7, s, '#6a4c33');
     }
   }
   // Bedroom at the back behind a partition with a doorway.
   if (d > 9) {
     const bz = d - 4.2;
-    r.box(-w / 2, 0, bz, -0.6, r.h, bz + 0.12, '#ece4d8', true);
-    r.box(0.6, 0, bz, w / 2, r.h, bz + 0.12, '#ece4d8', true);
+    r.box(-w / 2, 0, bz, -0.6, r.floorTop, bz + 0.12, '#ece4d8', true);
+    r.box(0.6, 0, bz, w / 2, r.floorTop, bz + 0.12, '#ece4d8', true);
     r.box(-1, 0, d - 2.3, 1, 0.5, d - 0.1, '#e9e2d5', true); // bed
     r.panel(-1, 0.5, d - 2.3, 1, 0.56, d - 0.1, r.pick(['#4b6ea8', '#b55a7a', '#5e9a72']));
     r.box(-1.05, 0, d - 0.2, 1.05, 1.1, d - 0.05, '#6b4a33', true); // headboard
@@ -701,17 +711,283 @@ function shutFlat(r: Room, face: number, toward: 1 | -1, doorZ: number, y: numbe
   r.oy = 0;
 }
 
+/** What a many-floored building is: an apartment block, an office block, or a hotel. */
+type BlockKind = 'flats' | 'office' | 'hotel';
+
+/** A ceiling fan (every Indian home has them): a hub and three blades, just under the ceiling. */
+function ceilingFan(r: Room, x: number, z: number, ceiling: number): void {
+  r.panel(x - 0.02, ceiling - 0.3, z - 0.02, x + 0.02, ceiling, z + 0.02, '#8d9296');
+  r.panel(x - 0.11, ceiling - 0.38, z - 0.11, x + 0.11, ceiling - 0.3, z + 0.11, '#e9e6df');
+  r.panel(x + 0.1, ceiling - 0.35, z - 0.06, x + 0.68, ceiling - 0.33, z + 0.06, '#d8d2c6');
+  for (const a of [2.094, 4.189]) {
+    const cx = x + Math.cos(a) * 0.39;
+    const cz = z + Math.sin(a) * 0.39;
+    r.panel(cx - 0.2, ceiling - 0.35, cz - 0.2, cx + 0.2, ceiling - 0.33, cz + 0.2, '#d8d2c6');
+  }
+}
+
+/** An office floor's open plan on one side of the aisle: rows of shared desks with monitors and chairs, a pantry, plants, a whiteboard. */
+function furnishOffice(r: Room, xo: number, xc: number, z0: number, z1: number, y: number, ceiling: number): void {
+  const into = xo < xc ? 1 : -1;
+  const X = (a: number): number => xo + into * a;
+  const width = Math.abs(xc - xo);
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  for (let z = z0 + 0.6; z + 1.6 < z1 - 0.3; z += 2.4) wallWindow(r, 'x', xo, into, z, z + 1.6, 0.8, 2.3);
+  const a0 = 0.7;
+  const a1 = width - 0.9;
+  if (a1 - a0 >= 1.4) {
+    for (let z = z0 + 1.1; z + 1.4 + 1.0 < z1 - 1.2; z += 3.7) {
+      r.box(X(a0), 0.7, z, X(a1), 0.74, z + 1.4, '#e9e6df', true);
+      r.box(X(a0), 0, z + 0.1, X(a0 + 0.05), 0.7, z + 1.3, '#7d8288', true);
+      r.box(X(a1 - 0.05), 0, z + 0.1, X(a1), 0.7, z + 1.3, '#7d8288', true);
+      r.panel(X(a0), 0.74, z + 0.68, X(a1), 1.08, z + 0.72, '#6f8fa8');
+      for (let a = a0 + 0.6; a < a1 - 0.3; a += 1.2) {
+        for (const [screen, keys] of [
+          [z + 0.5, z + 0.18],
+          [z + 0.87, z + 1.07],
+        ]) {
+          r.panel(X(a - 0.28), 0.88, screen, X(a + 0.28), 1.22, screen + 0.03, '#1a1d21');
+          r.panel(X(a - 0.24), 0.92, screen - 0.003, X(a + 0.24), 1.18, screen + 0.033, r.pick(['#2f4b66', '#24384f', '#3a5a3a', '#4a3f66']), true);
+          r.panel(X(a - 0.03), 0.74, screen + 0.03, X(a + 0.03), 0.88, screen + 0.06, '#3a3d40');
+          r.panel(X(a - 0.2), 0.74, keys, X(a + 0.2), 0.755, keys + 0.14, '#2b2e31');
+        }
+        chair(r, X(a), z - 0.45, -1, '#2b2f35');
+        chair(r, X(a), z + 1.85, 1, '#2b2f35');
+      }
+    }
+  }
+  // Pantry at the back by the window: a counter, a coffee machine, a water cooler.
+  if (z1 - z0 > 5) {
+    r.box(X(0.05), 0, z1 - 1.9, X(0.65), 0.9, z1 - 0.2, '#d6d0c4', true);
+    r.panel(X(0.15), 0.9, z1 - 1.6, X(0.45), 1.25, z1 - 1.3, '#2b2e31');
+    r.box(X(0.8), 0, z1 - 0.55, X(1.15), 1.05, z1 - 0.2, '#e9eef2', true);
+    r.panel(X(0.86), 1.05, z1 - 0.5, X(1.09), 1.4, z1 - 0.25, '#9fd0ea', true);
+  }
+  // A whiteboard on the back wall, plants at the corners.
+  if (width > 3.4) r.panel(X(width * 0.5 - 0.9), 1.0, z1 - 0.02, X(width * 0.5 + 0.9), 2.0, z1, '#fbfbf9', true);
+  plant(r, X(0.4), z0 + 0.5, true);
+  plant(r, X(width - 0.5), z1 - 0.5);
+  for (let a = 1.2; a < width - 0.6; a += 2.4) for (let z = z0 + 1.2; z < z1 - 0.6; z += 2.4) r.panel(X(a - 0.5), ceiling - y - 0.02, z - 0.25, X(a + 0.5), ceiling - y, z + 0.25, '#ffffff', true);
+  r.oy = 0;
+}
+
+/** A hotel room, door open: a made double bed, bedside lamps, a desk, an armchair by the window, a TV, a wardrobe, a luggage rack. */
+function furnishHotelRoom(r: Room, side: -1 | 1, xo: number, xc: number, z0: number, z1: number, y: number, doorZ: number, ceiling: number): void {
+  const into = side < 0 ? 1 : -1;
+  const X = (a: number): number => xo + into * a;
+  const width = Math.abs(xc - xo);
+  const length = z1 - z0;
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  r.panel(xo, -0.05, z0, xc, 0, z1, r.pick(['#8c6f55', '#6f5a7a', '#7a6248']));
+  for (let z = z0 + 0.6; z + 1.4 < z1 - 0.3; z += 2.4) wallWindow(r, 'x', xo, into, z, z + 1.4, 0.7, 2.3);
+  // The bed, head against the far wall.
+  if (length > 3.2 && width > 2.6) {
+    const b0 = Math.min(Math.max(0.7, (width - 1.6) / 2 - 0.3), width - 2.3);
+    const b1 = b0 + 1.6;
+    r.box(X(b0 - 0.1), 0, z1 - 0.13, X(b1 + 0.1), 1.25, z1 - 0.05, '#5a3c28', true); // headboard
+    r.box(X(b0), 0, z1 - 2.15, X(b1), 0.5, z1 - 0.13, '#e9e2d5', true);
+    r.panel(X(b0), 0.5, z1 - 2.15, X(b1), 0.6, z1 - 0.4, '#f8f7f3');
+    r.panel(X(b0), 0.6, z1 - 1.0, X(b1), 0.62, z1 - 0.7, r.pick(['#8a2c3a', '#2c4a7a', '#7a6a2c'])); // runner
+    r.panel(X(b0 + 0.15), 0.58, z1 - 0.45, X(b0 + 0.75), 0.72, z1 - 0.15, '#ffffff');
+    r.panel(X(b1 - 0.75), 0.58, z1 - 0.45, X(b1 - 0.15), 0.72, z1 - 0.15, '#ffffff');
+    for (const a of [b0 - 0.55, b1 + 0.1]) {
+      r.box(X(a), 0, z1 - 0.55, X(a + 0.45), 0.55, z1 - 0.12, '#5a3c28', true);
+      r.panel(X(a + 0.12), 0.55, z1 - 0.4, X(a + 0.33), 0.9, z1 - 0.2, '#ffe2a8', true); // lamp
+    }
+    // TV on the opposite wall.
+    r.panel(X((b0 + b1) / 2 - 0.55), 1.0, z0 + 0.02, X((b0 + b1) / 2 + 0.55), 1.62, z0 + 0.05, '#15181d');
+  }
+  // Desk and chair under the window end, an armchair, a wardrobe and luggage rack by the door.
+  table(r, X(0.45), z0 + 1.0, 0.6, 1.1, '#6b4a33');
+  chair(r, X(0.95), z0 + 1.0, -1, '#5a3c28');
+  if (length > 4.2) {
+    r.box(X(0.2), 0, z0 + 2.1, X(0.9), 0.42, z0 + 2.8, '#a8463a', true);
+    r.box(X(0.2), 0.42, z0 + 2.1, X(0.4), 0.95, z0 + 2.8, '#8a3a30');
+  }
+  if (doorZ - 0.7 - (z0 + 0.1) > 0.9) r.box(X(width - 0.65), 0, z0 + 0.1, X(width - 0.05), 2.1, doorZ - 0.7, '#6b4a33', true);
+  if (z1 - 0.2 - (doorZ + 0.7) > 0.8) {
+    r.box(X(width - 0.6), 0.42, doorZ + 0.75, X(width - 0.1), 0.46, doorZ + 1.45, '#c9b06a', true);
+    r.box(X(width - 0.6), 0.46, doorZ + 0.8, X(width - 0.15), 0.8, doorZ + 1.35, r.pick(['#2b3b5a', '#5a2b2b', '#2b2b2b']));
+  }
+  r.panel(X(width * 0.5 - 0.4), ceiling - y - 0.02, z0 + length / 2 - 0.4, X(width * 0.5 + 0.4), ceiling - y, z0 + length / 2 + 0.4, '#fff3dc', true);
+  r.oy = 0;
+}
+
+/** A shut hotel room door from the corridor: number plate, key-card reader, sometimes a do-not-disturb tag. */
+function shutRoom(r: Room, face: number, toward: 1 | -1, doorZ: number, y: number): void {
+  r.structural = false;
+  r.oy = y;
+  const at = (t0: number, t1: number): [number, number] => [face + toward * t0, face + toward * t1];
+  const [d0, d1] = at(0, 0.03);
+  r.panel(d0, 0, doorZ - 0.48, d1, 2.1, doorZ + 0.48, '#4a3426');
+  const [p0, p1] = at(0.03, 0.045);
+  r.panel(p0, 1.6, doorZ - 0.1, p1, 1.72, doorZ + 0.1, '#c9b06a');
+  r.panel(p0, 1.05, doorZ + 0.3, p1, 1.2, doorZ + 0.38, '#1d1f22');
+  r.panel(at(0.045, 0.05)[0], 1.17, doorZ + 0.33, at(0.045, 0.05)[1], 1.19, doorZ + 0.35, r.rng() < 0.85 ? '#3fdc6a' : '#ff4a3a', true);
+  if (r.rng() < 0.25) r.panel(p0, 0.82, doorZ + 0.25, p1, 1.02, doorZ + 0.37, '#c8323a');
+  r.oy = 0;
+}
+
+/** The ground floor's lobby for an office: reception, sofas, a coloured wall, plants. */
+function officeLobby(r: Room, w: number, ceiling: number): void {
+  r.structural = false;
+  // The desk goes on the side away from the doorway (mirrored when the door is on the right).
+  const side = r.doorX > 0 ? -1 : 1;
+  const M = (x: number): number => side * x;
+  counter(r, M(w / 2 - 1.7), 2.1, 2.4, '#e8e4dc');
+  chair(r, M(w / 2 - 1.7), 2.8, 1, '#2b2f35');
+  r.panel(M(w / 2 - 0.03), 0.6, 0.6, M(w / 2), 2.6, 3.2, '#2e6f9e');
+  r.panel(M(w / 2 - 0.04), 1.5, 1.2, M(w / 2 - 0.03), 1.9, 2.6, '#f2f2ee', true);
+  for (const z of [1.9, 2.9]) {
+    r.box(M(-w / 2 + 0.15), 0, z - 0.4, M(-w / 2 + 0.95), 0.42, z + 0.4, '#3b4a5a', true);
+    r.box(M(-w / 2 + 0.15), 0.42, z - 0.4, M(-w / 2 + 0.4), 0.85, z + 0.4, '#334150');
+    r.seats.push({ x: M(-w / 2 + 0.6), z, dz: 1 });
+  }
+  plant(r, M(-w / 2 + 0.5), 0.6, true);
+  plant(r, M(w / 2 - 0.5), 3.2, true);
+  for (let x = -w / 2 + 1.2; x < w / 2 - 0.6; x += 2.4) r.panel(x - 0.5, ceiling - 0.02, 1.2, x + 0.5, ceiling, 1.7, '#ffffff', true);
+}
+
+/** The ground floor's lobby for a hotel: front desk with a bell and a key rack, sofas on a rug, a luggage trolley, a chandelier. */
+function hotelLobby(r: Room, w: number, ceiling: number): void {
+  r.structural = false;
+  // The desk goes on the side away from the doorway (mirrored when the door is on the right).
+  const side = r.doorX > 0 ? -1 : 1;
+  const M = (x: number): number => side * x;
+  counter(r, M(w / 2 - 1.7), 2.3, 2.6, '#5a3c28');
+  r.panel(M(w / 2 - 1.2), 1.05, 2.1, M(w / 2 - 1.1), 1.12, 2.2, '#e0c060', true); // bell
+  for (let i = 0; i < 5; i++)
+    for (let j = 0; j < 3; j++) r.panel(M(w / 2 - 0.03), 1.3 + j * 0.25, 1.4 + i * 0.3, M(w / 2), 1.5 + j * 0.25, 1.6 + i * 0.3, '#7b5a40');
+  r.panel(M(-w / 2 + 0.3), 0.001, 1.0, M(-w / 2 + 3.0), 0.012, 3.2, '#7a2c2c');
+  for (const z of [1.4, 2.8]) {
+    r.box(M(-w / 2 + 0.2), 0, z - 0.45, M(-w / 2 + 1.0), 0.42, z + 0.45, '#c9a77c', true);
+    r.box(M(-w / 2 + 0.2), 0.42, z - 0.45, M(-w / 2 + 0.45), 0.9, z + 0.45, '#b8956a');
+    r.seats.push({ x: M(-w / 2 + 0.65), z, dz: 1 });
+  }
+  table(r, M(-w / 2 + 1.7), 2.1, 0.7, 0.7, '#5a3c28', 0.45);
+  // A brass luggage trolley.
+  const tx = M(w / 2 - 0.8);
+  r.box(tx - 0.35, 0.1, 3.0, tx + 0.35, 0.16, 3.25, '#a8463a', true);
+  for (const dx of [-0.33, 0.33]) r.panel(tx + dx - 0.02, 0.16, 3.1, tx + dx + 0.02, 1.7, 3.14, '#d9b84a');
+  r.panel(tx - 0.35, 1.66, 3.1, tx + 0.35, 1.7, 3.14, '#d9b84a');
+  plant(r, M(-w / 2 + 0.5), 0.5, true);
+  // The chandelier: a cluster of warm lights.
+  for (const [dx, dz] of [
+    [0, 0],
+    [0.35, 0],
+    [-0.35, 0],
+    [0, 0.35],
+    [0, -0.35],
+  ])
+    r.panel(dx - 0.08, ceiling - 0.5, 1.8 + dz - 0.08, dx + 0.08, ceiling - 0.34, 1.8 + dz + 0.08, '#ffe2a8', true);
+  r.panel(-0.02, ceiling - 0.34, 1.78, 0.02, ceiling, 1.82, '#c9b06a');
+}
+
+/**
+ * A two-floor house: the usual ground floor, a straight staircase up one side wall (closed
+ * underneath, a wooden balustrade), and bedrooms upstairs with ceiling fans. `storey` = floor to floor.
+ */
+function twoFloorHouse(r: Room, storey: number): void {
+  const { w, d } = r;
+  const sw = 0.95;
+  const left = r.doorX <= 0; // the stairs go up the door's side (the living room is on the other)
+  const xa = left ? -w / 2 : w / 2 - sw;
+  const xb = xa + sw;
+  const inner = left ? xb : xa;
+  const steps = Math.max(12, Math.round(storey / 0.18));
+  const rise = storey / steps;
+  const run = Math.min(0.27, (d - 2.6) / steps);
+  const z1 = d - 0.75;
+  const z0 = z1 - steps * run;
+  // Ground-floor furniture keeps out of the stairs and their foot.
+  r.keep.push({ x0: left ? -w / 2 : xa - 0.9, x1: left ? xb + 0.9 : w / 2, z0: z0 - 1.0, z1: d, y1: storey - 0.3 });
+  r.floorTop = storey;
+  home(r);
+  r.structural = true;
+  // The floor between the two storeys, with the stair opening.
+  const y = storey;
+  const slab = (x0: number, x1: number, za: number, zb: number): void => r.box(x0, y - 0.25, za, x1, y - 0.05, zb, '#efede8', true);
+  slab(-w / 2, w / 2, 0, z0);
+  slab(-w / 2, w / 2, z1, d);
+  if (left) slab(xb, w / 2, z0, z1);
+  else slab(-w / 2, xa, z0, z1);
+  // The steps, solid underneath; the balustrade up their open side.
+  for (let i = 0; i < steps; i++) {
+    const top = (i + 1) * rise;
+    r.box(xa, 0, z0 + i * run, xb, top, z0 + (i + 1) * run, '#b98a5e', true);
+    r.box(inner - (left ? 0 : 0.05), 0, z0 + i * run, inner + (left ? 0.05 : 0), top + 0.9, z0 + (i + 1) * run, '#e9e2d5', true);
+    r.panel(inner - (left ? 0.01 : 0.06), top + 0.9, z0 + i * run, inner + (left ? 0.06 : 0.01), top + 0.95, z0 + (i + 1) * run, '#5a3c28');
+  }
+  // Upstairs: railings round the opening.
+  r.box(inner - (left ? 0 : 0.05), y, z0, inner + (left ? 0.05 : 0), y + 1.0, z1, '#e9e2d5', true);
+  r.box(xa, y, z0 - 0.05, xb, y + 1.0, z0, '#e9e2d5', true);
+  r.panel(inner - 0.03, y + 1.0, z0 - 0.05, inner + 0.03, y + 1.05, z1, '#5a3c28');
+  // Ground-floor lights under the new floor.
+  for (let x = -w / 2 + 2; x < w / 2 - 1; x += 4) for (let z = 2; z < d - 1; z += 4) r.panel(x - 0.5, y - 0.27, z - 0.25, x + 0.5, y - 0.25, z + 0.25, '#ffffff', true);
+  // Upstairs floor, windows, and a bedroom wall across the middle with a doorway.
+  r.structural = false;
+  r.oy = y;
+  r.baseY = y;
+  const floorSides: [number, number][] = left ? [[xb, w / 2]] : [[-w / 2, xa]];
+  for (const [a, b] of floorSides) tiles(r, a, b, 0, d, ['#b88b5e', '#ad8055'], 0.75);
+  tiles(r, xa, xb, z1, d, ['#b88b5e', '#ad8055'], 0.75);
+  tiles(r, xa, xb, 0, z0 - 0.05, ['#b88b5e', '#ad8055'], 0.75);
+  for (let z = 1.2; z + 1.3 < d - 0.6; z += 3) {
+    wallWindow(r, 'x', -w / 2, 1, z, z + 1.3, 0.9, 2.2);
+    wallWindow(r, 'x', w / 2, -1, z, z + 1.3, 0.9, 2.2);
+  }
+  r.oy = 0;
+  r.structural = true;
+  const bz = Math.max(3, d * 0.45);
+  const room0 = left ? xb + 0.05 : -w / 2;
+  const room1 = left ? w / 2 : xa - 0.05;
+  if (bz < z0 - 0.3 && room1 - room0 > 2.6) {
+    const gap = (room0 + room1) / 2;
+    r.box(room0, y, bz - 0.06, gap - 0.5, y + storey, bz + 0.06, r.pick(['#f1e9dc', '#e6eef0', '#f3e4d4']), true);
+    r.box(gap + 0.5, y, bz - 0.06, room1, y + storey, bz + 0.06, '#f1e9dc', true);
+    r.box(gap - 0.5, y + 2.1, bz - 0.06, gap + 0.5, y + storey, bz + 0.06, '#f1e9dc', true);
+  }
+  r.structural = false;
+  r.oy = y;
+  // The bedroom at the back: bed, side tables, wardrobe, a fan; a study at the front.
+  const bw = Math.min(1.6, room1 - room0 - 1.4);
+  if (bw > 1.0) {
+    const bx0 = left ? room1 - 0.6 - bw : room0 + 0.6;
+    r.box(bx0 - 0.05, 0, d - 0.12, bx0 + bw + 0.05, 1.1, d - 0.05, '#6b4a33', true);
+    r.box(bx0, 0, d - 2.2, bx0 + bw, 0.5, d - 0.12, '#e9e2d5', true);
+    r.panel(bx0, 0.5, d - 2.2, bx0 + bw, 0.57, d - 0.4, r.pick(['#4b6ea8', '#b55a7a', '#5e9a72', '#c98a3a']));
+    r.panel(bx0 + 0.1, 0.55, d - 0.45, bx0 + bw - 0.1, 0.68, d - 0.15, '#ffffff');
+    r.box(bx0 - 0.5, 0, d - 0.5, bx0 - 0.05, 0.5, d - 0.1, '#7b5a40', true);
+    r.panel(bx0 - 0.4, 0.5, d - 0.4, bx0 - 0.2, 0.8, d - 0.2, '#ffe2a8', true);
+  }
+  const wardX = left ? room0 + 0.05 : room1 - 0.65;
+  if (d - 2.6 > bz + 0.4) r.box(wardX, 0, bz + 0.3, wardX + 0.6, 2.1, bz + 1.6, '#8a6a4c', true);
+  table(r, (room0 + room1) / 2, 0.75, 1.2, 0.6, '#7c5a3c');
+  chair(r, (room0 + room1) / 2, 1.35, 1, '#6a4c33');
+  plant(r, left ? room1 - 0.4 : room0 + 0.4, 0.5);
+  ceilingFan(r, (room0 + room1) / 2, (bz + d) / 2, storey);
+  ceilingFan(r, (room0 + room1) / 2, bz / 2, storey);
+  r.oy = 0;
+  r.baseY = 0;
+}
+
 /**
  * An apartment block, every floor of it: a lobby on the ground floor (letterboxes, a security
  * desk), a corridor up the middle of each floor with the flats' doors (one flat on each floor is
  * open and furnished), switchback stairs with a landing between floors, and a lift shaft whose
  * car runs up and down (see `Lift`). Returns the shaft and where each floor's sign goes.
  */
-function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[] } {
+function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 'flats'): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[] } {
   const { w, d } = r;
   const H = storeys * storey;
-  const wall = r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']);
-  const inner = '#ece6da';
+  const wall = kind === 'office' ? '#eef0f2' : kind === 'hotel' ? '#efe3cf' : r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']);
+  const inner = kind === 'office' ? '#e9ecef' : kind === 'hotel' ? '#eadcc4' : '#ece6da';
+  // Floors: corridor tiles in flats, blue-grey carpet tiles in offices, a deep red carpet in hotels.
+  const floorTiles: [string, string] = kind === 'office' ? ['#5d6a78', '#56626f'] : kind === 'hotel' ? ['#6e2a2a', '#64262a'] : CORRIDOR_TILES;
   const concrete = '#9c9a95';
   const cw = 1.8;
   const c0 = Math.min(Math.max(r.doorX - cw / 2, -w / 2 + 2.0), w / 2 - 2.55 - cw);
@@ -767,16 +1043,17 @@ function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaf
     }
     // Floor tiles where you walk: the whole ground floor; the corridor and stair landing above.
     r.oy = y;
-    if (k === 0) tiles(r, -w / 2, w / 2, 0, d, CORRIDOR_TILES, 1.0);
+    if (k === 0) tiles(r, -w / 2, w / 2, 0, d, kind === 'hotel' ? ['#d9cdb5', '#cfc2a8'] : CORRIDOR_TILES, 1.0);
     else {
-      tiles(r, c0, c1, 0, d, CORRIDOR_TILES, 0.9);
-      tiles(r, c1, s1, coreZ, stairZ, CORRIDOR_TILES, 0.9);
+      if (kind === 'office') tiles(r, -w / 2, w / 2, 0, coreZ, floorTiles, 0.9);
+      tiles(r, c0, c1, 0, d, floorTiles, 0.9);
+      tiles(r, c1, s1, coreZ, stairZ, floorTiles, 0.9);
     }
     r.oy = 0;
 
     // Flats on both sides of the corridor (behind a lobby on the ground floor).
     const zs = k === 0 ? 3.4 : 0;
-    const room = coreZ - zs >= 3;
+    const room = coreZ - zs >= 3 && kind !== 'office';
     const leftFlats = room && c0 - 0.15 + w / 2 >= 2.6;
     const rightFlats = room && w / 2 - (c1 + 0.15) >= 2.6;
     const sides: (-1 | 1)[] = [];
@@ -792,7 +1069,7 @@ function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaf
       const xo = side < 0 ? -w / 2 : w / 2;
       const xc = side < 0 ? c0 - 0.15 : c1 + 0.15;
       if (!has) continue;
-      const n = Math.max(1, Math.floor((coreZ - zs) / 5));
+      const n = Math.max(1, Math.floor((coreZ - zs) / (kind === 'hotel' ? 4.2 : 5)));
       const length = (coreZ - zs) / n;
       const pick = Math.floor(r.rng() * n);
       // Back wall (towards the core), the front wall facing the lobby, and partitions.
@@ -810,12 +1087,12 @@ function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaf
     // The corridor's walls: the left one runs to the back (the lift doors are in it); the right
     // one stops at the stairs. Where a side has no flats the wall closes it off (the ground
     // floor's lobby stays open).
-    const leftFrom = leftFlats ? zs : k === 0 ? coreZ : 0;
-    const rightFrom = rightFlats ? zs : k === 0 ? coreZ : 0;
+    const leftFrom = leftFlats ? zs : k === 0 || kind === 'office' ? coreZ : 0;
+    const rightFrom = rightFlats ? zs : k === 0 || kind === 'office' ? coreZ : 0;
     wallAlongZ(r, c0 - 0.15, c0, leftFrom, d, y, tall, inner, leftGaps);
     if (rightFrom < coreZ) wallAlongZ(r, c1, c1 + 0.15, rightFrom, coreZ, y, tall, inner, rightGaps);
-    if (k === 0 && !leftFlats) r.box(-w / 2, y, coreZ - 0.15, c0 - 0.15, y + tall, coreZ, inner, true);
-    if (k === 0 && !rightFlats) r.box(c1, y, coreZ - 0.15, w / 2, y + tall, coreZ, inner, true);
+    if ((k === 0 || kind === 'office') && !leftFlats) r.box(-w / 2, y, coreZ - 0.15, c0 - 0.15, y + tall, coreZ, inner, true);
+    if ((k === 0 || kind === 'office') && !rightFlats) r.box(c1, y, coreZ - 0.15, w / 2, y + tall, coreZ, inner, true);
     // The stairwell's side towards the corridor is walled, so nobody steps off a flight.
     r.box(c1, y, stairZ, s0, y + tall, d, inner, true);
     // Lift: the indicator over the doors, the call button, a frame.
@@ -851,23 +1128,33 @@ function apartments(r: Room, storeys: number, storey: number): { shaft: LiftShaf
     // Corridor lights, and a window at its front end (upper floors).
     for (let z = 1.5; z < d - 0.5; z += 3) r.panel(c0 + 0.6, ceiling - 0.02, z - 0.2, c1 - 0.6, ceiling, z + 0.2, '#ffffff', true);
     if (k > 0) wallWindow(r, 'z', 0, 1, c0 + 0.25, c1 - 0.25, y + 0.9, y + 2.2);
-    // The flats: shut doors with shoes outside; one open and furnished.
-    for (const s of shut) shutFlat(r, s.face, s.toward, s.z, y);
-    for (const f of open) furnishFlat(r, f.side, f.xo, f.xc, f.z0, f.z1, y, f.z, ceiling);
+    // Flats: shut doors with shoes outside, one open and furnished. Hotel: numbered doors, one
+    // room open. Offices: open plan either side of the aisle.
+    for (const u of shut) (kind === 'hotel' ? shutRoom : shutFlat)(r, u.face, u.toward, u.z, y);
+    for (const f of open) (kind === 'hotel' ? furnishHotelRoom : furnishFlat)(r, f.side, f.xo, f.xc, f.z0, f.z1, y, f.z, ceiling);
+    if (kind === 'office') {
+      const from = k === 0 ? 3.6 : 0.1;
+      if (c0 - 0.15 + w / 2 >= 2.6) furnishOffice(r, -w / 2, c0 - 0.15, from, coreZ - 0.15, y, ceiling);
+      if (w / 2 - (c1 + 0.15) >= 2.6) furnishOffice(r, w / 2, c1 + 0.15, from, coreZ - 0.15, y, ceiling);
+    }
     r.structural = true;
-    if (k === 0) {
+    if (k === 0 && kind === 'office') officeLobby(r, w, ceiling);
+    else if (k === 0 && kind === 'hotel') hotelLobby(r, w, ceiling);
+    else if (k === 0) {
       // The lobby: letterboxes, a security desk with a chair, a notice board, a plant.
       r.structural = false;
+      const side = r.doorX > 0 ? -1 : 1;
+      const M = (x: number): number => side * x;
       for (let i = 0; i < 4; i++)
         for (let j = 0; j < 3; j++) {
-          r.panel(-w / 2, 1.0 + j * 0.24, 0.9 + i * 0.36, -w / 2 + 0.14, 1.2 + j * 0.24, 1.22 + i * 0.36, '#8f969c');
-          r.panel(-w / 2 + 0.14, 1.12 + j * 0.24, 0.98 + i * 0.36, -w / 2 + 0.15, 1.14 + j * 0.24, 1.14 + i * 0.36, '#2a2c2e');
+          r.panel(-w / 2, 1.0 + j * 0.24, 0.9 + i * 0.36, M(-w / 2 + 0.14), 1.2 + j * 0.24, 1.22 + i * 0.36, '#8f969c');
+          r.panel(M(-w / 2 + 0.14), 1.12 + j * 0.24, 0.98 + i * 0.36, M(-w / 2 + 0.15), 1.14 + j * 0.24, 1.14 + i * 0.36, '#2a2c2e');
         }
-      counter(r, w / 2 - 1.1, 2.4, 1.4, '#7a5c40');
-      chair(r, w / 2 - 1.1, 3.05, 1, '#2f4f6f');
-      r.panel(w / 2 - 0.03, 1.2, 0.6, w / 2, 1.9, 1.5, '#b08a5a');
-      for (let i = 0; i < 3; i++) r.panel(w / 2 - 0.04, 1.35 + (i % 2) * 0.2, 0.7 + i * 0.25, w / 2 - 0.03, 1.6 + (i % 2) * 0.2, 0.9 + i * 0.25, '#f4f1e8');
-      plant(r, -w / 2 + 0.5, 3.0, true);
+      counter(r, M(w / 2 - 1.1), 2.4, 1.4, '#7a5c40');
+      chair(r, M(w / 2 - 1.1), 3.05, 1, '#2f4f6f');
+      r.panel(M(w / 2 - 0.03), 1.2, 0.6, M(w / 2), 1.9, 1.5, '#b08a5a');
+      for (let i = 0; i < 3; i++) r.panel(M(w / 2 - 0.04), 1.35 + (i % 2) * 0.2, 0.7 + i * 0.25, M(w / 2 - 0.03), 1.6 + (i % 2) * 0.2, 0.9 + i * 0.25, '#f4f1e8');
+      plant(r, M(-w / 2 + 0.5), 3.0, true);
       for (let x = -w / 2 + 1.5; x < w / 2 - 1; x += 3) r.panel(x - 0.4, ceiling - 0.02, 1.4, x + 0.4, ceiling, 1.9, '#ffffff', true);
     }
   }
@@ -1070,9 +1357,12 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const layout = LAYOUTS[door.kind];
   const half = door.wide ? 1.2 : 0.55;
   const doorTop = door.wide ? 2.6 : 2.15;
-  // Homes of three floors or more are apartment blocks (when there is room for a corridor,
-  // stairs and a lift): every floor is built, up to 12, no wider or deeper than 30 m.
-  const block = door.kind === 'home' && door.floors >= 3 && door.right - door.left >= 6.4 && door.depth - 2 * T - INSET >= 8.5;
+  // Buildings of many floors are built whole (when there is room for a corridor, stairs and a
+  // lift): apartment blocks (homes of 3+ floors), office blocks and hotels (2+), up to 12
+  // floors and no wider or deeper than 30 m. Two-floor houses get stairs up to bedrooms.
+  const blockKind: BlockKind | null = door.kind === 'home' && door.floors >= 3 ? 'flats' : door.kind === 'office' && door.floors >= 2 ? 'office' : door.kind === 'hotel' && door.floors >= 2 ? 'hotel' : null;
+  const block = blockKind !== null && door.right - door.left >= 6.4 && door.depth - 2 * T - INSET >= 8.5;
+  const twoFloors = door.kind === 'home' && door.floors === 2 && door.right - door.left >= 5 && door.depth - 2 * T - INSET >= 6.8;
   const most = block ? [30, 30] : layout.max;
   // Across: as wide as the building allows, keeping the doorway inside.
   let left = door.left;
@@ -1108,16 +1398,17 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   floorY = Math.min(floorY, door.y + 0.35) + 0.03;
   const rng = makeRng(hash32(door.id, 4242));
   const apartmentBlock = block && w >= 6.4 && d >= 8.5;
-  const storeys = apartmentBlock ? Math.min(door.floors, 12) : 1;
-  const storey = apartmentBlock ? Math.max(2.8, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
-  const height = apartmentBlock ? storeys * storey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
+  const house = !apartmentBlock && twoFloors && w >= 5 && d >= 6.8;
+  const storeys = apartmentBlock ? Math.min(door.floors, 12) : house ? 2 : 1;
+  const storey = apartmentBlock || house ? Math.max(2.7, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
+  const height = apartmentBlock || house ? storeys * storey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const room = new Room(w, d, height, rng, -centre, half, doorTop);
   let lift: Lift | null = null;
   const extras: THREE.Object3D[] = [];
   const signMaterials: THREE.MeshBasicMaterial[] = [];
   const signGeometry = new THREE.PlaneGeometry(0.9, 0.55).rotateY(Math.PI / 2);
   if (apartmentBlock) {
-    const plan = apartments(room, storeys, storey);
+    const plan = apartments(room, storeys, storey, blockKind ?? 'flats');
     lift = new Lift(plan.shaft);
     extras.push(lift.group);
     for (const sign of plan.signs) {
@@ -1127,7 +1418,8 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
       plate.position.set(sign.x, sign.y, sign.z);
       extras.push(plate);
     }
-  } else layout.build(room);
+  } else if (house) twoFloorHouse(room, storey);
+  else layout.build(room);
   const geometry = mergeGeometries(room.parts);
   for (const part of room.parts) part.dispose();
   const mesh = new THREE.Mesh(geometry, material);
