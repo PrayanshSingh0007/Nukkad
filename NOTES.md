@@ -35,6 +35,14 @@ The owner can no longer use the model that did most of this work, so this sectio
 - Checked in game (my own dev server on port 5174, daylight): sleeping → head up at 3.6 m; trotting away when you walk up to 1.8 m (legs in a diagonal trot); walking; sniffing (head down); turning to you and wagging at 3.6 m; lying down in rain (`?rain=1`).
 - Not checked / limits: the dogs at benches and the wet-fur darkening were added last and not yet seen on screen. Getting up and lying down is an instant swap between the two meshes (no animation). Shadows don't move the legs (the shadow pass uses the still shape). Dogs walk through shelters, carts and people (no collisions). 8 of the first 25 dogs sit beyond the walkable edge (seen, not reached). No barking yet. Dogs are the same for everyone only because they are seeded; their moves are not shared over the network.
 
+## Up to the roof, and lift sounds (2026-11-24)
+
+- **Stairs to the roof**: in every block built to its full height (apartments, offices, hotels) the top floor's stairs carry on up through an opening in the top ceiling into a stair hut on the roof (`stairHut()`), with a door out onto the roof terrace (the building's real roof: parapets, water tanks, the city view). Two-floor houses get a second flight right above the first, up to a hut over the landing with a side door. The building's roof is cut away inside the hut by a second box in the building shader (`setRoofHole`), the inside counts the hut as "inside" (so you pass the roof there) and nowhere else above the top ceiling (so you stand on the real roof outside it), and the building stays open while you are on its roof (its hut is the way back down).
+- Storeys may now be as low as 2.5 m so every full block fits under its roof with room for the hut floor (a 4-floor block that hit the old 2.8 m minimum had no gap under the roof).
+- **Lift sounds** (`Sound.liftDing`, `Sound.liftDoors`, procedural): a soft two-note chime when the car arrives, a low rumble of rollers with a clunk as the doors open or shut; louder the nearer you are (metres and floors).
+- Checked in game: on a 4-floor block, lift to floor 3 (doors sound when it opened for me, chime and doors on arrival — the events fired; not listened to), then the stairs from floor 3 up both flights to the roof (11.07 m), out of the hut door onto the roof and across it to the parapet, with the building kept open.
+- Known: the hut is drawn only while that building is open (within 9 m of its door, or while you're on it), so it can pop onto a roof as you walk up to a door; it may stand next to the building's own roof room.
+
 ## Offices, hotels and two-floor houses get their floors too (2026-11-24)
 
 - **Office blocks** (offices of 2+ floors, 179 in the test area) and **hotels** (2+ floors) are built whole like apartment blocks (`apartments(r, storeys, storey, kind)`, kind `'office' | 'hotel' | 'flats'`): same lift and stairs.

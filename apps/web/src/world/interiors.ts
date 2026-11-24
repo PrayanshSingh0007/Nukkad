@@ -39,6 +39,10 @@ export interface Interior {
   contains(x: number, y: number, z: number): boolean;
   /** In the doorway (or just in front of it): the building's outer wall must let you through here. */
   doorway(x: number, y: number, z: number): boolean;
+  /** The roof cut away over the stair hut (world centre, yaw, half sizes), if the stairs go up to the roof. */
+  roofHole: { x: number; y: number; z: number; yaw: number; hx: number; hy: number; hz: number } | null;
+  /** Over the building's footprint (on its roof, say): keep it open while you are up there. */
+  covers(x: number, z: number): boolean;
   /** Apartment blocks: the lift (null elsewhere), and its solid boxes now (world). */
   lift: Lift | null;
   liftSolids(): Solid[];
@@ -74,6 +78,8 @@ class Room {
   baseY = 0;
   /** Added to every box's height (furnishing an upper floor with the usual pieces). */
   oy = 0;
+  /** The shell leaves its ceiling out (a house whose stairs go on up through it to the roof). */
+  skipCeiling = false;
   /** The top of the ground floor's rooms (inner walls stop here; lower than h in a two-floor house). */
   floorTop = 0;
   /** Areas furniture must keep out of below height y1 (the foot and run of a house's stairs). */
@@ -174,7 +180,7 @@ function shell(r: Room, floor: [string, string], wall: string, tiles = 1): void 
   r.box(-w / 2, 0, -T, dx0, h, 0, wall, true);
   r.box(dx1, 0, -T, w / 2, h, 0, wall, true);
   r.box(dx0, r.doorTop, -T, dx1, h, 0, wall, true);
-  r.box(-w / 2 - T, h, -T, w / 2 + T, h + 0.2, d + T, '#f3f1ec', true); // ceiling
+  if (!r.skipCeiling) r.box(-w / 2 - T, h, -T, w / 2 + T, h + 0.2, d + T, '#f3f1ec', true); // ceiling
   // Skirting.
   r.panel(-w / 2, 0, d - 0.02, w / 2, 0.1, d, '#8b8378');
   r.panel(-w / 2, 0, 0.0, -w / 2 + 0.02, 0.1, d, '#8b8378');
@@ -891,7 +897,7 @@ function hotelLobby(r: Room, w: number, ceiling: number): void {
  * A two-floor house: the usual ground floor, a straight staircase up one side wall (closed
  * underneath, a wooden balustrade), and bedrooms upstairs with ceiling fans. `storey` = floor to floor.
  */
-function twoFloorHouse(r: Room, storey: number): void {
+function twoFloorHouse(r: Room, storey: number, roofY: number | null = null): StairHut | null {
   const { w, d } = r;
   const sw = 0.95;
   const left = r.doorX <= 0; // the stairs go up the door's side (the living room is on the other)
@@ -901,12 +907,22 @@ function twoFloorHouse(r: Room, storey: number): void {
   const steps = Math.max(12, Math.round(storey / 0.18));
   const rise = storey / steps;
   const run = Math.min(0.27, (d - 2.6) / steps);
-  const z1 = d - 0.75;
+  const z1 = d - (roofY !== null ? 1.15 : 0.75); // a deeper landing when a door to the roof opens off it
   const z0 = z1 - steps * run;
   // Ground-floor furniture keeps out of the stairs and their foot.
   r.keep.push({ x0: left ? -w / 2 : xa - 0.9, x1: left ? xb + 0.9 : w / 2, z0: z0 - 1.0, z1: d, y1: storey - 0.3 });
   r.floorTop = storey;
+  r.skipCeiling = roofY !== null;
   home(r);
+  const H = r.h;
+  // Over the stairs to the roof the ceiling is open (the stair hut is above).
+  const zh0 = z0 + 0.6;
+  if (roofY !== null) {
+    r.structural = true;
+    r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, zh0, '#f3f1ec', true);
+    if (left) r.box(xb, H, zh0, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
+    else r.box(-w / 2 - T, H, zh0, xa, H + 0.2, d + T, '#f3f1ec', true);
+  }
   r.structural = true;
   // The floor between the two storeys, with the stair opening.
   const y = storey;
@@ -922,10 +938,22 @@ function twoFloorHouse(r: Room, storey: number): void {
     r.box(inner - (left ? 0 : 0.05), 0, z0 + i * run, inner + (left ? 0.05 : 0), top + 0.9, z0 + (i + 1) * run, '#e9e2d5', true);
     r.panel(inner - (left ? 0.01 : 0.06), top + 0.9, z0 + i * run, inner + (left ? 0.06 : 0.01), top + 0.95, z0 + (i + 1) * run, '#5a3c28');
   }
-  // Upstairs: railings round the opening.
-  r.box(inner - (left ? 0 : 0.05), y, z0, inner + (left ? 0.05 : 0), y + 1.0, z1, '#e9e2d5', true);
-  r.box(xa, y, z0 - 0.05, xb, y + 1.0, z0, '#e9e2d5', true);
-  r.panel(inner - 0.03, y + 1.0, z0 - 0.05, inner + 0.03, y + 1.05, z1, '#5a3c28');
+  if (roofY === null) {
+    // Upstairs: railings round the opening.
+    r.box(inner - (left ? 0 : 0.05), y, z0, inner + (left ? 0.05 : 0), y + 1.0, z1, '#e9e2d5', true);
+    r.box(xa, y, z0 - 0.05, xb, y + 1.0, z0, '#e9e2d5', true);
+    r.panel(inner - 0.03, y + 1.0, z0 - 0.05, inner + 0.03, y + 1.05, z1, '#5a3c28');
+  } else {
+    // A second flight right above the first, up to the roof (thin steps: headroom below), with
+    // its own balustrade; you walk round to its foot at the front.
+    const rise2 = (roofY - storey) / steps;
+    for (let i = 0; i < steps; i++) {
+      const top = storey + (i + 1) * rise2;
+      r.box(xa, top - 0.28, z0 + i * run, xb, top, z0 + (i + 1) * run, '#b98a5e', true);
+      r.box(inner - (left ? 0 : 0.05), y, z0 + i * run, inner + (left ? 0.05 : 0), top + 0.9, z0 + (i + 1) * run, '#e9e2d5', true);
+      r.panel(inner - (left ? 0.01 : 0.06), top + 0.9, z0 + i * run, inner + (left ? 0.06 : 0.01), top + 0.95, z0 + (i + 1) * run, '#5a3c28');
+    }
+  }
   // Ground-floor lights under the new floor.
   for (let x = -w / 2 + 2; x < w / 2 - 1; x += 4) for (let z = 2; z < d - 1; z += 4) r.panel(x - 0.5, y - 0.27, z - 0.25, x + 0.5, y - 0.25, z + 0.25, '#ffffff', true);
   // Upstairs floor, windows, and a bedroom wall across the middle with a doorway.
@@ -973,6 +1001,12 @@ function twoFloorHouse(r: Room, storey: number): void {
   ceilingFan(r, (room0 + room1) / 2, bz / 2, storey);
   r.oy = 0;
   r.baseY = 0;
+  if (roofY === null) return null;
+  // The stair hut on the roof, over the top of the second flight; its door opens off the landing.
+  const hut: StairHut = { x0: left ? -w / 2 - 0.15 : xa - 0.15, x1: left ? xb + 0.15 : w / 2 + 0.15, z0: zh0 - 0.15, z1: d + T, roof: roofY, top: roofY + 2.65 };
+  stairHut(r, hut, H, '#e9e2d5', { side: left ? 'x1' : 'x0', a: z1 + 0.1, b: d - 0.08 }, [[xa, xb, z1, d]]);
+  r.structural = false;
+  return hut;
 }
 
 /**
@@ -981,7 +1015,59 @@ function twoFloorHouse(r: Room, storey: number): void {
  * open and furnished), switchback stairs with a landing between floors, and a lift shaft whose
  * car runs up and down (see `Lift`). Returns the shaft and where each floor's sign goes.
  */
-function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 'flats'): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[] } {
+/** A stair hut on the roof (room frame): its rectangle and the top of its roof; the stairs come up inside it. */
+export interface StairHut {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  /** The roof you step out onto (room frame), and the top of the hut. */
+  roof: number;
+  top: number;
+}
+
+/** The hut's walls, door, roof and light, and the floor you arrive on. `door` = which wall the door is in and where along it. */
+function stairHut(r: Room, hut: StairHut, from: number, wall: string, door: { side: 'x0' | 'x1' | 'z0'; a: number; b: number }, floors: [number, number, number, number][]): void {
+  const { x0, x1, z0, z1, roof } = hut;
+  const top = roof + 2.5;
+  r.structural = true;
+  const wallZ = (za: number, zb: number, x: number, gap: [number, number] | null): void => {
+    if (!gap) {
+      r.box(x, from, za, x + 0.15, top, zb, wall, true);
+      return;
+    }
+    r.box(x, from, za, x + 0.15, top, gap[0], wall, true);
+    r.box(x, from, gap[1], x + 0.15, top, zb, wall, true);
+    r.box(x, roof + 2.1, gap[0], x + 0.15, top, gap[1], wall, true);
+  };
+  wallZ(z0, z1, x0, door.side === 'x0' ? [door.a, door.b] : null);
+  wallZ(z0, z1, x1 - 0.15, door.side === 'x1' ? [door.a, door.b] : null);
+  if (door.side === 'z0') {
+    r.box(x0, from, z0, door.a, top, z0 + 0.15, wall, true);
+    r.box(door.b, from, z0, x1, top, z0 + 0.15, wall, true);
+    r.box(door.a, roof + 2.1, z0, door.b, top, z0 + 0.15, wall, true);
+  } else r.box(x0, from, z0, x1, top, z0 + 0.15, wall, true);
+  r.box(x0, from, z1 - 0.15, x1, top, z1, wall, true);
+  r.box(x0 - 0.1, top, z0 - 0.1, x1 + 0.1, top + 0.15, z1 + 0.1, '#d8d2c6', true);
+  for (const [fx0, fx1, fz0, fz1] of floors) r.box(fx0, roof - 0.25, fz0, fx1, roof, fz1, '#bdb6aa', true);
+  r.panel((x0 + x1) / 2 - 0.3, top - 0.03, (z0 + z1) / 2 - 0.2, (x0 + x1) / 2 + 0.3, top, (z0 + z1) / 2 + 0.2, '#ffffff', true);
+  // The door frame, and the steel door swung open against the inside.
+  r.structural = false;
+  if (door.side === 'z0') {
+    r.panel(door.a - 0.08, roof, z0 - 0.02, door.a, roof + 2.18, z0, '#5d6266');
+    r.panel(door.b, roof, z0 - 0.02, door.b + 0.08, roof + 2.18, z0, '#5d6266');
+    r.panel(door.a - 0.08, roof + 2.1, z0 - 0.02, door.b + 0.08, roof + 2.18, z0, '#5d6266');
+  } else {
+    const x = door.side === 'x0' ? x0 : x1;
+    const out = door.side === 'x0' ? -1 : 1;
+    r.panel(x, roof, door.a - 0.08, x + out * 0.02, roof + 2.18, door.a, '#5d6266');
+    r.panel(x, roof, door.b, x + out * 0.02, roof + 2.18, door.b + 0.08, '#5d6266');
+    r.panel(x, roof + 2.1, door.a - 0.08, x + out * 0.02, roof + 2.18, door.b + 0.08, '#5d6266');
+  }
+  r.structural = true;
+}
+
+function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 'flats', roofY: number | null = null): { shaft: LiftShaft; signs: { x: number; y: number; z: number; floor: number }[]; hut: StairHut | null } {
   const { w, d } = r;
   const H = storeys * storey;
   const wall = kind === 'office' ? '#eef0f2' : kind === 'hotel' ? '#efe3cf' : r.pick(['#efe7d8', '#e9e4da', '#f2ece0', '#e8ede6']);
@@ -1016,7 +1102,13 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
   r.box(-w / 2, 0, -T, dx0, H, 0, wall, true);
   r.box(dx1, 0, -T, w / 2, H, 0, wall, true);
   r.box(dx0, r.doorTop, -T, dx1, H, 0, wall, true);
-  r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
+  // The top ceiling, with the stairwell open above it when the stairs go on up to the roof.
+  const sOpen = c1 + 0.06;
+  if (roofY !== null) {
+    r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, d - 4.6, '#f3f1ec', true);
+    r.box(-w / 2 - T, H, d - 4.6, sOpen, H + 0.2, d + T, '#f3f1ec', true);
+    r.box(c1 + 2.4, H, d - 4.6, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
+  } else r.box(-w / 2 - T, H, -T, w / 2 + T, H + 0.2, d + T, '#f3f1ec', true);
   doorway(r);
   // The lift shaft (bare concrete inside) and the stairwell's outer wall, full height.
   r.box(c0 - 2.0, 0, Z0 - 0.15, L0, H, d, concrete, true);
@@ -1104,9 +1196,10 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
     r.panel(c0, y + 2.1, doorZ - 0.62, c0 + 0.03, y + 2.16, doorZ + 0.62, '#8d9296');
     signs.push({ x: c0 + 0.012, y: y + 1.5, z: doorZ - 1.35, floor: k });
     // Stairs up to the next floor: a flight going back, a landing, a flight coming forward.
-    if (k < storeys - 1) {
+    const climb = k < storeys - 1 ? storey : roofY !== null ? roofY - y : 0;
+    if (climb > 0) {
       const steps = 9;
-      const rise = storey / (2 * steps);
+      const rise = climb / (2 * steps);
       const run = (landZ - stairZ) / steps;
       for (let i = 0; i < steps; i++) {
         const ta = y + (i + 1) * rise;
@@ -1116,11 +1209,11 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
         // Handrail along the outer wall.
         r.panel(s1 - 0.06, tb + 0.85, landZ - (i + 1) * run, s1 - 0.02, tb + 0.9, landZ - i * run, RAIL);
       }
-      r.box(s0, y + storey / 2 - 0.25, landZ, s1, y + storey / 2, d, STAIR_STONE, true);
-      r.box(sm - 0.06, y, stairZ, sm + 0.06, y + storey, landZ, inner, true); // between the flights
-      r.panel(sm - 0.07, y + storey - 0.05, stairZ, sm + 0.07, y + storey, landZ, RAIL);
-      if (k === 0) r.box(sm + 0.06, 0, stairZ, s1, storey / 2 - 0.3, landZ, inner, true); // nobody walks under the first flight
-      r.panel(sm - 0.4, y + storey / 2 + 2.3, landZ + 0.3, sm + 0.4, y + storey / 2 + 2.32, d - 0.3, '#ffffff', true); // landing light
+      r.box(s0, y + climb / 2 - 0.25, landZ, s1, y + climb / 2, d, STAIR_STONE, true);
+      r.box(sm - 0.06, y, stairZ, sm + 0.06, y + climb, landZ, inner, true); // between the flights
+      r.panel(sm - 0.07, y + climb - 0.05, stairZ, sm + 0.07, y + climb, landZ, RAIL);
+      if (k === 0) r.box(sm + 0.06, 0, stairZ, s1, climb / 2 - 0.3, landZ, inner, true); // nobody walks under the first flight
+      r.panel(sm - 0.4, y + climb / 2 + 2.3, landZ + 0.3, sm + 0.4, y + climb / 2 + 2.32, d - 0.3, '#ffffff', true); // landing light
     } else {
       // Top floor: a railing where the last flight came up.
       r.box(s0, y, stairZ, sm, y + 1.0, stairZ + 0.06, RAIL, true);
@@ -1158,9 +1251,17 @@ function apartments(r: Room, storeys: number, storey: number, kind: BlockKind = 
       for (let x = -w / 2 + 1.5; x < w / 2 - 1; x += 3) r.panel(x - 0.4, ceiling - 0.02, 1.4, x + 0.4, ceiling, 1.9, '#ffffff', true);
     }
   }
+  // Up on the roof: a stair hut round the top of the stairs, its door facing the front.
+  let hut: StairHut | null = null;
+  if (roofY !== null) {
+    hut = { x0: c1, x1: s1 + 0.15, z0: coreZ - 0.15, z1: d + T, roof: roofY, top: roofY + 2.65 };
+    stairHut(r, hut, H, wall, { side: 'z0', a: sm + 0.1, b: s1 - 0.1 }, [[sOpen, s1, coreZ, stairZ]]);
+    // A railing over the last flight's opening.
+    r.box(s0, roofY, stairZ, sm, roofY + 1.0, stairZ + 0.06, RAIL, true);
+  }
   r.structural = false;
   r.baseY = 0;
-  return { shaft: { x0: L0, x1: L1, z0: Z0, z1: Z1, doorZ, storey, floors: storeys }, signs };
+  return { shaft: { x0: L0, x1: L1, z0: Z0, z1: Z1, doorZ, storey, floors: storeys }, signs, hut };
 }
 
 const LIFT_DOOR = new THREE.MeshBasicMaterial({ color: 0xb4bbc1 });
@@ -1181,6 +1282,8 @@ export class Lift {
   state: 'idle' | 'opening' | 'open' | 'closing' | 'moving' = 'idle';
   /** The solid boxes changed (doors opened or shut, the car came or went): refresh the physics. */
   changed = true;
+  /** Sounds since the last look: the chime on arriving, the doors starting to slide (at which floor). */
+  readonly sounds: { kind: 'ding' | 'doors'; floor: number }[] = [];
   private open = 0;
   private wait = 0;
   private speed = 0;
@@ -1232,7 +1335,10 @@ export class Lift {
     if (floor < 0 || floor >= this.shaft.floors) return;
     if (floor === this.at && this.state !== 'moving' && this.state !== 'closing') return;
     this.target = floor;
-    if (this.state === 'open' || this.state === 'opening') this.state = 'closing';
+    if (this.state === 'open' || this.state === 'opening') {
+      this.state = 'closing';
+      this.sounds.push({ kind: 'doors', floor: this.at });
+    }
   }
 
   /** p = you (room frame), or null when you are not in the building. */
@@ -1244,7 +1350,10 @@ export class Lift {
     const waiting = p !== null && !inside && Math.abs(p.y - floor * s.storey) < 1.2 && p.x > s.x1 && p.x < s.x1 + 2.7 && Math.abs(p.z - s.doorZ) < 1.6;
     if (waiting && this.target === null) {
       if (floor !== this.at) this.target = floor;
-      else if (this.state === 'idle' || this.state === 'closing') this.state = 'opening';
+      else if (this.state === 'idle' || this.state === 'closing') {
+        if (this.state === 'idle') this.sounds.push({ kind: 'doors', floor: this.at });
+        this.state = 'opening';
+      }
     }
     switch (this.state) {
       case 'idle':
@@ -1252,6 +1361,7 @@ export class Lift {
         else if (this.target === this.at) {
           this.target = null;
           this.state = 'opening';
+          this.sounds.push({ kind: 'doors', floor: this.at });
         }
         break;
       case 'opening':
@@ -1265,6 +1375,7 @@ export class Lift {
         if (this.target !== null && this.target !== this.at) this.state = 'closing';
         else if (inside || waiting) this.wait = 0;
         else if ((this.wait += dt) > 4) this.state = 'closing';
+        if (this.state === 'closing') this.sounds.push({ kind: 'doors', floor: this.at });
         break;
       case 'closing':
         if (this.target === null && (waiting || inside)) {
@@ -1285,6 +1396,7 @@ export class Lift {
           this.target = null;
           this.speed = 0;
           this.state = 'opening';
+          this.sounds.push({ kind: 'ding', floor: this.at }, { kind: 'doors', floor: this.at });
         }
         break;
       }
@@ -1400,15 +1512,20 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
   const apartmentBlock = block && w >= 6.4 && d >= 8.5;
   const house = !apartmentBlock && twoFloors && w >= 5 && d >= 6.8;
   const storeys = apartmentBlock ? Math.min(door.floors, 12) : house ? 2 : 1;
-  const storey = apartmentBlock || house ? Math.max(2.7, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
+  const storey = apartmentBlock || house ? Math.max(2.5, Math.min(3.6, (door.top - floorY - 0.4) / door.floors)) : 0;
   const height = apartmentBlock || house ? storeys * storey : Math.max(2.5, Math.min(layout.height, door.top - floorY - 0.35));
   const room = new Room(w, d, height, rng, -centre, half, doorTop);
   let lift: Lift | null = null;
   const extras: THREE.Object3D[] = [];
   const signMaterials: THREE.MeshBasicMaterial[] = [];
   const signGeometry = new THREE.PlaneGeometry(0.9, 0.55).rotateY(Math.PI / 2);
+  // The roof (room frame): the stairs go on up to it when every floor is built.
+  const roofY = door.top - floorY;
+  const roofed = roofY - height >= 0.2 && roofY - height < 1.5 && (house || (apartmentBlock && storeys === door.floors));
+  let hut: StairHut | null = null;
   if (apartmentBlock) {
-    const plan = apartments(room, storeys, storey, blockKind ?? 'flats');
+    const plan = apartments(room, storeys, storey, blockKind ?? 'flats', roofed ? roofY : null);
+    hut = plan.hut;
     lift = new Lift(plan.shaft);
     extras.push(lift.group);
     for (const sign of plan.signs) {
@@ -1418,7 +1535,7 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
       plate.position.set(sign.x, sign.y, sign.z);
       extras.push(plate);
     }
-  } else if (house) twoFloorHouse(room, storey);
+  } else if (house) hut = twoFloorHouse(room, storey, roofed ? roofY : null);
   else layout.build(room);
   const geometry = mergeGeometries(room.parts);
   for (const part of room.parts) part.dispose();
@@ -1460,9 +1577,20 @@ export function buildInterior(door: Door, ground: (x: number, z: number) => numb
       });
     },
     hole: { x: door.x, y: door.y, z: door.z, face: door.face, half: half + 0.03, top: doorTop + 0.04, depth: inward + 0.06 },
+    roofHole: hut
+      ? (() => {
+          const c = toWorld((hut.x0 + hut.x1) / 2, hut.roof, (hut.z0 + hut.z1) / 2);
+          return { x: c.x, y: c.y, z: c.z, yaw: group.rotation.y, hx: (hut.x1 - hut.x0) / 2 - 0.16, hy: 0.6, hz: (hut.z1 - hut.z0) / 2 - 0.16 };
+        })()
+      : null,
+    covers(x, z) {
+      const p = local(x, floorY, z);
+      return Math.abs(p.x) < w / 2 + 1 && p.z > -1 && p.z < d + 1;
+    },
     contains(x, y, z) {
       const p = local(x, y, z);
-      return Math.abs(p.x) < w / 2 && p.z > 0 && p.z < d && p.y > -1 && p.y < height + 0.5;
+      const inHut = hut !== null && p.x > hut.x0 && p.x < hut.x1 && p.z > hut.z0 && p.z < hut.z1 && p.y < hut.top;
+      return Math.abs(p.x) < w / 2 && p.z > 0 && p.z < d && p.y > -1 && (p.y < height + 0.1 || inHut);
     },
     doorway(x, y, z) {
       const p = local(x, y, z);

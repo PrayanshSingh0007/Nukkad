@@ -643,7 +643,19 @@ function wind(material: THREE.MeshLambertMaterial, time: { value: number }, rain
  * away there so you can see in and walk through. One at a time. (x, y, z) = the door on the
  * ground, w = its facing; size = half width, height, how far into the wall (0 = no hole).
  */
-const DOOR_HOLE = { uNkHole: { value: new THREE.Vector4(0, -1e6, 0, 0) }, uNkHoleSize: { value: new THREE.Vector3(0, 0, 0) } };
+const DOOR_HOLE = {
+  uNkHole: { value: new THREE.Vector4(0, -1e6, 0, 0) },
+  uNkHoleSize: { value: new THREE.Vector3(0, 0, 0) },
+  // The roof over a stair hut: a box (centre, turned by w; half sizes) where the roof is cut away.
+  uNkRoofHole: { value: new THREE.Vector4(0, -1e6, 0, 0) },
+  uNkRoofHoleSize: { value: new THREE.Vector3(0, 0, 0) },
+};
+
+/** Cut the building's roof away inside this box (the stair hut you come up through), or clear it (size 0). */
+export function setRoofHole(x: number, y: number, z: number, yaw: number, hx: number, hy: number, hz: number): void {
+  DOOR_HOLE.uNkRoofHole.value.set(x, y, z, yaw);
+  DOOR_HOLE.uNkRoofHoleSize.value.set(hx, hy, hz);
+}
 
 export function setDoorHole(x: number, y: number, z: number, face: number, halfWidth: number, height: number, depth: number): void {
   DOOR_HOLE.uNkHole.value.set(x, y, z, face);
@@ -652,6 +664,7 @@ export function setDoorHole(x: number, y: number, z: number, face: number, halfW
 
 export function clearDoorHole(): void {
   DOOR_HOLE.uNkHoleSize.value.set(0, 0, 0);
+  DOOR_HOLE.uNkRoofHoleSize.value.set(0, 0, 0);
 }
 
 function doorHole(material: THREE.Material): void {
@@ -664,7 +677,7 @@ function doorHole(material: THREE.Material): void {
       .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvNkHoleP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;\nuniform vec4 uNkHole;\nuniform vec3 uNkHoleSize;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;\nuniform vec4 uNkHole;\nuniform vec3 uNkHoleSize;\nuniform vec4 uNkRoofHole;\nuniform vec3 uNkRoofHoleSize;')
       .replace(
         '#include <clipping_planes_fragment>',
         `#include <clipping_planes_fragment>
@@ -673,10 +686,16 @@ function doorHole(material: THREE.Material): void {
           float nkOut = nkD.x * sin(uNkHole.w) + nkD.z * cos(uNkHole.w);
           float nkAlong = nkD.x * cos(uNkHole.w) - nkD.z * sin(uNkHole.w);
           if (abs(nkAlong) < uNkHoleSize.x && nkD.y > -0.4 && nkD.y < uNkHoleSize.y && nkOut > -uNkHoleSize.z && nkOut < 0.35) discard;
+        }
+        if (uNkRoofHoleSize.x > 0.0) {
+          vec3 nkR = vNkHoleP - uNkRoofHole.xyz;
+          float nkRx = nkR.x * cos(uNkRoofHole.w) - nkR.z * sin(uNkRoofHole.w);
+          float nkRz = nkR.x * sin(uNkRoofHole.w) + nkR.z * cos(uNkRoofHole.w);
+          if (abs(nkRx) < uNkRoofHoleSize.x && abs(nkR.y) < uNkRoofHoleSize.y && abs(nkRz) < uNkRoofHoleSize.z) discard;
         }`,
       );
   };
-  material.customProgramCacheKey = () => `${key.call(material)}-hole1`;
+  material.customProgramCacheKey = () => `${key.call(material)}-hole2`;
 }
 
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {

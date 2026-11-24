@@ -368,6 +368,71 @@ export class Sound {
     };
   }
 
+  /** A lift arriving: the soft two-note chime (indoors, `level` 0–1 by how near you are). */
+  liftDing(level = 1): void {
+    const context = this.context;
+    if (!context || !this.master || this.muted || level <= 0.02) return;
+    const now = context.currentTime;
+    [
+      [1046.5, 0],
+      [830.6, 0.28],
+    ].forEach(([pitch, delay]) => {
+      const tone = context.createOscillator();
+      tone.type = 'sine';
+      tone.frequency.value = pitch;
+      const overtone = context.createOscillator();
+      overtone.type = 'sine';
+      overtone.frequency.value = pitch * 2.76; // a bell's bright partial
+      const gain = context.createGain();
+      const bright = context.createGain();
+      bright.gain.value = 0.18;
+      const t = now + delay;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.11 * level, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0004, t + 1.2);
+      tone.connect(gain);
+      overtone.connect(bright).connect(gain);
+      gain.connect(this.master as GainNode);
+      tone.start(t);
+      overtone.start(t);
+      tone.stop(t + 1.25);
+      overtone.stop(t + 1.25);
+      tone.onended = () => {
+        tone.disconnect();
+        overtone.disconnect();
+        bright.disconnect();
+        gain.disconnect();
+      };
+    });
+  }
+
+  /** Lift doors sliding (open or shut): a soft rumble of rollers with a little clunk at the end. */
+  liftDoors(level = 1): void {
+    const context = this.context;
+    if (!context || !this.master || !this.whiteNoise || this.muted || level <= 0.02) return;
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    source.buffer = this.whiteNoise;
+    source.loop = true;
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 380;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.05 * level, now + 0.15);
+    gain.gain.setValueAtTime(0.05 * level, now + 0.7);
+    gain.gain.linearRampToValueAtTime(0.09 * level, now + 0.8);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.95);
+    source.connect(filter).connect(gain).connect(this.master);
+    source.start(now, Math.random());
+    source.stop(now + 1.0);
+    source.onended = () => {
+      source.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
+  }
+
   /** A footstep: a soft tap on dry ground, a splash on wet (wet 0–1). */
   step(wet: number): void {
     const context = this.context;

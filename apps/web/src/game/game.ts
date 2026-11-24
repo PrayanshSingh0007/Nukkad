@@ -37,7 +37,7 @@ import { setHeadlightHaze } from '../world/headlightCones.ts';
 import { WorldView } from '../world/worldView.ts';
 import { INTERIOR_NAMES, buildInterior, carSpots } from '../world/interiors.ts';
 import type { Interior } from '../world/interiors.ts';
-import { clearDoorHole, setDoorHole } from '../world/materials.ts';
+import { clearDoorHole, setDoorHole, setRoofHole } from '../world/materials.ts';
 import type { Door } from '@nukkad/worldgen';
 import { LocalPlayer } from './localPlayer.ts';
 import { VEHICLES, gearAt, gearTop, specForModel } from './vehicleSpecs.ts';
@@ -555,7 +555,9 @@ export class Game {
     if (!player || !physics || !world) return;
     const onFoot = !player.vehicle && !player.riding && !this.driving;
     // Pick the building: keep the one you are inside; otherwise the nearest door within 9 m.
-    if (!this.interior) {
+    // (Up on its roof, the building stays open: its stair hut is the way back down.)
+    const onTop = this.building !== null && this.building.covers(player.x, player.z) && player.y > this.building.floorY + 2;
+    if (!this.interior && !onTop) {
       const door = onFoot ? this.findDoor(player.x, player.z, 9) : null;
       if (door?.id !== this.building?.door.id) this.openBuilding(door);
     }
@@ -590,6 +592,15 @@ export class Game {
     if (player && physics && building && lift) {
       const here = inside ? building.local(player.x, player.hold ? player.hold.y : player.y, player.z) : null;
       lift.update(dt, here);
+      // The chime and the doors, louder the nearer you are (by floors and metres).
+      for (const sound of lift.sounds.splice(0)) {
+        if (!here) continue;
+        const s = lift.shaft;
+        const away = Math.hypot(here.x - s.x1, here.z - s.doorZ) + Math.abs(here.y - sound.floor * s.storey) * 2.5;
+        const level = Math.max(0, 1 - away / 14);
+        if (sound.kind === 'ding') this.sound.liftDing(level);
+        else this.sound.liftDoors(level);
+      }
       if (lift.changed) {
         lift.changed = false;
         physics.setLift(building.liftSolids());
@@ -650,6 +661,8 @@ export class Game {
     if (inside.lift) inside.lift.changed = true;
     const hole = inside.hole;
     setDoorHole(hole.x, hole.y, hole.z, hole.face, hole.half, hole.top, hole.depth);
+    const roof = inside.roofHole;
+    if (roof) setRoofHole(roof.x, roof.y, roof.z, roof.yaw, roof.hx, roof.hy, roof.hz);
   }
 
   private addShowroomCars(inside: Interior): void {
