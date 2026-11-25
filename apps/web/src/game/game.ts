@@ -936,6 +936,7 @@ export class Game {
       });
       this.view3d.scene.add(this.world.group);
       physics.setLandmarks(this.world.landmarkSolids);
+      this.world.setReflections(this.reflections.texture);
       this.streetLife = new StreetLifeView(ready.props, this.reflections.texture);
       this.streets = new StreetFinder(ready.roads);
       const streetLife = this.streetLife;
@@ -1411,6 +1412,7 @@ export class Game {
     const skyU = this.atmosphere.sky.uniforms;
     if (this.reflections.update(skyU.uSunDir.value, skyU.uSunColor.value, skyU.uTop.value, skyU.uHorizon.value, this.atmosphere.night, this.rain)) {
       this.streetLife?.setReflections(this.reflections.texture);
+      this.world?.setReflections(this.reflections.texture);
     }
     // A rainbow when the rain stops while the sun is up but not high (the bow sits 42° from the
     // point opposite the sun, so a high sun puts it below the horizon).

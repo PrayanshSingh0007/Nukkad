@@ -9,6 +9,7 @@ import type { GateSpot } from '../buildings/compoundMesh.ts';
 import { GATE_LAMP_HEIGHT, HOUSE_WALL_TOP_M } from '../buildings/compoundMesh.ts';
 import { HOUSE_WALL_STRIDE, PILLAR_STRIDE, houseCompounds } from '../buildings/houseCompounds.ts';
 import { findDoors } from '../buildings/doors.ts';
+import { FULL_FLOORS_ON_SLOPE, addFloorsForSlope } from '../buildings/slope.ts';
 import type { Door } from '../buildings/doors.ts';
 import { FOOT_KINDS, bridgeRise, buildRibbon } from '../roads/ribbon.ts';
 import { cloneTerrain, heightAt, terrainFromPack } from '../terrain/grid.ts';
@@ -64,6 +65,7 @@ export function prepareWorld(pack: AreaPack): PreparedWorld {
   const originalTerrain = terrainFromPack(pack.terrain);
   const terrain = cloneTerrain(originalTerrain);
   digBasins(terrain, pack);
+  for (const building of pack.buildings) if (FULL_FLOORS_ON_SLOPE.has(building.id)) addFloorsForSlope(building, terrain);
 
   const buckets: ChunkBucket[] = Array.from({ length: chunksPerSide * chunksPerSide }, () => ({
     buildings: [],

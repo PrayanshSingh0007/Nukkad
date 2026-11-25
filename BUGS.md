@@ -79,12 +79,12 @@ Template:
 
 ### B-034 Buildings on a slope look too short from the uphill side
 - Type: cosmetic
-- Status: open
+- Status: open (fixed for GEAR only)
 - Found: 2026-11-25, laptop, built-in browser
 - Steps to reproduce:
   1. Go to GEAR Innovative International School and look at it from the road (north).
 - Expected / actual: a 4-floor school / about 2 floors show; the rest is under the ground.
-- Notes: `appendBuilding` stands every building on the lowest ground under its outline and buries the uphill side (6.5 m at GEAR). A fix would add floors when the ground under a building rises by more than about a storey, in one place that the mesh, doors (`top`, `floors`) and insides all read. Not done yet: it changes every building on a slope.
+- Notes: `appendBuilding` stands every building on the lowest ground under its outline and buries the uphill side (6.5 m at GEAR). Fixed for GEAR only (2026-11-25): `addFloorsForSlope` in worldgen `buildings/slope.ts` adds the uncovered storeys for the ids in `FULL_FLOORS_ON_SLOPE`, before the mesh, doors and props are made. To fix it for every building, apply it to all (then check walk-in doors on slopes: a door keeps `building.floors`, which counts from the low side — GEAR's door is corrected in `placeLandmarkDoors`).
 
 ## Fixed
 

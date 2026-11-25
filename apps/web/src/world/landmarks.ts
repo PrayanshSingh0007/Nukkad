@@ -296,6 +296,9 @@ function isGear(door: Door, plan: GearPlan): boolean {
   return GEAR_NAME.test(door.name ?? '') && Math.hypot(door.x - (ax + bx) / 2, door.z - (az + bz) / 2) < 120;
 }
 
+/** A landmark building's own floor count (its door keeps only the floors above the door's ground). */
+const landmarkFloors = new Map<number, number>();
+
 /**
  * Puts a landmark's walk-in door where the real main entrance is (GEAR: entrance 1, under the
  * arch on the road front), with the inside fitted behind it. Call before doors are looked up.
@@ -325,7 +328,12 @@ export function placeLandmarkDoors(doors: Door[], origin: { lat: number; lng: nu
   }
   const room = fitRoom(ring, x, z, nx, nz, minU, maxU, depth);
   const wall = front.ends.map((v) => Math.round(v * 100) / 100) as [number, number, number, number];
-  Object.assign(door, { x, z, y: heightAt(terrain, x, z), face: front.face, w: maxU - minU, d: depth, ...room, wall });
+  // The building's floors count from its lowest ground; the inside has those above the door.
+  const floors = landmarkFloors.get(door.id) ?? door.floors;
+  landmarkFloors.set(door.id, floors);
+  const y = heightAt(terrain, x, z);
+  const floorsHere = Math.max(1, Math.round((door.top - y) / ((door.top - plan.base) / floors)));
+  Object.assign(door, { x, z, y, face: front.face, w: maxU - minU, d: depth, ...room, wall, floors: floorsHere });
 }
 
 export class Landmarks {
@@ -339,6 +347,9 @@ export class Landmarks {
   private readonly open: { frame: Front; u: number; v: number; y0: number; y1: number }[] = [];
   /** Paved ground: in a front's frame, from s0 every metre, how far out (o) the paving reaches. */
   private readonly paving: { frame: Front; s0: number; reach: number[] }[] = [];
+  /** Glass that reflects the sky (gets the city reflections), and what glows at night. */
+  private readonly shiny: THREE.MeshStandardMaterial[] = [];
+  private readonly glow: { material: THREE.MeshStandardMaterial; colour: THREE.Color }[] = [];
 
   constructor(doors: Door[], origin: { lat: number; lng: number }, terrain: TerrainGrid, pitches: { ring: number[] }[] = []) {
     const gear = doors.find((door) => GEAR_NAME.test(door.name ?? ''));
@@ -358,6 +369,26 @@ export class Landmarks {
       if (Math.abs(s) < area.u && o > -0.3 && o < area.v && y > area.y0 && y < area.y1) return true;
     }
     return false;
+  }
+
+  /** The sky and city that glass reflects (rebuilt as the sun moves). */
+  setReflections(texture: THREE.Texture | null): void {
+    for (const material of this.shiny) {
+      if (!material.envMap !== !texture) material.needsUpdate = true;
+      material.envMap = texture;
+    }
+  }
+
+  /** 0 = day … 1 = night: lit rooms behind the glass. */
+  setNight(night: number): void {
+    for (const { material, colour } of this.glow) material.emissive.copy(colour).multiplyScalar(night);
+  }
+
+  private glass(options: THREE.MeshStandardMaterialParameters, night?: string): THREE.MeshStandardMaterial {
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.08, metalness: 0.55, envMapIntensity: 1.25, side: THREE.DoubleSide, ...options });
+    this.shiny.push(material);
+    if (night) this.glow.push({ material, colour: new THREE.Color(night) });
+    return material;
   }
 
   /** True on a landmark's paving (no grass grows there). */
@@ -396,7 +427,7 @@ export class Landmarks {
     const L = front.length;
     if (L < 20) return;
     const top = door.top;
-    const floors = Math.max(1, door.floors);
+    const floors = Math.max(1, landmarkFloors.get(door.id) ?? door.floors);
     const storey = (top - base) / floors;
     const groundAt = (f: Front, s: number, o: number): number => {
       const p = f.at(s, 0, o);
@@ -405,6 +436,8 @@ export class Landmarks {
     const solid = new Parts();
     const glass = new Parts();
     const doorGlass = new Parts();
+    const windows = new Parts();
+    const towerGlass = new Parts();
     const white = rgb('#f4f2ec');
     const cream = rgb('#e8d8b0');
     const rail = rgb('#2b2d30');
@@ -449,6 +482,11 @@ export class Landmarks {
     // (level with the veranda when there is one at about that height).
     const half = 1.22;
     front.box(doorGlass, sA - half, yD - 0.2, 0.03, sA + half, yD + 2.62, 0.06, darkGlass);
+    // A pair of glass doors: the meeting stiles, a transom bar and steel pull handles (all cut away
+    // with the glass when the doorway opens).
+    front.box(doorGlass, sA - 0.04, yD - 0.2, 0.06, sA + 0.04, yD + 2.62, 0.1, rim);
+    front.box(doorGlass, sA - half, yD + 2.1, 0.06, sA + half, yD + 2.17, 0.1, rim);
+    for (const ds of [-0.14, 0.14]) front.box(doorGlass, sA + ds - 0.015, yD + 0.85, 0.1, sA + ds + 0.015, yD + 1.6, 0.16, rgb('#c9ccd0'));
     front.box(solid, sA - half - 0.23, yD - 0.2, 0, sA - half - 0.03, yD + 2.9, 0.2, rim);
     front.box(solid, sA + half + 0.03, yD - 0.2, 0, sA + half + 0.23, yD + 2.9, 0.2, rim);
     front.box(solid, sA - half - 0.23, yD + 2.66, 0, sA + half + 0.23, yD + 2.9, 0.2, rim);
@@ -459,6 +497,32 @@ export class Landmarks {
       const g = groundAt(front, s, 3.0);
       front.box(solid, s - 0.08, g - 0.2, 2.92, s + 0.08, canopy - 0.2, 3.08, rim);
       front.solid(this.solids, s - 0.08, g - 0.2, 2.92, s + 0.08, canopy - 0.2, 3.08);
+    }
+    // Concrete planters with clipped shrubs either side of entrance 1 and along the front.
+    const leaf = [rgb('#3f6b2f'), rgb('#4d7d36'), rgb('#36602a'), rgb('#5a8a3c')];
+    let jitter = 11;
+    const rand = (): number => {
+      jitter = (jitter * 16807) % 2147483647;
+      return jitter / 2147483647;
+    };
+    for (const ds of [-4.4, 4.4, -9.6, 9.6]) {
+      const s = sA + ds;
+      if (s < -L / 2 + 1.5 || s > towerS - 1) continue;
+      const o = 1.9;
+      const g = groundAt(front, s, o);
+      front.box(solid, s - 0.65, g - 0.2, o - 0.65, s + 0.65, g + 0.6, o + 0.65, rgb('#a7a39b'));
+      front.box(solid, s - 0.55, g + 0.6, o - 0.55, s + 0.55, g + 0.62, o + 0.55, rgb('#4a3a2c'));
+      front.solid(this.solids, s - 0.65, g - 0.2, o - 0.65, s + 0.65, g + 0.6, o + 0.65);
+      const rows = 6;
+      const cols = 10;
+      const bump = Array.from({ length: (rows + 1) * cols }, () => 0.85 + rand() * 0.3);
+      const at = (i: number, k: number): number[] => {
+        const lat = -0.2 + (i / rows) * (Math.PI / 2 + 0.2);
+        const lon = (k / cols) * Math.PI * 2;
+        const r = 0.62 * bump[i * cols + (k % cols)];
+        return front.at(s + Math.cos(lat) * Math.cos(lon) * r, g + 0.75 + Math.sin(lat) * r * 0.95, o + Math.cos(lat) * Math.sin(lon) * r);
+      };
+      for (let i = 0; i < rows; i++) for (let k = 0; k < cols; k++) solid.quad(at(i, k), at(i, k + 1), at(i + 1, k + 1), at(i + 1, k), leaf[(i + k) % 4], leaf[(i + k + 1) % 4]);
     }
     // The terracotta band along the top with the name on it.
     const span = 26;
@@ -496,18 +560,46 @@ export class Landmarks {
       const w = Math.sqrt(Math.max(0, radius * radius - (y - cy) * (y - cy)));
       front.box(solid, sA - w, y - 0.05, 0.3, sA + w, y + 0.05, 0.42, rim);
     }
-    // The blue glass stair tower at the road corner.
-    const g0 = groundAt(front, towerS + towerW / 2, 0.3) - 0.4;
-    for (const [s0, s1, o0, o1] of [
-      [towerS, towerS + towerW, 0.55, 0.6],
-      [towerS, towerS + 0.05, -0.2, 0.6],
-      [towerS + towerW - 0.05, towerS + towerW, -0.2, 0.6],
-    ]) {
-      const a = front.at(s0, g0, o0);
-      const b = front.at(s1, g0, o1);
-      glass.quad(a, [b[0], g0, b[2]], [b[0], top + 1.2, b[2]], [a[0], top + 1.2, a[2]], blueLow, blueHigh);
+    // The glass stair tower at the road corner, standing out from the wall: tinted blue glass in
+    // a grid of dark mullions, white floor bands, a flat white cap, and through the glass the
+    // flights of stairs going up inside it.
+    const g0 = groundAt(front, towerS + towerW / 2, 1.3) - 0.4;
+    const tTop = top + 1.2;
+    const tD = 2.6;
+    const t0 = towerS;
+    const t1 = towerS + towerW;
+    towerGlass.quad(front.at(t0, g0, tD), front.at(t1, g0, tD), front.at(t1, tTop, tD), front.at(t0, tTop, tD), blueLow, blueHigh);
+    for (const s of [t0, t1]) towerGlass.quad(front.at(s, g0, 0), front.at(s, g0, tD), front.at(s, tTop, tD), front.at(s, tTop, 0), blueLow, blueHigh);
+    front.solid(this.solids, t0, g0, 0, t1, tTop, tD);
+    for (let k = 0; k <= 3; k++) {
+      const s = t0 + (towerW * k) / 3;
+      front.box(solid, s - 0.05, g0, tD - 0.04, s + 0.05, tTop, tD + 0.05, rim);
     }
-    for (let y = base + storey; y < top + 1.2; y += storey) if (y > g0 + 0.5) front.box(solid, towerS, y - 0.06, 0.52, towerS + towerW, y + 0.06, 0.62, rim);
+    for (const s of [t0, t1]) for (const o of [0.05, tD / 2, tD]) front.box(solid, s - 0.05, g0, o - 0.05, s + 0.05, tTop, o + 0.05, rim);
+    front.box(solid, t0 - 0.1, tTop, -0.1, t1 + 0.1, tTop + 0.35, tD + 0.1, white);
+    front.box(solid, t0 - 0.05, g0, -0.05, t1 + 0.05, groundAt(front, towerS + towerW / 2, tD) + 0.2, tD + 0.05, rim);
+    const flight = (sA: number, yA: number, sB: number, yB: number, o0: number, o1: number): void => {
+      const p = (sv: number, yv: number, o: number): number[] => front.at(sv, yv, o);
+      for (const o of [o0, o1]) solid.quad(p(sA, yA - 0.22, o), p(sB, yB - 0.22, o), p(sB, yB, o), p(sA, yA, o), white);
+      solid.quad(p(sA, yA, o0), p(sB, yB, o0), p(sB, yB, o1), p(sA, yA, o1), rgb('#d9d6cf'));
+      solid.quad(p(sA, yA - 0.22, o0), p(sB, yB - 0.22, o0), p(sB, yB - 0.22, o1), p(sA, yA - 0.22, o1), white);
+      // A steel handrail along the outer side.
+      front.box(solid, Math.min(sA, sB), Math.min(yA, yB) + 0.9, o1 - 0.03, Math.max(sA, sB), Math.min(yA, yB) + 0.95, o1 + 0.02, rail);
+    };
+    for (let y = base + storey; y < top + 0.1; y += storey) {
+      if (y < g0 + 0.3) continue;
+      // The floor band outside, the floor and the half landing inside, and two flights between.
+      front.box(solid, t0 - 0.04, y - 0.3, tD - 0.02, t1 + 0.04, y, tD + 0.06, white);
+      for (const sv of [t0 - 0.06, t1 - 0.02]) front.box(solid, sv, y - 0.3, 0, sv + 0.08, y, tD, white);
+      front.box(solid, t0, y - 0.2, 0.1, t0 + 0.9, y, tD - 0.1, rgb('#d9d6cf'));
+      const mid = y - storey / 2;
+      if (mid > g0 + 0.3) {
+        front.box(solid, t1 - 0.8, mid - 0.2, 0.1, t1, mid, tD - 0.1, rgb('#d9d6cf'));
+        flight(t0 + 0.9, y - storey, t1 - 0.8, mid, 0.15, tD / 2 - 0.05);
+        flight(t1 - 0.8, mid, t0 + 0.9, y, tD / 2 + 0.05, tD - 0.15);
+      }
+    }
+
 
     // ---------- The forecourt: paved from the front out to the courts (the way in to entrance 1).
     const paving = new Parts();
@@ -573,12 +665,28 @@ export class Landmarks {
       let yL = base;
       while (yL < yF + 2.9) yL += storey;
       if (yL > top - 1.6) yL = yF + Math.min(3.4, (top - yF) / 2);
-      const beam = top - 1.0;
+      // Two storeys high (the dome sits on its roof); above it the building's wall goes on up.
+      let hallTop = yL + storey;
+      if (top - hallTop < 1.5) hallTop = top;
+      const beam = hallTop - 1.0;
       // The floor (a stone plinth), the back wall with its doors, the landing.
       hall.box(solid, -U - 0.3, gMin - 0.6, -0.1, U + 0.3, yF, V + 0.3, stone);
       hall.solid(this.solids, -U - 0.3, gMin - 0.6, -0.1, U + 0.3, yF, V + 0.3);
       hall.box(solid, -U - 0.3, yF - 0.5, -0.4, U + 0.3, top + 0.25, 0, cream);
       hall.solid(this.solids, -U - 1.3, yF - 1, -0.6, U + 1.3, top + 1, 0);
+      // Above the hall the wall has a row of windows on each floor, like the rest of the block.
+      for (let y = base + storey; y < top - 1.2; y += storey) {
+        if (y < hallTop + 0.2) continue;
+        hall.box(solid, -U - 0.3, y - 0.14, 0, U + 0.3, y + 0.04, 0.14, white);
+        for (const sv of [-U + 1.55, 0, U - 1.55]) {
+          hall.box(solid, sv - 0.82, y + 0.78, 0, sv + 0.82, y + 2.32, 0.06, white);
+          hall.box(windows, sv - 0.74, y + 0.86, 0.06, sv + 0.74, y + 2.24, 0.08, darkGlass);
+          hall.box(solid, sv - 0.025, y + 0.86, 0.06, sv + 0.025, y + 2.24, 0.11, white);
+          hall.box(solid, sv - 0.74, y + 1.7, 0.06, sv + 0.74, y + 1.75, 0.11, white);
+          hall.box(solid, sv - 0.95, y + 0.7, 0, sv + 0.95, y + 0.8, 0.22, white);
+          hall.box(solid, sv - 0.95, y + 2.32, 0, sv + 0.95, y + 2.42, 0.4, white);
+        }
+      }
       const oTop = 2.6;
       hall.box(solid, -U, yL - 0.3, 0, U, yL, oTop, white);
       // Doors (they don't open: the way in is entrance 1): two at the ground beside the stairs,
@@ -586,12 +694,12 @@ export class Landmarks {
       for (const side of [-1, 1]) {
         const s = side * (U - 1.15);
         hall.box(solid, s - 0.8, yF, 0, s + 0.8, yF + 2.5, 0.08, rim);
-        hall.box(glass, s - 0.7, yF, 0.08, s + 0.7, yF + 2.4, 0.1, darkGlass);
+        hall.box(windows, s - 0.7, yF, 0.08, s + 0.7, yF + 2.4, 0.1, darkGlass);
         hall.box(solid, s - 0.04, yF, 0.08, s + 0.04, yF + 2.4, 0.13, rim);
         for (const h of [-0.12, 0.12]) hall.box(solid, s + h - 0.015, yF + 0.8, 0.13, s + h + 0.015, yF + 1.4, 0.18, rgb('#c9ccd0'));
       }
       hall.box(solid, -1.8, yL, 0, 1.8, yL + 2.6, 0.08, rim);
-      hall.box(glass, -1.7, yL, 0.08, 1.7, yL + 2.5, 0.1, darkGlass);
+      hall.box(windows, -1.7, yL, 0.08, 1.7, yL + 2.5, 0.1, darkGlass);
       // Its frame: a transom, the meeting stiles of two pairs of doors, and steel pull handles.
       hall.box(solid, -1.7, yL + 2.0, 0.08, 1.7, yL + 2.08, 0.13, rim);
       for (const s of [-0.85, 0, 0.85]) hall.box(solid, s - 0.04, yL, 0.08, s + 0.04, yL + 2.5, 0.13, rim);
@@ -655,16 +763,20 @@ export class Landmarks {
           hall.solid(this.solids, s - 0.3, yF, o - 0.3, s + 0.3, beam, o + 0.3);
         }
       }
-      hall.box(solid, -U - 0.1, beam, V - 0.45, U + 0.1, top + 0.25, V + 0.05, white);
-      hall.box(solid, U - 0.45, beam, 0, U + 0.05, top + 0.25, V, white);
-      hall.box(solid, -U - 0.05, beam, 0, -U + 0.45, top + 0.25, V, white);
-      hall.box(solid, -U + 0.3, beam + 0.08, V + 0.05, U - 0.3, top + 0.17, V + 0.15, terracotta);
-      this.board(texture, Math.min(2 * U - 0.8, 8.4), hall.at(0, (beam + top + 0.25) / 2, V + 0.17), hall.face);
+      hall.box(solid, -U - 0.1, beam, V - 0.45, U + 0.1, hallTop + 0.25, V + 0.05, white);
+      hall.box(solid, U - 0.45, beam, 0, U + 0.05, hallTop + 0.25, V, white);
+      hall.box(solid, -U - 0.05, beam, 0, -U + 0.45, hallTop + 0.25, V, white);
+      hall.box(solid, -U + 0.3, beam + 0.08, V + 0.05, U - 0.3, hallTop + 0.17, V + 0.15, terracotta);
+      this.board(texture, Math.min(2 * U - 0.8, 8.4), hall.at(0, (beam + hallTop + 0.25) / 2, V + 0.17), hall.face);
+      // A low white parapet round the hall's roof.
+      hall.box(solid, -U - 0.1, hallTop + 0.25, V - 0.25, U + 0.1, hallTop + 0.95, V + 0.05, white);
+      hall.box(solid, U - 0.25, hallTop + 0.25, 0, U + 0.05, hallTop + 0.95, V, white);
+      hall.box(solid, -U - 0.05, hallTop + 0.25, 0, -U + 0.25, hallTop + 0.95, V, white);
       // The roof of the hall: a slab with a round opening, the dome on a glass drum above it.
       const R = Math.min(U, V / 2) - 0.15;
       const oc = V / 2;
-      const deckTop = top + 0.25;
-      const deckBottom = top - 0.15;
+      const deckTop = hallTop + 0.25;
+      const deckBottom = hallTop - 0.15;
       const corners = [Math.atan2(oc, U), Math.atan2(oc, -U), Math.atan2(-oc, -U), Math.atan2(-oc, U)].map((a) => (a + Math.PI * 2) % (Math.PI * 2));
       const angles = [...Array.from({ length: 48 }, (_, i) => (i / 48) * Math.PI * 2), ...corners].sort((a, b) => a - b);
       angles.push(angles[0] + Math.PI * 2);
@@ -743,10 +855,19 @@ export class Landmarks {
     }
 
     this.mesh(solid, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    this.mesh(glass, new THREE.MeshPhongMaterial({ vertexColors: true, specular: 0x9fc4ff, shininess: 90, side: THREE.DoubleSide, emissive: 0x081830 }));
-    const doorMaterial = new THREE.MeshPhongMaterial({ vertexColors: true, specular: 0x9fc4ff, shininess: 90, side: THREE.DoubleSide });
+    // Blue glass: a mirror tinted by its colour, reflecting the sky; lit from inside at night.
+    this.mesh(glass, this.glass({ vertexColors: true }, '#1c3f8c'));
+    // Windows and doors: dark glass, warm lit rooms at night.
+    this.mesh(windows, this.glass({ vertexColors: true, metalness: 0.3 }, '#5a4630'), false);
+    const doorMaterial = this.glass({ vertexColors: true, metalness: 0.3 }, '#5a4630');
     withDoorHole(doorMaterial);
     this.mesh(doorGlass, doorMaterial, false);
+    // The stair tower's glass you can see the stairs through.
+    const towerMaterial = this.glass({ vertexColors: true, metalness: 0.25, transparent: true, opacity: 0.5, depthWrite: false }, '#20324f');
+    const tower = new THREE.Mesh(towerGlass.geometry(), towerMaterial);
+    tower.renderOrder = 2;
+    this.group.add(tower);
+    this.disposables.push(tower.geometry, towerMaterial);
   }
 
   dispose(): void {

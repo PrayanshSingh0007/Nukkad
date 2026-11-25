@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE } from '@nukkad/shared';
-import { BENCH_STRIDE, LAMP_STRIDE, TREE_STRIDE, heightAt } from '@nukkad/worldgen';
+import { BENCH_STRIDE, LAMP_STRIDE, TANK_STRIDE, TREE_STRIDE, heightAt } from '@nukkad/worldgen';
 import type { ChunkData, MeshData, PropSet, TerrainGrid } from '@nukkad/worldgen';
 import type { ReadyMessage } from '../workers/protocol.ts';
 import { createMaterials } from './materials.ts';
@@ -120,6 +120,13 @@ export class WorldView {
     }
     this.landmarks = new Landmarks(ready.doors, ready.info, this.terrain, ready.pitches ?? []);
     this.group.add(this.landmarks.group);
+    // Water tanks (and the washing by them) on a roof that a landmark opened to the air go too.
+    const tanks = ready.props.tanks;
+    const kept: number[] = [];
+    for (let i = 0; i + TANK_STRIDE <= tanks.length; i += TANK_STRIDE) {
+      if (!this.landmarks.openAt(tanks[i], tanks[i + 1], tanks[i + 2])) for (let k = 0; k < TANK_STRIDE; k++) kept.push(tanks[i + k]);
+    }
+    if (kept.length !== tanks.length) ready.props.tanks = new Float32Array(kept);
 
     const { size, pixels } = ready.groundMap;
     this.groundMap = new THREE.DataTexture(pixels, size, size, THREE.RGBAFormat);
@@ -254,6 +261,11 @@ export class WorldView {
   }
 
   /** Frees everything on the GPU. Call before loading another place. */
+  /** The sky and city that shiny landmark glass reflects. */
+  setReflections(texture: THREE.Texture | null): void {
+    this.landmarks.setReflections(texture);
+  }
+
   /** Solids of the landmarks (stairs, landings, columns) for the physics. */
   get landmarkSolids(): LandmarkSolid[] {
     return this.landmarks.solids;
@@ -705,6 +717,7 @@ export class WorldView {
   /** 0 = day … 1 = night: windows, lamp heads and light pools follow it. */
   setNight(night: number): void {
     this.materials.night.value = night;
+    this.landmarks.setNight(night);
     this.signs.setNight(night, this.wetLevel);
     // At night the heads are brighter than white (HDR), so the bloom pass gives them a glow.
     const lit = 1 + night * 5;
