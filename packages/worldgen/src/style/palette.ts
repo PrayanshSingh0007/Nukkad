@@ -60,8 +60,12 @@ export function buildingColors(building: PackBuilding): { wall: Rgb; roof: Rgb }
   return buildingColorsFromPalette(building);
 }
 
+/** Schools and colleges: the cream and buff of Bengaluru school blocks. */
+const SCHOOL_WALLS = ['#eadcb8', '#ecd8a6', '#e6d4a8', '#efe3c4'].map((hex) => linear(hex));
+
 function buildingColorsFromPalette(building: PackBuilding): { wall: Rgb; roof: Rgb } {
-  const walls = WALLS[building.kind];
+  const school = building.use === 'school' || building.use === 'college';
+  const walls = school ? SCHOOL_WALLS : WALLS[building.kind];
   const wall = walls[hash32(building.id, 1) % walls.length];
   const roofSeed = hash32(building.id, 2);
   const warm = building.kind === 'house' && roofSeed % 5 === 0;

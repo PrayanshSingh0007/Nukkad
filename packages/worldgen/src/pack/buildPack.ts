@@ -95,11 +95,17 @@ export function buildPack(input: BuildPackInput): AreaPack {
     }
   };
 
-  const addArea = (id: number, kind: AreaKind, outer: number[], holes: number[][]): void => {
+  const addArea = (id: number, kind: AreaKind, outer: number[], holes: number[][], tags?: OsmTags): void => {
     const ring = orientRing(cleanRing(clipRingToSquare(outer, half), 0.05), true);
     if (ring.length < 6 || signedArea(ring) < MIN_AREA_M2) return;
     const area: PackArea = { id, kind, ring: quantizeRing(ring) };
     if (area.ring.length < 6) return;
+    // Pitches keep their game and surface (the client draws the lines, goals, hoops and nets).
+    if (kind === 'pitch' && tags) {
+      const sport = (tags.sport ?? (tags.leisure === 'track' ? 'running' : '')).split(';')[0].trim();
+      if (sport) area.sport = sport.slice(0, 24);
+      if (tags.surface) area.surface = tags.surface.slice(0, 24);
+    }
     const packHoles = holes
       .map((hole) => orientRing(cleanRing(clipRingToSquare(hole, half), 0.05), false))
       .filter((hole) => hole.length >= 6)
@@ -139,7 +145,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
     if (!isAreaHighway && (tags.highway || tags.railway || isLineWaterway)) return addLine(way.id, tags, pts);
     if (tags.natural === 'tree_row') return addTreeRow(pts);
     const kind = closed ? classifyArea(tags) : null;
-    if (kind) addArea(way.id, kind, pts, []);
+    if (kind) addArea(way.id, kind, pts, [], tags);
     if (closed) noteComplex(tags, pts);
   };
 
@@ -162,7 +168,7 @@ export function buildPack(input: BuildPackInput): AreaPack {
         if (draft) outlines.push(draft);
         notePlace(id, tags);
       } else {
-        if (kind) addArea(id, kind, outer, holes);
+        if (kind) addArea(id, kind, outer, holes, tags);
         noteComplex(tags, outer);
       }
     });

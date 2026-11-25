@@ -103,6 +103,9 @@ export interface PackArea {
   kind: AreaKind;
   ring: number[];
   holes?: number[][];
+  /** Pitches: the game played on it (soccer, basketball, tennis, cricket…) and what it is made of. */
+  sport?: string;
+  surface?: string;
 }
 
 export type PointKind = 'tree' | 'lamp' | 'bench';

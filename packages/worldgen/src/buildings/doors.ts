@@ -43,6 +43,8 @@ export interface Door {
   depth: number;
   /** The roof, as a world height (the inside stays under it). */
   top: number;
+  /** The front wall the door is in: its two ends (x, z), metres. */
+  wall: [number, number, number, number];
 }
 
 /**
@@ -152,7 +154,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
 
     // The wall (long enough for a door) that faces that point best.
     const sign = signedArea(ring) > 0 ? 1 : -1;
-    let door: { x: number; z: number; nx: number; nz: number; score: number } | null = null;
+    let door: { x: number; z: number; nx: number; nz: number; score: number; wall: [number, number, number, number] } | null = null;
     for (let i = 0; i < ring.length; i += 2) {
       const j = (i + 2) % ring.length;
       const ax = ring[i];
@@ -173,7 +175,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
       const away = Math.hypot(toX, toZ) || 1;
       const facing = (toX * nx + toZ * nz) / away;
       const score = facing * 10 - away * 0.2;
-      if (!door || score > door.score) door = { x: px, z: pz, nx, nz, score };
+      if (!door || score > door.score) door = { x: px, z: pz, nx, nz, score, wall: [ax, az, bx, bz] };
     }
     if (!door) continue;
     // Outward check (the formula above assumes a clean outline).
@@ -232,6 +234,7 @@ export function findDoors(pack: AreaPack, terrain: TerrainGrid): Door[] {
       wide,
       ...room,
       top: ground + building.h,
+      wall: door.wall.map((v) => Math.round(v * 100) / 100) as [number, number, number, number],
     });
   }
   return doors;

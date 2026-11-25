@@ -13,6 +13,8 @@ import { StringLights } from './stringLights.ts';
 import { StallSteam } from './stallSteam.ts';
 import { PerchedBirds } from './perchedBirds.ts';
 import { StreetDogs } from './streetDogs.ts';
+import { Pitches } from './pitches.ts';
+import { Landmarks } from './landmarks.ts';
 import { RooftopLaundry } from './rooftopLaundry.ts';
 import { WallPosters } from './wallPosters.ts';
 import { FallingLeaves } from './fallingLeaves.ts';
@@ -87,6 +89,10 @@ export class WorldView {
   private perched: PerchedBirds | null = null;
   /** Street dogs round the bus stops and carts. */
   private dogs: StreetDogs | null = null;
+  /** Sports pitches and courts with their lines, goals, hoops and nets. */
+  private pitches: Pitches | null = null;
+  /** Real buildings with their own look (GEAR school's arch and name band). */
+  private landmarks: Landmarks | null = null;
   private laundry: RooftopLaundry | null = null;
   private posters: WallPosters | null = null;
   /** Where ground pigeons gather: [x, y, z] (carts and bus stops), set before the cables are added. */
@@ -108,6 +114,12 @@ export class WorldView {
   constructor(ready: ReadyMessage, options: WorldViewOptions) {
     this.terrain = ready.terrainHeights;
     this.halfSize = ready.info.halfSize;
+    if (ready.pitches?.length) {
+      this.pitches = new Pitches(ready.pitches, this.terrain);
+      this.group.add(this.pitches.group);
+    }
+    this.landmarks = new Landmarks(ready.doors, ready.info, this.terrain);
+    this.group.add(this.landmarks.group);
 
     const { size, pixels } = ready.groundMap;
     this.groundMap = new THREE.DataTexture(pixels, size, size, THREE.RGBAFormat);
@@ -255,6 +267,8 @@ export class WorldView {
     this.steam?.dispose();
     this.perched?.dispose();
     this.dogs?.dispose();
+    this.pitches?.dispose();
+    this.landmarks?.dispose();
     this.laundry?.dispose();
     this.posters?.dispose();
     this.leaves?.dispose();

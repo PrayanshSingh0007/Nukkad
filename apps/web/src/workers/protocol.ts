@@ -51,6 +51,8 @@ export interface ReadyMessage {
   traffic: TrafficRoute[];
   walkers: TrafficRoute[];
   doors: Door[];
+  /** Sports pitches and courts (outline in metres; the game, the surface) for drawing their lines and goals. */
+  pitches: { ring: number[]; sport: string; surface: string }[];
 }
 
 export interface ChunkMessage {

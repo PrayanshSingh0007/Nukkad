@@ -94,6 +94,7 @@ async function load(url: string): Promise<void> {
       traffic: buildTrafficRoutes(pack, Math.min(420, Math.round(70 * (pack.halfSize / 600) ** 2))),
       walkers: buildWalkRoutes(pack, Math.min(900, Math.round(160 * (pack.halfSize / 600) ** 2))),
       doors: world.doors,
+      pitches: pack.areas.filter((a) => a.kind === 'pitch').map((a) => ({ ring: a.ring.map((v) => v / 10), sport: a.sport ?? '', surface: a.surface ?? '' })),
     },
     [
       terrain.positions.buffer,

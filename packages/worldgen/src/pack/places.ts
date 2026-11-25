@@ -6,7 +6,13 @@ import { distToSegment, pointInRing, ringCentroid, signedArea } from '../geom/po
 import type { OsmTags } from './osmTypes.ts';
 
 /** How many signs one area may have (the sign picture holds 120 names). */
+/** Signs per area: 120 for a 1.2 km square, more for bigger areas (same density), at most 700. */
 export const MAX_PLACES = 120;
+export function maxPlaces(half: number): number {
+  return Math.min(700, Math.round(MAX_PLACES * Math.max(1, (half / 600) ** 2)));
+}
+/** Landmarks keep their sign first: schools, colleges, hospitals, places of worship. */
+const LANDMARKS = new Set<string>(['school', 'college', 'hospital', 'clinic', 'worship', 'mall']);
 
 const SHOPS: Record<string, PlaceKind> = {
   supermarket: 'supermarket',
@@ -317,11 +323,11 @@ export function buildPlaces(
   const chosen = candidates.filter((c) => c.kind);
   // Named real places and the three must-haves (mall, showroom, supermarket) always get a sign.
   const mustHave = (c: Candidate): boolean => !c.real && (c.kind === 'mall' || c.kind === 'showroom' || c.kind === 'supermarket');
-  const rank = (c: Candidate): number => (mustHave(c) || (c.real && c.name) ? 0 : c.real ? 1 : 2);
+  const rank = (c: Candidate): number => (c.real && c.name && LANDMARKS.has(c.kind ?? '') ? 0 : mustHave(c) || (c.real && c.name) ? 1 : c.real ? 2 : 3);
   chosen.sort((a, b) => rank(a) - rank(b) || Math.hypot(a.cx, a.cz) - Math.hypot(b.cx, b.cz) || a.building.id - b.building.id);
 
   const places: PackPlace[] = [...gates.slice(0, 20)];
-  for (const c of chosen.slice(0, MAX_PLACES - places.length)) {
+  for (const c of chosen.slice(0, maxPlaces(half) - places.length)) {
     const sign = signSpot(c);
     if (!sign) continue;
     c.building.use = c.kind;
