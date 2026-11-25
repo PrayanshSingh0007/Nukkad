@@ -119,6 +119,15 @@ export class PhysicsWorld {
     this.interior = boxes.map((b) => this.world.createCollider(ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation(turn(b.rotation, b.pitch ?? 0))));
   }
 
+  private landmarks: Collider[] = [];
+
+  /** The solid parts of landmarks (open entrance halls, their stairs and columns): set once. */
+  setLandmarks(boxes: { x: number; y: number; z: number; hx: number; hy: number; hz: number; rotation: number; pitch?: number }[]): void {
+    for (const collider of this.landmarks) this.world.removeCollider(collider, false);
+    const { ColliderDesc } = this.rapier;
+    this.landmarks = boxes.map((b) => this.world.createCollider(ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.x, b.y, b.z).setRotation(turn(b.rotation, b.pitch ?? 0))));
+  }
+
   private lift: Collider[] = [];
 
   /** The lift's car floor and its shut doors (replaced whenever they change). */

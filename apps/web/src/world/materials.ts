@@ -677,7 +677,17 @@ const DOOR_HOLE = {
   // The roof over a stair hut: a box (centre, turned by w; half sizes) where the roof is cut away.
   uNkRoofHole: { value: new THREE.Vector4(0, -1e6, 0, 0) },
   uNkRoofHoleSize: { value: new THREE.Vector3(0, 0, 0) },
+  // A part of a building that is really open to the air (a landmark's open entrance hall): a box
+  // like the roof hole, always cut away. Set once when the world is built.
+  uNkCut: { value: new THREE.Vector4(0, -1e6, 0, 0) },
+  uNkCutSize: { value: new THREE.Vector3(0, 0, 0) },
 };
+
+/** Cut the buildings away for good inside this box (centre, turned by yaw; half sizes), or clear it (size 0). */
+export function setOpenCut(x: number, y: number, z: number, yaw: number, hx: number, hy: number, hz: number): void {
+  DOOR_HOLE.uNkCut.value.set(x, y, z, yaw);
+  DOOR_HOLE.uNkCutSize.value.set(hx, hy, hz);
+}
 
 /** Cut the building's roof away inside this box (the stair hut you come up through), or clear it (size 0). */
 export function setRoofHole(x: number, y: number, z: number, yaw: number, hx: number, hy: number, hz: number): void {
@@ -705,7 +715,7 @@ function doorHole(material: THREE.Material): void {
       .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvNkHoleP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;\nuniform vec4 uNkHole;\nuniform vec3 uNkHoleSize;\nuniform vec4 uNkRoofHole;\nuniform vec3 uNkRoofHoleSize;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vNkHoleP;\nuniform vec4 uNkHole;\nuniform vec3 uNkHoleSize;\nuniform vec4 uNkRoofHole;\nuniform vec3 uNkRoofHoleSize;\nuniform vec4 uNkCut;\nuniform vec3 uNkCutSize;')
       .replace(
         '#include <clipping_planes_fragment>',
         `#include <clipping_planes_fragment>
@@ -720,10 +730,16 @@ function doorHole(material: THREE.Material): void {
           float nkRx = nkR.x * cos(uNkRoofHole.w) - nkR.z * sin(uNkRoofHole.w);
           float nkRz = nkR.x * sin(uNkRoofHole.w) + nkR.z * cos(uNkRoofHole.w);
           if (abs(nkRx) < uNkRoofHoleSize.x && abs(nkR.y) < uNkRoofHoleSize.y && abs(nkRz) < uNkRoofHoleSize.z) discard;
+        }
+        if (uNkCutSize.x > 0.0) {
+          vec3 nkC = vNkHoleP - uNkCut.xyz;
+          float nkCx = nkC.x * cos(uNkCut.w) - nkC.z * sin(uNkCut.w);
+          float nkCz = nkC.x * sin(uNkCut.w) + nkC.z * cos(uNkCut.w);
+          if (abs(nkCx) < uNkCutSize.x && abs(nkC.y) < uNkCutSize.y && abs(nkCz) < uNkCutSize.z) discard;
         }`,
       );
   };
-  material.customProgramCacheKey = () => `${key.call(material)}-hole2`;
+  material.customProgramCacheKey = () => `${key.call(material)}-hole3`;
 }
 
 export function createMaterials(groundMap: THREE.Texture, windows: boolean, surfaces: SurfaceUniforms, leaves: THREE.Texture | null = null): WorldMaterials {
@@ -751,4 +767,9 @@ export function createMaterials(groundMap: THREE.Texture, windows: boolean, surf
     : new THREE.MeshLambertMaterial({ vertexColors: true });
   wind(trees, time, rain);
   return { night, time, lightDir, sunDir, sky, rain, wet, terrain, buildings, ground, water, props, trees, all: [terrain, buildings, ground, water, props, trees] };
+}
+
+/** Lets a material be cut by the open doorway too (a landmark's own door panels, drawn in front of the wall). */
+export function withDoorHole(material: THREE.Material): void {
+  doorHole(material);
 }

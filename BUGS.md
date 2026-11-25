@@ -77,6 +77,15 @@ Template:
 - Expected / actual: both keep running / one dies with `ENOENT … rename '.cache/rooms/rooms.json.tmp'` (both write the same temp file, and one renames it away first).
 - Notes: fix by giving each save its own temp name (e.g. add the process id), or a `NUKKAD_CACHE_DIR` per server. Until then, run only one dev server per folder.
 
+### B-034 Buildings on a slope look too short from the uphill side
+- Type: cosmetic
+- Status: open
+- Found: 2026-11-25, laptop, built-in browser
+- Steps to reproduce:
+  1. Go to GEAR Innovative International School and look at it from the road (north).
+- Expected / actual: a 4-floor school / about 2 floors show; the rest is under the ground.
+- Notes: `appendBuilding` stands every building on the lowest ground under its outline and buries the uphill side (6.5 m at GEAR). A fix would add floors when the ground under a building rises by more than about a storey, in one place that the mesh, doors (`top`, `floors`) and insides all read. Not done yet: it changes every building on a slope.
+
 ## Fixed
 
 ### B-032 Realistic people glided forward and snapped back every step

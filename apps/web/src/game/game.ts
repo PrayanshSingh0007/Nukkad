@@ -24,6 +24,7 @@ import { CameraRig } from '../player/cameraRig.ts';
 import { PlayerInput } from '../player/input.ts';
 import type { ReadyMessage } from '../workers/protocol.ts';
 import { areaUrl } from '../world/areaUrl.ts';
+import { placeLandmarkDoors } from '../world/landmarks.ts';
 import { Streamer } from '../world/streamer.ts';
 import { chunkAt } from '../world/streamPlan.ts';
 import type { StreamSettings } from '../world/streamPlan.ts';
@@ -566,7 +567,8 @@ export class Game {
     }
     const building = this.building;
     const inside = building !== null && onFoot && building.contains(player.x, player.y, player.z);
-    physics.ghostBuildings = building !== null && onFoot && (inside || building.doorway(player.x, player.y, player.z));
+    // (Also where a landmark is open to the air, like GEAR's domed entrance hall.)
+    physics.ghostBuildings = onFoot && ((building !== null && (inside || building.doorway(player.x, player.y, player.z))) || world.openAt(player.x, player.y, player.z));
     if (inside && !this.interior) {
       this.interior = building;
       player.seat = null;
@@ -915,6 +917,7 @@ export class Game {
       ]);
       this.physics = physics;
       this.ready = ready;
+      placeLandmarkDoors(ready.doors, ready.info, ready.terrainHeights);
       for (const door of ready.doors) {
         const key = `${Math.floor(door.x / 10)},${Math.floor(door.z / 10)}`;
         const list = this.doorGrid.get(key) ?? [];
@@ -932,6 +935,7 @@ export class Game {
         anisotropy: Math.min(4, this.view3d.renderer.capabilities.getMaxAnisotropy()),
       });
       this.view3d.scene.add(this.world.group);
+      physics.setLandmarks(this.world.landmarkSolids);
       this.streetLife = new StreetLifeView(ready.props, this.reflections.texture);
       this.streets = new StreetFinder(ready.roads);
       const streetLife = this.streetLife;

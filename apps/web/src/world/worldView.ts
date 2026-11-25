@@ -14,7 +14,7 @@ import { StallSteam } from './stallSteam.ts';
 import { PerchedBirds } from './perchedBirds.ts';
 import { StreetDogs } from './streetDogs.ts';
 import { Pitches } from './pitches.ts';
-import { Landmarks } from './landmarks.ts';
+import { type LandmarkSolid, Landmarks } from './landmarks.ts';
 import { RooftopLaundry } from './rooftopLaundry.ts';
 import { WallPosters } from './wallPosters.ts';
 import { FallingLeaves } from './fallingLeaves.ts';
@@ -92,7 +92,7 @@ export class WorldView {
   /** Sports pitches and courts with their lines, goals, hoops and nets. */
   private pitches: Pitches | null = null;
   /** Real buildings with their own look (GEAR school's arch and name band). */
-  private landmarks: Landmarks | null = null;
+  private landmarks: Landmarks;
   private laundry: RooftopLaundry | null = null;
   private posters: WallPosters | null = null;
   /** Where ground pigeons gather: [x, y, z] (carts and bus stops), set before the cables are added. */
@@ -118,7 +118,7 @@ export class WorldView {
       this.pitches = new Pitches(ready.pitches, this.terrain);
       this.group.add(this.pitches.group);
     }
-    this.landmarks = new Landmarks(ready.doors, ready.info, this.terrain);
+    this.landmarks = new Landmarks(ready.doors, ready.info, this.terrain, ready.pitches ?? []);
     this.group.add(this.landmarks.group);
 
     const { size, pixels } = ready.groundMap;
@@ -152,10 +152,13 @@ export class WorldView {
       if (wires) this.group.add(wires);
       const petals = buildPetals(ready.props.trees, this.treeVariants, options.maxTrees);
       if (petals) this.group.add(petals);
-      this.grass = new GrassView(this.materials.trees, this.terrain, ready.groundMap, this.halfSize, leafy === 2 ? 26 : 14);
+      const landmarks = this.landmarks;
+      this.grass = new GrassView(this.materials.trees, this.terrain, ready.groundMap, this.halfSize, leafy === 2 ? 26 : 14, (x, z) => landmarks.paved(x, z));
       this.group.add(this.grass.mesh);
     }
-    this.signs = new Signs(ready.places, this.terrain, options.anisotropy);
+    // Landmarks with their own name boards don't get the plain shop-style sign as well.
+    const boards = this.landmarks.boards;
+    this.signs = new Signs(boards.size ? ready.places.filter((place) => !boards.has(place.name ?? '')) : ready.places, this.terrain, options.anisotropy);
     if (this.signs.mesh) this.group.add(this.signs.mesh);
     if (this.signs.pools) this.group.add(this.signs.pools);
     this.setTreeLimit(options.maxTrees);
@@ -251,6 +254,16 @@ export class WorldView {
   }
 
   /** Frees everything on the GPU. Call before loading another place. */
+  /** Solids of the landmarks (stairs, landings, columns) for the physics. */
+  get landmarkSolids(): LandmarkSolid[] {
+    return this.landmarks.solids;
+  }
+
+  /** True where a landmark is open to the air: buildings' outer walls let you walk in there. */
+  openAt(x: number, y: number, z: number): boolean {
+    return this.landmarks.openAt(x, y, z);
+  }
+
   dispose(): void {
     this.group.traverse((object) => {
       const geometry = (object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
@@ -268,7 +281,7 @@ export class WorldView {
     this.perched?.dispose();
     this.dogs?.dispose();
     this.pitches?.dispose();
-    this.landmarks?.dispose();
+    this.landmarks.dispose();
     this.laundry?.dispose();
     this.posters?.dispose();
     this.leaves?.dispose();

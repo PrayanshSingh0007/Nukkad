@@ -14,6 +14,8 @@ export { buildWaterMesh } from './areas/water.ts';
 export { prepareWorld } from './chunk/prepare.ts';
 export { clearMainRoads } from './roads/clearRoads.ts';
 export type { Door, InteriorKind } from './buildings/doors.ts';
+export { fitRoom } from './buildings/doors.ts';
+export { pointInRing } from './geom/polygon.ts';
 export { findSpawn } from './chunk/spawn.ts';
 export type { PreparedWorld } from './chunk/prepare.ts';
 export { MAX_CHUNK_TRIANGLES, MAX_FAR_CHUNK_TRIANGLES, buildChunk } from './chunk/buildChunk.ts';

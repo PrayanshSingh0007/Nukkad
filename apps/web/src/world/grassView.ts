@@ -21,8 +21,12 @@ export class GrassView {
   private radius: number;
   private at: [number, number] | null = null;
 
-  constructor(material: THREE.Material, terrain: TerrainGrid, groundMap: { size: number; pixels: Uint8Array }, half: number, radius: number) {
+  /** Places paved over (a landmark's forecourt): no grass there whatever the ground map says. */
+  private readonly paved: (x: number, z: number) => boolean;
+
+  constructor(material: THREE.Material, terrain: TerrainGrid, groundMap: { size: number; pixels: Uint8Array }, half: number, radius: number, paved: (x: number, z: number) => boolean = () => false) {
     this.terrain = terrain;
+    this.paved = paved;
     this.pixels = groundMap.pixels;
     this.size = groundMap.size;
     this.half = half;
@@ -78,6 +82,7 @@ export class GrassView {
         if (d > reach) continue;
         const [r, g, b] = this.colourAt(tx, tz);
         if (g < r * 1.08 || g < b * 1.2) continue; // not a lawn
+        if (this.paved(tx, tz)) continue;
         const size = (0.45 + h * 0.45) * Math.min(1, (reach - d) / 6); // shrink away at the edge
         if (size < 0.15) continue;
         position.set(tx, heightAt(this.terrain, tx, tz), tz);
