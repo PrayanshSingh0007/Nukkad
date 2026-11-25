@@ -177,6 +177,22 @@ const FACADE_GLSL = /* glsl */ `
       // The plinth: the foot of the wall painted a darker grey, as on most Bengaluru buildings.
       float plinth = 1.0 - smoothstep(0.1, 0.11 + fw.y, vWin.y);
       wall = mix(wall, vec3(0.3, 0.29, 0.27) * (0.85 + 0.15 * patchy), plinth * above * 0.9);
+      // Monsoon staining: long dark streaks running down the walls, seen from far off; some
+      // buildings are old and badly stained, others freshly painted. Greenish where it stays damp.
+      float age = nkH(vColor.rg * 53.0 + 7.1);
+      float drip = nkNoise(vec2(vWin.x * 1.1 + vColor.b * 31.0, vWin.y * 0.16 + vColor.r * 9.0));
+      float drip2 = nkNoise(vec2(vWin.x * 3.7 + 11.0, vWin.y * 0.33));
+      float stain = smoothstep(0.42, 0.78, drip * 0.75 + drip2 * 0.25) * (0.35 + 0.65 * age);
+      // Rain runs off each floor's ledge: short dark streaks just under it, fading downwards.
+      float ledge = smoothstep(0.5, 0.8, nkNoise(vec2(vWin.x * 5.3 + vColor.g * 17.0, floor(vWin.y) * 2.7)));
+      stain = max(stain, ledge * pow(fract(vWin.y), 2.2) * (0.45 + 0.55 * age));
+      wall *= 1.0 - 0.42 * stain * above;
+      wall = mix(wall, wall * vec3(0.9, 0.96, 0.88), stain * 0.45);
+    }
+    // A dark drain pipe running down beside some window columns.
+    if (style != 2) {
+      float pipe = step(0.84, nkH(vec2(id.x, 5.3))) * nkRect(cell, vec4(0.012, -0.1, 0.035, 1.1), fw) * fade;
+      wall = mix(wall, vec3(0.15, 0.15, 0.16), pipe * 0.85);
     }
 
     // ---- The opening: frame, sill, sunshade.
@@ -191,6 +207,18 @@ const FACADE_GLSL = /* glsl */ `
       float shade = nkRect(cell, vec4(box.x - 0.05, box.w, box.z + 0.05, box.w + 0.045), fw) * fine;
       wall = mix(wall, wall * 1.22 + 0.03, max(sill, shade) * 0.9);
       wall *= 1.0 - 0.3 * nkRect(cell, vec4(box.x - 0.035, box.y - 0.075, box.z + 0.035, box.y - 0.04), fw) * fine; // shadow under the sill
+    }
+
+    // Air-conditioner units beside some windows of flats, houses and schools above the ground
+    // floor: a pale box with a dark fan grille and a shadow under it.
+    if ((style == 0 || style == 1 || style == 4) && kind == 0 && tone > 0.76 && vWin.y > 0.9 && box.z < 0.74) {
+      vec4 ac = vec4(box.z + 0.035, 0.36, box.z + 0.23, 0.56);
+      float acBox = nkRect(cell, ac, fw) * fade;
+      vec2 acC = vec2((ac.x + ac.z) * 0.5 - 0.02, (ac.y + ac.w) * 0.5);
+      float fan = 1.0 - smoothstep(0.055, 0.065, length((cell - acC) * vec2(1.0, 1.5)));
+      wall = mix(wall, vec3(0.8, 0.8, 0.78), acBox);
+      wall = mix(wall, vec3(0.2, 0.2, 0.21), acBox * fan * fine);
+      wall *= 1.0 - 0.3 * nkRect(cell, vec4(ac.x, ac.y - 0.05, ac.z, ac.y), fw) * fade;
     }
 
     // ---- Behind the glass: a ray-traced box room.
@@ -481,7 +509,7 @@ function facades(material: THREE.MeshLambertMaterial, night: { value: number }, 
       .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_PHOTO_GLSL}\ndiffuseColor.rgb *= 1.0 - 0.16 * uRain; // wet plaster\n${FACADE_GLSL}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += nkEmit;');
   };
-  material.customProgramCacheKey = () => 'nukkad-facades-11';
+  material.customProgramCacheKey = () => 'nukkad-facades-14';
 }
 
 function roads(material: THREE.MeshLambertMaterial, surfaces: SurfaceUniforms, weather: WeatherUniforms): void {
